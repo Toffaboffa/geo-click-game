@@ -3,5 +3,5 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/geo-click-game/"
+  base: "/geo-click-game/",
 });
