@@ -41,13 +41,20 @@ function createSession(username) {
   return id;
 }
 
-function authMiddleware(req, res, next) {
-  const sid = req.headers["x-session-id"];
-  if (!sid || !sessions.has(sid)) {
-    return res.status(401).json({ error: "Inte inloggad" });
+async function authMiddleware(req, res, next) {
+  try {
+    const sid = req.headers["x-session-id"];
+    if (!sid) return res.status(401).json({ error: "Inte inloggad" });
+
+    const username = await getUsernameFromSession(sid);
+    if (!username) return res.status(401).json({ error: "Inte inloggad" });
+
+    req.username = username;
+    next();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
   }
-  req.username = sessions.get(sid);
-  next();
 }
 
 // ===== Auth endpoints =====
@@ -343,4 +350,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log("Server lyssnar på port", PORT);
 });
+
 
