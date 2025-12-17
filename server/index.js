@@ -1,4 +1,5 @@
 // server/index.js
+import { pool } from "./db.js";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
@@ -342,3 +343,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log("Server lyssnar på port", PORT);
 });
+
