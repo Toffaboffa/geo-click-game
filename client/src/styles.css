@@ -1,0 +1,167 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.screen {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+.panel {
+  background: #020617;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  min-width: 320px;
+  max-width: 900px;
+}
+
+.panel h1,
+.panel h2,
+.panel h3 {
+  margin-top: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+input {
+  width: 100%;
+  padding: 8px 10px;
+  margin: 6px 0;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #020617;
+  color: #e5e7eb;
+}
+
+button {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: #2563eb;
+  color: white;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tabs button {
+  flex: 1;
+  background: #1e293b;
+}
+
+.tabs button.active {
+  background: #2563eb;
+}
+
+.leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.leaderboard th,
+.leaderboard td {
+  border-bottom: 1px solid #1f2937;
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.game-screen {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 16px;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.game-header-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.city-info {
+  text-align: right;
+  max-width: 300px;
+}
+
+.world-map {
+  flex: 1;
+  min-height: 50vh;
+  width: 100%;
+  max-width: 1200px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
+  background: linear-gradient(to bottom, #166534 50%, #1d4ed8 50%);
+}
+
+.map-hint {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.results-panel {
+  background: #020617;
+  border-radius: 12px;
+  padding: 10px;
+  max-width: 1200px;
+  width: 100%;
+}
+
+.results-panel ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.results-panel li {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.final-result {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #1f2937;
+}
