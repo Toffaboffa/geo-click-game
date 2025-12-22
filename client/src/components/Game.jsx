@@ -14,12 +14,10 @@ export default function Game({
   gameState,
   onLogout,
   onLeaveMatch,
-  // NYTT:
   mapInvert, // (xPx, yPx) => [lon, lat] | null
-  onMapSize // ({width, height}) => void
+  onMapSize, // ({width, height}) => void
 }) {
   const mapRef = useRef(null);
-
   const [roundTimerStart, setRoundTimerStart] = useState(null);
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
   const [lastClickInfo, setLastClickInfo] = useState(null);
@@ -34,7 +32,6 @@ export default function Game({
   // rapportera kartans storlek upp till App (så kalibreringen blir rätt)
   useEffect(() => {
     if (!mapRef.current || !onMapSize) return;
-
     const el = mapRef.current;
 
     const report = () => {
@@ -46,7 +43,6 @@ export default function Game({
 
     const ro = new ResizeObserver(() => report());
     ro.observe(el);
-
     return () => ro.disconnect();
   }, [onMapSize]);
 
@@ -55,11 +51,17 @@ export default function Game({
     if (hasClickedThisRound) return;
     if (!mapRef.current) return;
 
+    // ✅ INGEN FALLBACK: måste ha mapInvert redo
+    if (!mapInvert) {
+      alert("Kartan är inte kalibrerad än (mapInvert saknas).");
+      return;
+    }
+
     const rect = mapRef.current.getBoundingClientRect();
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
 
-    // (valfritt men rekommenderat) blocka klick utanför "ovalen"
+    // blocka klick utanför glob-ovalen
     if (!isInsideEllipse(xPx, yPx, rect.width, rect.height)) return;
 
     const now = performance.now();
@@ -67,24 +69,15 @@ export default function Game({
     if (!roundTimerStart) setRoundTimerStart(now);
     const timeMs = now - start;
 
-    // NYTT: använd lon/lat om vi kan
-    const ll = mapInvert?.(xPx, yPx); // [lon, lat] eller null
-    if (ll && Array.isArray(ll) && ll.length === 2) {
-      const [lon, lat] = ll;
-      if (Number.isFinite(lon) && Number.isFinite(lat)) {
-        socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
-        setHasClickedThisRound(true);
-        setLastClickInfo({ timeMs, lon, lat });
-        return;
-      }
-    }
+    const ll = mapInvert(xPx, yPx); // [lon, lat] eller null
+    if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
 
-    // fallback: gamla normaliserade x/y (om mapInvert inte finns/inte funkar)
-    const x = xPx / rect.width;
-    const y = yPx / rect.height;
-    socket.emit("player_click", { matchId: match.matchId, x, y, timeMs });
+    const [lon, lat] = ll;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
+
+    socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
     setHasClickedThisRound(true);
-    setLastClickInfo({ timeMs, x, y });
+    setLastClickInfo({ timeMs, lon, lat });
   };
 
   const myName = session.username;

@@ -39,16 +39,6 @@ body,
   gap: 12px;
 }
 
-.world-map{
-  position: relative;
-  width: min(1000px, 95vw);
-  aspect-ratio: 2.2 / 1; /* ändra till din bilds ratio */
-  background-image: url("./assets/world.png");
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  cursor: crosshair;
-}
-
 input {
   width: 100%;
   padding: 8px 10px;
@@ -103,6 +93,10 @@ button:hover {
   text-align: left;
 }
 
+/* ===================== */
+/* GAME */
+/* ===================== */
+
 .game-screen {
   flex-direction: column;
   align-items: stretch;
@@ -129,17 +123,25 @@ button:hover {
   max-width: 300px;
 }
 
+/* ✅ ENDA world-map (ingen dubbeldefinition) */
 .world-map {
-  flex: 1;
-  min-height: 50vh;
   width: 100%;
   max-width: 1200px;
+
+  /* VIKTIGT: behåll ratio så pixelmappingen blir stabil */
+  aspect-ratio: 2.2 / 1; /* ändra om din world.png har annat ratio */
+
+  background-image: url("./assets/world.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+
   border-radius: 12px;
-  margin-bottom: 12px;
-  position: relative;
   overflow: hidden;
   cursor: crosshair;
-  background: linear-gradient(to bottom, #166534 50%, #1d4ed8 50%);
+
+  margin-bottom: 12px;
+  position: relative;
 }
 
 .map-hint {

@@ -10,12 +10,21 @@ import Game from "./components/Game.jsx";
 
 /**
  * Referenspunkter: stadens lon/lat + pixel (x,y) i DIN kartbild.
- * Byt pixelvärdena till dina egna när du har dem 100% exakt.
- * (Du kan börja med 2-3 st, men fler = stabilare.)
+ * OBS: Dessa pixlar gäller om world.png är EXAKT samma crop/ratio som din guidebild.
  */
 const MAP_REFS = [
-  // Exempel (ersätt x/y med dina faktiska pixelpositioner i bilden):
-  // { name: "Stockholm", lon: 18.0686, lat: 59.3293, x: 817.5, y: 108.5 },
+  { name: "San Francisco", lon: -122.4194, lat: 37.7749, x: 247.5, y: 212.5 },
+  { name: "Miami", lon: -80.1918, lat: 25.7617, x: 404.5, y: 272.5 },
+  { name: "New York", lon: -74.006, lat: 40.7128, x: 449.6, y: 197.8 },
+  { name: "Rio de Janeiro", lon: -43.1729, lat: -22.9068, x: 561.2, y: 510.6 },
+  { name: "Reykjavik", lon: -21.9426, lat: 64.1466, x: 678.6, y: 87.2 },
+  { name: "Stockholm", lon: 18.0686, lat: 59.3293, x: 817.5, y: 108.5 },
+  { name: "Athens", lon: 23.7275, lat: 37.9838, x: 843.3, y: 211.0 },
+  { name: "Doha", lon: 51.531, lat: 25.2854, x: 965.5, y: 273.5 },
+  { name: "Cape Town", lon: 18.4241, lat: -33.9249, x: 821.8, y: 565.4 },
+  { name: "Bangkok", lon: 100.5018, lat: 13.7563, x: 1179.5, y: 330.5 },
+  { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 1322.5, y: 222.5 },
+  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 },
 ];
 
 /** Linjär regression: y ≈ a*x + b */
@@ -24,8 +33,7 @@ function fitLinear(xs, ys) {
   const meanX = xs.reduce((s, v) => s + v, 0) / n;
   const meanY = ys.reduce((s, v) => s + v, 0) / n;
 
-  let num = 0,
-    den = 0;
+  let num = 0, den = 0;
   for (let i = 0; i < n; i++) {
     const dx = xs[i] - meanX;
     num += dx * (ys[i] - meanY);
@@ -37,25 +45,22 @@ function fitLinear(xs, ys) {
 }
 
 /**
- * Bygger en funktion som gör:
- *  - (xImg,yImg) pixlar på din bild -> [lon,lat]
+ * (xImg,yImg) pixlar på din bild -> [lon,lat]
  * via Robinson + kalibrering (skala+offset i x/y) baserat på MAP_REFS.
  */
 function makeCalibratedInvert({ width, height, refs }) {
   if (!width || !height) return null;
   if (!refs || refs.length < 2) return null;
 
-  // Bas-projektionen (globen)
   const proj = geoRobinson().fitSize([width, height], { type: "Sphere" });
 
-  // Projektionens pixelkoordinater för referensstäderna
   const projXs = [];
   const projYs = [];
   const imgXs = [];
   const imgYs = [];
 
   for (const r of refs) {
-    const p = proj([r.lon, r.lat]); // [xProj, yProj]
+    const p = proj([r.lon, r.lat]);
     if (!p || Number.isNaN(p[0]) || Number.isNaN(p[1])) continue;
     projXs.push(p[0]);
     projYs.push(p[1]);
@@ -65,16 +70,13 @@ function makeCalibratedInvert({ width, height, refs }) {
 
   if (projXs.length < 2) return null;
 
-  // Kalibrera så att proj-pixlar -> bild-pixlar
   const { a: ax, b: bx } = fitLinear(projXs, imgXs);
   const { a: ay, b: by } = fitLinear(projYs, imgYs);
 
-  // Invert: bild-pixel -> proj-pixel -> lon/lat
   function invertFromImage(xImg, yImg) {
     const xProj = (xImg - bx) / ax;
     const yProj = (yImg - by) / ay;
-    const ll = proj.invert([xProj, yProj]); // [lon, lat]
-    return ll; // kan vara null om utanför
+    return proj.invert([xProj, yProj]); // [lon, lat] eller null
   }
 
   return invertFromImage;
@@ -93,11 +95,9 @@ export default function App() {
     finalResult: null,
   });
 
-  // NYTT: storlek på kartan (måste matcha bilden på skärmen)
-  // Vi låter Game rapportera in aktuell rendered size via onMapSize.
+  // Game rapporterar in aktuell rendered size
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
-  // NYTT: skapa invert-funktionen när vi har storlek + refs
   const mapInvert = useMemo(() => {
     return makeCalibratedInvert({
       width: mapSize.width,
@@ -109,22 +109,15 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
 
-    const s = io(API_BASE, {
-      transports: ["websocket"],
-      path: "/socket.io",
-    });
+    const s = io(API_BASE, { transports: ["websocket"], path: "/socket.io" });
 
-    s.on("connect", () => {
-      s.emit("auth", session.sessionId);
-    });
-
+    s.on("connect", () => s.emit("auth", session.sessionId));
     s.on("auth_error", (msg) => {
       alert(msg);
       handleLogout();
     });
 
     s.on("lobby_state", (state) => setLobbyState(state));
-
     s.on("challenge_received", ({ from }) => {
       const accept = window.confirm(`${from} utmanar dig. Accepterar du?`);
       if (accept) s.emit("accept_challenge", from);
@@ -132,12 +125,7 @@ export default function App() {
 
     s.on("match_started", (data) => {
       setMatch(data);
-      setGameState({
-        currentRound: -1,
-        cityName: null,
-        roundResults: [],
-        finalResult: null,
-      });
+      setGameState({ currentRound: -1, cityName: null, roundResults: [], finalResult: null });
     });
 
     s.on("round_starting", ({ roundIndex, cityName }) => {
@@ -165,8 +153,9 @@ export default function App() {
 
   const handleAuth = async (mode, username, password) => {
     try {
-      const data =
-        mode === "login" ? await login(username, password) : await register(username, password);
+      const data = mode === "login"
+        ? await login(username, password)
+        : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
@@ -180,12 +169,7 @@ export default function App() {
       if (socket) socket.disconnect();
       setSocket(null);
       setMatch(null);
-      setGameState({
-        currentRound: -1,
-        cityName: null,
-        roundResults: [],
-        finalResult: null,
-      });
+      setGameState({ currentRound: -1, cityName: null, roundResults: [], finalResult: null });
       setSession(null);
     }
   };
@@ -212,9 +196,8 @@ export default function App() {
       gameState={gameState}
       onLogout={handleLogout}
       onLeaveMatch={() => setMatch(null)}
-      // NYTT:
-      mapInvert={mapInvert} // (x,y px) -> [lon,lat]
-      onMapSize={setMapSize} // Game ska kalla med {width,height} för den klickbara bilden
+      mapInvert={mapInvert}
+      onMapSize={setMapSize}
     />
   );
 }
