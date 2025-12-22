@@ -4,8 +4,7 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .screen {
@@ -64,19 +63,9 @@ button:hover {
   opacity: 0.9;
 }
 
-.tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.tabs button {
-  flex: 1;
-  background: #1e293b;
-}
-
-.tabs button.active {
-  background: #2563eb;
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .leaderboard {
@@ -93,10 +82,7 @@ button:hover {
   text-align: left;
 }
 
-/* ===================== */
 /* GAME */
-/* ===================== */
-
 .game-screen {
   flex-direction: column;
   align-items: stretch;
@@ -123,25 +109,21 @@ button:hover {
   max-width: 300px;
 }
 
-/* ✅ ENDA world-map (ingen dubbeldefinition) */
+/* ✅ ENDA definitionen av .world-map */
 .world-map {
   width: 100%;
   max-width: 1200px;
-
-  /* VIKTIGT: behåll ratio så pixelmappingen blir stabil */
-  aspect-ratio: 2.2 / 1; /* ändra om din world.png har annat ratio */
+  min-height: 55vh;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+  cursor: crosshair;
 
   background-image: url("./assets/world.png");
   background-size: 100% 100%;
   background-repeat: no-repeat;
   background-position: center;
-
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: crosshair;
-
-  margin-bottom: 12px;
-  position: relative;
 }
 
 .map-hint {

@@ -1,12 +1,6 @@
 import React, { useState } from "react";
 
-export default function Lobby({
-  session,
-  socket,
-  lobbyState,
-  leaderboard,
-  onLogout
-}) {
+export default function Lobby({ session, socket, lobbyState, leaderboard, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
 
   const startRandom = () => {
@@ -40,7 +34,6 @@ export default function Lobby({
           <button onClick={startRandom} disabled={!socket}>
             Spela mot slumpvis spelare
           </button>
-
           <button onClick={startSolo} disabled={!socket}>
             Spela solo (random-bot)
           </button>
@@ -53,7 +46,7 @@ export default function Lobby({
             onChange={(e) => setChallengeName(e.target.value)}
           />
           <button type="submit" disabled={!socket}>
-            Utmanar spelare
+            Utmana spelare
           </button>
         </form>
 
@@ -75,7 +68,7 @@ export default function Lobby({
                 <td>{u.played}</td>
                 <td>{u.wins}</td>
                 <td>{u.losses}</td>
-                <td>{u.avgScore.toFixed(0)}</td>
+                <td>{Number(u.avgScore).toFixed(0)}</td>
               </tr>
             ))}
           </tbody>

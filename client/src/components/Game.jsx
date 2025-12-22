@@ -1,4 +1,3 @@
-// client/src/components/Game.jsx
 import React, { useEffect, useRef, useState } from "react";
 
 function isInsideEllipse(x, y, w, h) {
@@ -15,21 +14,19 @@ export default function Game({
   onLogout,
   onLeaveMatch,
   mapInvert, // (xPx, yPx) => [lon, lat] | null
-  onMapSize, // ({width, height}) => void
+  onMapSize // ({width, height}) => void
 }) {
   const mapRef = useRef(null);
   const [roundTimerStart, setRoundTimerStart] = useState(null);
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
   const [lastClickInfo, setLastClickInfo] = useState(null);
 
-  // reset per runda
   useEffect(() => {
     setHasClickedThisRound(false);
     setLastClickInfo(null);
     setRoundTimerStart(null);
   }, [gameState.currentRound]);
 
-  // rapportera kartans storlek upp till App (så kalibreringen blir rätt)
   useEffect(() => {
     if (!mapRef.current || !onMapSize) return;
     const el = mapRef.current;
@@ -40,7 +37,6 @@ export default function Game({
     };
 
     report();
-
     const ro = new ResizeObserver(() => report());
     ro.observe(el);
     return () => ro.disconnect();
@@ -51,7 +47,7 @@ export default function Game({
     if (hasClickedThisRound) return;
     if (!mapRef.current) return;
 
-    // ✅ INGEN FALLBACK: måste ha mapInvert redo
+    // INGEN FALLBACK: måste ha mapInvert
     if (!mapInvert) {
       alert("Kartan är inte kalibrerad än (mapInvert saknas).");
       return;
@@ -61,7 +57,6 @@ export default function Game({
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
 
-    // blocka klick utanför glob-ovalen
     if (!isInsideEllipse(xPx, yPx, rect.width, rect.height)) return;
 
     const now = performance.now();
@@ -159,8 +154,8 @@ export default function Game({
             <h3>Slutresultat</h3>
             {myTotal != null && oppTotal != null && (
               <>
-                <p>Dina totalpoäng: {myTotal.toFixed(0)}</p>
-                <p>Motståndarens totalpoäng: {oppTotal.toFixed(0)}</p>
+                <p>Dina totalpoäng: {Number(myTotal).toFixed(0)}</p>
+                <p>Motståndarens totalpoäng: {Number(oppTotal).toFixed(0)}</p>
               </>
             )}
             <p>

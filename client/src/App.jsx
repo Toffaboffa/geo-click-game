@@ -1,4 +1,3 @@
-// client/src/App.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { io } from "socket.io-client";
 import { geoRobinson } from "d3-geo-projection";
@@ -23,7 +22,7 @@ const MAP_REFS = [
   { name: "Cape Town", lon: 18.4241, lat: -33.9249, x: 821.8, y: 565.4 },
   { name: "Bangkok", lon: 100.5018, lat: 13.7563, x: 1179.5, y: 330.5 },
   { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 1322.5, y: 222.5 },
-  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 },
+  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 }
 ];
 
 /** Linjär regression: y ≈ a*x + b */
@@ -59,7 +58,7 @@ function makeCalibratedInvert({ width, height, refs }) {
   const imgYs = [];
 
   for (const r of refs) {
-    const p = proj([r.lon, r.lat]);
+    const p = proj([r.lon, r.lat]); // [xProj, yProj]
     if (!p || Number.isNaN(p[0]) || Number.isNaN(p[1])) continue;
     projXs.push(p[0]);
     projYs.push(p[1]);
@@ -72,13 +71,11 @@ function makeCalibratedInvert({ width, height, refs }) {
   const { a: ax, b: bx } = fitLinear(projXs, imgXs);
   const { a: ay, b: by } = fitLinear(projYs, imgYs);
 
-  function invertFromImage(xImg, yImg) {
+  return function invertFromImage(xImg, yImg) {
     const xProj = (xImg - bx) / ax;
     const yProj = (yImg - by) / ay;
     return proj.invert([xProj, yProj]); // [lon, lat] eller null
-  }
-
-  return invertFromImage;
+  };
 }
 
 export default function App() {
@@ -91,7 +88,7 @@ export default function App() {
     currentRound: -1,
     cityName: null,
     roundResults: [],
-    finalResult: null,
+    finalResult: null
   });
 
   // Game rapporterar in aktuell rendered size
@@ -101,7 +98,7 @@ export default function App() {
     return makeCalibratedInvert({
       width: mapSize.width,
       height: mapSize.height,
-      refs: MAP_REFS,
+      refs: MAP_REFS
     });
   }, [mapSize.width, mapSize.height]);
 
@@ -111,12 +108,14 @@ export default function App() {
     const s = io(API_BASE, { transports: ["websocket"], path: "/socket.io" });
 
     s.on("connect", () => s.emit("auth", session.sessionId));
+
     s.on("auth_error", (msg) => {
       alert(msg);
       handleLogout();
     });
 
     s.on("lobby_state", (state) => setLobbyState(state));
+
     s.on("challenge_received", ({ from }) => {
       const accept = window.confirm(`${from} utmanar dig. Accepterar du?`);
       if (accept) s.emit("accept_challenge", from);
@@ -134,7 +133,7 @@ export default function App() {
     s.on("round_result", ({ roundIndex, city, results }) => {
       setGameState((prev) => ({
         ...prev,
-        roundResults: [...prev.roundResults, { roundIndex, city, results }],
+        roundResults: [...prev.roundResults, { roundIndex, city, results }]
       }));
     });
 
@@ -152,9 +151,8 @@ export default function App() {
 
   const handleAuth = async (mode, username, password) => {
     try {
-      const data = mode === "login"
-        ? await login(username, password)
-        : await register(username, password);
+      const data =
+        mode === "login" ? await login(username, password) : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
