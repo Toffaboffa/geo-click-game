@@ -1,8 +1,7 @@
 // client/src/App.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import { io } from "socket.io-client";
-import { geoRobinson } from "d3-geo";
-
+import { geoRobinson } from "d3-geo-projection";
 import { login, register, logout, getLeaderboard, API_BASE } from "./api";
 import Login from "./components/Login.jsx";
 import Lobby from "./components/Lobby.jsx";
