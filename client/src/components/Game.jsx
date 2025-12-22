@@ -1,4 +1,11 @@
-import React, { useRef, useState } from "react";
+// client/src/components/Game.jsx
+import React, { useEffect, useRef, useState } from "react";
+
+function isInsideEllipse(x, y, w, h) {
+  const nx = (x - w / 2) / (w / 2);
+  const ny = (y - h / 2) / (h / 2);
+  return nx * nx + ny * ny <= 1;
+}
 
 export default function Game({
   session,
@@ -6,34 +13,76 @@ export default function Game({
   match,
   gameState,
   onLogout,
-  onLeaveMatch
+  onLeaveMatch,
+  // NYTT:
+  mapInvert, // (xPx, yPx) => [lon, lat] | null
+  onMapSize // ({width, height}) => void
 }) {
   const mapRef = useRef(null);
+
   const [roundTimerStart, setRoundTimerStart] = useState(null);
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
   const [lastClickInfo, setLastClickInfo] = useState(null);
 
+  // reset per runda
+  useEffect(() => {
+    setHasClickedThisRound(false);
+    setLastClickInfo(null);
+    setRoundTimerStart(null);
+  }, [gameState.currentRound]);
+
+  // rapportera kartans storlek upp till App (så kalibreringen blir rätt)
+  useEffect(() => {
+    if (!mapRef.current || !onMapSize) return;
+
+    const el = mapRef.current;
+
+    const report = () => {
+      const rect = el.getBoundingClientRect();
+      onMapSize({ width: rect.width, height: rect.height });
+    };
+
+    report();
+
+    const ro = new ResizeObserver(() => report());
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [onMapSize]);
+
   const onMapClick = (e) => {
     if (!socket || !match) return;
     if (hasClickedThisRound) return;
+    if (!mapRef.current) return;
 
     const rect = mapRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+    const xPx = e.clientX - rect.left;
+    const yPx = e.clientY - rect.top;
+
+    // (valfritt men rekommenderat) blocka klick utanför "ovalen"
+    if (!isInsideEllipse(xPx, yPx, rect.width, rect.height)) return;
 
     const now = performance.now();
-    let start = roundTimerStart ?? now;
+    const start = roundTimerStart ?? now;
     if (!roundTimerStart) setRoundTimerStart(now);
-
     const timeMs = now - start;
 
-    socket.emit("player_click", {
-      matchId: match.matchId,
-      x,
-      y,
-      timeMs
-    });
+    // NYTT: använd lon/lat om vi kan
+    const ll = mapInvert?.(xPx, yPx); // [lon, lat] eller null
+    if (ll && Array.isArray(ll) && ll.length === 2) {
+      const [lon, lat] = ll;
+      if (Number.isFinite(lon) && Number.isFinite(lat)) {
+        socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
+        setHasClickedThisRound(true);
+        setLastClickInfo({ timeMs, lon, lat });
+        return;
+      }
+    }
 
+    // fallback: gamla normaliserade x/y (om mapInvert inte finns/inte funkar)
+    const x = xPx / rect.width;
+    const y = yPx / rect.height;
+    socket.emit("player_click", { matchId: match.matchId, x, y, timeMs });
     setHasClickedThisRound(true);
     setLastClickInfo({ timeMs, x, y });
   };
@@ -41,10 +90,8 @@ export default function Game({
   const myName = session.username;
   const opponentName = match.players.find((p) => p !== myName) || "Motståndare";
 
-  const myTotal =
-    gameState.finalResult?.totalScores?.[myName] ?? null;
-  const oppTotal =
-    gameState.finalResult?.totalScores?.[opponentName] ?? null;
+  const myTotal = gameState.finalResult?.totalScores?.[myName] ?? null;
+  const oppTotal = gameState.finalResult?.totalScores?.[opponentName] ?? null;
 
   return (
     <div className="screen game-screen">
@@ -69,7 +116,7 @@ export default function Game({
           <h3>{gameState.cityName || "Väntar på nästa stad..."}</h3>
           {lastClickInfo && (
             <p>
-              Din tid: {(lastClickInfo.timeMs / 1000).toFixed(3)} s  
+              Din tid: {(lastClickInfo.timeMs / 1000).toFixed(3)} s
               <br />
               Poängen visas när båda har klickat.
             </p>
@@ -83,9 +130,7 @@ export default function Game({
         onClick={onMapClick}
         title="Klicka där du tror att staden ligger"
       >
-        <span className="map-hint">
-          Klicka på kartan där du tror att staden ligger
-        </span>
+        <span className="map-hint">Klicka på kartan där du tror att staden ligger</span>
       </div>
 
       <div className="results-panel">

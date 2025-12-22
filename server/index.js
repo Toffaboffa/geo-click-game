@@ -1,18 +1,15 @@
 // server/index.js
 import { pool } from "./db.js";
-
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import crypto from "crypto";
-
 import { cities } from "./cities.js";
 import { haversineDistanceKm, createRoundScorer } from "./gameLogic.js";
 
 const app = express();
 const server = http.createServer(app);
-
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -53,9 +50,7 @@ async function getUsernameFromSession(sessionId) {
 
 // (valfritt) städa bort utgångna sessions ibland
 setInterval(() => {
-  pool
-    .query("delete from sessions where expires_at <= now()")
-    .catch(() => {});
+  pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
 
 // Express auth middleware
@@ -63,10 +58,8 @@ async function authMiddleware(req, res, next) {
   try {
     const sid = req.headers["x-session-id"];
     if (!sid) return res.status(401).json({ error: "Inte inloggad" });
-
     const username = await getUsernameFromSession(sid);
     if (!username) return res.status(401).json({ error: "Inte inloggad" });
-
     req.username = username;
     req.sessionId = sid;
     next();
@@ -85,18 +78,14 @@ app.post("/api/register", async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
     }
-
     const passwordHash = hashPassword(password);
-
     await pool.query(
       "insert into users (username, password_hash) values ($1, $2)",
       [username, passwordHash]
     );
-
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
-    // unique violation (username)
     if (String(e?.code) === "23505") {
       return res.status(400).json({ error: "Användarnamn är upptaget" });
     }
@@ -111,7 +100,6 @@ app.post("/api/login", async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
     }
-
     const { rows } = await pool.query(
       "select password_hash from users where username=$1",
       [username]
@@ -120,7 +108,6 @@ app.post("/api/login", async (req, res) => {
     if (!row || row.password_hash !== hashPassword(password)) {
       return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
     }
-
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
@@ -166,12 +153,12 @@ app.get("/api/leaderboard", async (_req, res) => {
 // Lobby & matchning (Socket.io)
 // =====================
 const lobby = {
-  onlineUsers: new Set(), // usernames online
-  randomQueue: new Set(), // usernames som vill slumpmatchas
+  onlineUsers: new Set(),
+  randomQueue: new Set(),
 };
 
-const socketsByUser = new Map(); // username -> socket.id
-const matches = new Map(); // matchId -> matchState
+const socketsByUser = new Map();
+const matches = new Map();
 
 function createMatch(playerA, playerB) {
   const id = crypto.randomBytes(8).toString("hex");
@@ -247,10 +234,8 @@ function nextRound(match) {
   startRound(match);
 }
 
-function calculateClick(city, x, y, timeMs, scorer) {
-  // x,y ∈ [0,1] från klientens klick på kartan
-  const lon = x * 360 - 180;
-  const lat = 90 - y * 180;
+// ✅ NYTT: kräver lon/lat från klienten (ingen x/y-mappning längre)
+function calculateClick(city, lon, lat, timeMs, scorer) {
   const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
   const score = scorer(distanceKm, timeMs);
   return { timeMs, distanceKm, score };
@@ -258,7 +243,6 @@ function calculateClick(city, x, y, timeMs, scorer) {
 
 async function finishMatch(match) {
   match.finished = true;
-
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
 
@@ -271,12 +255,10 @@ async function finishMatch(match) {
   if (total[pA] < total[pB]) winner = pA;
   else if (total[pB] < total[pA]) winner = pB;
 
-  // Skriv stats till DB i en transaktion
   const client = await pool.connect();
   try {
     await client.query("begin");
 
-    // played + total_score
     for (const u of [pA, pB]) {
       await client.query(
         `update users
@@ -287,7 +269,6 @@ async function finishMatch(match) {
       );
     }
 
-    // wins/losses
     if (winner) {
       const loser = winner === pA ? pB : pA;
       await client.query(`update users set wins = wins + 1 where username=$1`, [
@@ -299,7 +280,6 @@ async function finishMatch(match) {
       );
     }
 
-    // avg_score = total_score / played (skydd mot div0)
     await client.query(
       `update users
        set avg_score = case when played > 0 then total_score / played else 0 end
@@ -327,7 +307,6 @@ async function finishMatch(match) {
 io.on("connection", (socket) => {
   let currentUser = null;
 
-  // klienten skickar sitt session-id när socket kopplas
   socket.on("auth", async (sessionId) => {
     try {
       const username = await getUsernameFromSession(sessionId);
@@ -335,11 +314,9 @@ io.on("connection", (socket) => {
         socket.emit("auth_error", "Ogiltig session, logga in igen.");
         return;
       }
-
       currentUser = username;
       socketsByUser.set(username, socket.id);
       lobby.onlineUsers.add(username);
-
       broadcastLobby();
     } catch (e) {
       console.error(e);
@@ -375,10 +352,13 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  socket.on("player_click", ({ matchId, x, y, timeMs }) => {
+  // ✅ NYTT: endast lon/lat accepteras
+  socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;
     if (!match.players.includes(currentUser)) return;
+
+    if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
 
     const round = match.rounds[match.currentRound];
     if (!round) return;
@@ -386,8 +366,8 @@ io.on("connection", (socket) => {
     if (!round.clicks[currentUser]) {
       round.clicks[currentUser] = calculateClick(
         round.city,
-        x,
-        y,
+        lon,
+        lat,
         timeMs,
         match.scorer
       );
