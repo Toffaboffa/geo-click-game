@@ -23,12 +23,10 @@ app.use(express.json());
 function hashPassword(pw) {
   return crypto.createHash("sha256").update(pw).digest("hex");
 }
-
 function sessionTtlMs() {
   const days = Number(process.env.SESSION_TTL_DAYS || 30);
   return days * 24 * 60 * 60 * 1000;
 }
-
 async function createSession(username) {
   const id = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + sessionTtlMs());
@@ -38,7 +36,6 @@ async function createSession(username) {
   );
   return id;
 }
-
 async function getUsernameFromSession(sessionId) {
   const now = new Date();
   const { rows } = await pool.query(
@@ -48,12 +45,10 @@ async function getUsernameFromSession(sessionId) {
   return rows[0]?.username ?? null;
 }
 
-// (valfritt) städa bort utgångna sessions ibland
 setInterval(() => {
   pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
 
-// Express auth middleware
 async function authMiddleware(req, res, next) {
   try {
     const sid = req.headers["x-session-id"];
@@ -152,6 +147,8 @@ app.get("/api/leaderboard", async (_req, res) => {
 // =====================
 // Lobby & matchning (Socket.io)
 // =====================
+const BOT_NAME = "__BOT__";
+
 const lobby = {
   onlineUsers: new Set(),
   randomQueue: new Set(),
@@ -160,7 +157,7 @@ const lobby = {
 const socketsByUser = new Map();
 const matches = new Map();
 
-function createMatch(playerA, playerB) {
+function createMatch(playerA, playerB, opts = {}) {
   const id = crypto.randomBytes(8).toString("hex");
   const scorer = createRoundScorer();
   const match = {
@@ -171,6 +168,7 @@ function createMatch(playerA, playerB) {
     rounds: [],
     finished: false,
     scorer,
+    isSolo: !!opts.isSolo,
   };
   matches.set(id, match);
   return match;
@@ -207,6 +205,23 @@ function startMatch(match) {
     matchId: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
+    isSolo: false,
+  });
+
+  startRound(match);
+}
+
+function startSoloMatch(match, playerSocket) {
+  const roomName = getRoomName(match.id);
+
+  // bara spelaren joinar
+  playerSocket.join(roomName);
+
+  io.to(roomName).emit("match_started", {
+    matchId: match.id,
+    players: match.players,
+    totalRounds: match.totalRounds,
+    isSolo: true,
   });
 
   startRound(match);
@@ -227,6 +242,34 @@ function startRound(match) {
     countdownSeconds: 5,
     cityName: city.name,
   });
+
+  // SOLO: bot klickar random (men giltigt lon/lat) efter kort delay
+  if (match.isSolo) {
+    setTimeout(() => {
+      const r = match.rounds[match.currentRound];
+      if (!r || match.finished) return;
+
+      // random lon/lat (lite bias mot “inom rimligt” men helt random funkar)
+      const lon = -180 + Math.random() * 360;
+      const lat = -60 + Math.random() * 120; // undvik extrema polerna lite (valfritt)
+
+      const timeMs = 600 + Math.random() * 1400;
+
+      if (!r.clicks[BOT_NAME]) {
+        r.clicks[BOT_NAME] = calculateClick(r.city, lon, lat, timeMs, match.scorer);
+      }
+
+      const [pA, pB] = match.players;
+      if (r.clicks[pA] && r.clicks[pB]) {
+        io.to(getRoomName(match.id)).emit("round_result", {
+          roundIndex: match.currentRound,
+          city: r.city,
+          results: r.clicks,
+        });
+        nextRound(match);
+      }
+    }, 500);
+  }
 }
 
 function nextRound(match) {
@@ -234,7 +277,7 @@ function nextRound(match) {
   startRound(match);
 }
 
-// ✅ NYTT: kräver lon/lat från klienten (ingen x/y-mappning längre)
+// lon/lat-only
 function calculateClick(city, lon, lat, timeMs, scorer) {
   const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
   const score = scorer(distanceKm, timeMs);
@@ -243,6 +286,7 @@ function calculateClick(city, lon, lat, timeMs, scorer) {
 
 async function finishMatch(match) {
   match.finished = true;
+
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
 
@@ -255,44 +299,46 @@ async function finishMatch(match) {
   if (total[pA] < total[pB]) winner = pA;
   else if (total[pB] < total[pA]) winner = pB;
 
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
+  // Uppdatera stats: hoppa över BOT helt
+  const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
 
-    for (const u of [pA, pB]) {
+  if (realPlayers.length > 0) {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+
+      for (const u of realPlayers) {
+        await client.query(
+          `update users
+           set played = played + 1,
+               total_score = total_score + $2
+           where username = $1`,
+          [u, total[u] ?? 0]
+        );
+      }
+
+      // wins/losses bara om båda är riktiga användare
+      const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+      if (winner && bothReal) {
+        const loser = winner === pA ? pB : pA;
+        await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
+        await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
+      }
+
       await client.query(
         `update users
-         set played = played + 1,
-             total_score = total_score + $2
-         where username = $1`,
-        [u, total[u]]
+         set avg_score = case when played > 0 then total_score / played else 0 end
+         where username = any($1::text[])`,
+        [realPlayers]
       );
+
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
     }
-
-    if (winner) {
-      const loser = winner === pA ? pB : pA;
-      await client.query(`update users set wins = wins + 1 where username=$1`, [
-        winner,
-      ]);
-      await client.query(
-        `update users set losses = losses + 1 where username=$1`,
-        [loser]
-      );
-    }
-
-    await client.query(
-      `update users
-       set avg_score = case when played > 0 then total_score / played else 0 end
-       where username = any($1::text[])`,
-      [[pA, pB]]
-    );
-
-    await client.query("commit");
-  } catch (e) {
-    await client.query("rollback");
-    throw e;
-  } finally {
-    client.release();
   }
 
   io.to(getRoomName(match.id)).emit("match_finished", {
@@ -331,6 +377,13 @@ io.on("connection", (socket) => {
     tryMatchRandom();
   });
 
+  // ✅ SOLO
+  socket.on("start_solo_match", () => {
+    if (!currentUser) return;
+    const match = createMatch(currentUser, BOT_NAME, { isSolo: true });
+    startSoloMatch(match, socket);
+  });
+
   socket.on("challenge_player", (targetUsername) => {
     if (!currentUser) return;
     const targetSocketId = socketsByUser.get(targetUsername);
@@ -352,7 +405,7 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  // ✅ NYTT: endast lon/lat accepteras
+  // lon/lat-only
   socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;

@@ -14,6 +14,11 @@ export default function Lobby({
     socket.emit("start_random_match");
   };
 
+  const startSolo = () => {
+    if (!socket) return;
+    socket.emit("start_solo_match");
+  };
+
   const challenge = (e) => {
     e.preventDefault();
     if (!socket || !challengeName) return;
@@ -32,7 +37,13 @@ export default function Lobby({
         <p>Online spelare: {lobbyState.onlineCount}</p>
 
         <div className="lobby-actions">
-          <button onClick={startRandom}>Spela mot slumpvis spelare</button>
+          <button onClick={startRandom} disabled={!socket}>
+            Spela mot slumpvis spelare
+          </button>
+
+          <button onClick={startSolo} disabled={!socket}>
+            Spela solo (random-bot)
+          </button>
         </div>
 
         <form onSubmit={challenge} className="challenge-form">
@@ -41,7 +52,9 @@ export default function Lobby({
             value={challengeName}
             onChange={(e) => setChallengeName(e.target.value)}
           />
-          <button type="submit">Utmanar spelare</button>
+          <button type="submit" disabled={!socket}>
+            Utmanar spelare
+          </button>
         </form>
 
         <h3>Topplista</h3>
