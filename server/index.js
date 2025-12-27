@@ -30,10 +30,11 @@ function sessionTtlMs() {
 async function createSession(username) {
   const id = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + sessionTtlMs());
-  await pool.query(
-    "insert into sessions (id, username, expires_at) values ($1, $2, $3)",
-    [id, username, expiresAt]
-  );
+  await pool.query("insert into sessions (id, username, expires_at) values ($1, $2, $3)", [
+    id,
+    username,
+    expiresAt,
+  ]);
   return id;
 }
 async function getUsernameFromSession(sessionId) {
@@ -44,7 +45,6 @@ async function getUsernameFromSession(sessionId) {
   );
   return rows[0]?.username ?? null;
 }
-
 setInterval(() => {
   pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
@@ -74,10 +74,10 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
     }
     const passwordHash = hashPassword(password);
-    await pool.query(
-      "insert into users (username, password_hash) values ($1, $2)",
-      [username, passwordHash]
-    );
+    await pool.query("insert into users (username, password_hash) values ($1, $2)", [
+      username,
+      passwordHash,
+    ]);
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
@@ -95,10 +95,9 @@ app.post("/api/login", async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
     }
-    const { rows } = await pool.query(
-      "select password_hash from users where username=$1",
-      [username]
-    );
+    const { rows } = await pool.query("select password_hash from users where username=$1", [
+      username,
+    ]);
     const row = rows[0];
     if (!row || row.password_hash !== hashPassword(password)) {
       return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
@@ -148,12 +147,10 @@ app.get("/api/leaderboard", async (_req, res) => {
 // Lobby & matchning (Socket.io)
 // =====================
 const BOT_NAME = "__BOT__";
-
 const lobby = {
   onlineUsers: new Set(),
   randomQueue: new Set(),
 };
-
 const socketsByUser = new Map();
 const matches = new Map();
 
@@ -213,8 +210,6 @@ function startMatch(match) {
 
 function startSoloMatch(match, playerSocket) {
   const roomName = getRoomName(match.id);
-
-  // bara spelaren joinar
   playerSocket.join(roomName);
 
   io.to(roomName).emit("match_started", {
@@ -227,6 +222,16 @@ function startSoloMatch(match, playerSocket) {
   startRound(match);
 }
 
+function pickCityMeta(city) {
+  const continent = city?.continent ?? city?.region ?? null;
+  return {
+    name: city?.name ?? "Okänd stad",
+    continent,
+    lat: Number(city?.lat),
+    lon: Number(city?.lon),
+  };
+}
+
 function startRound(match) {
   if (match.currentRound >= match.totalRounds) {
     finishMatch(match).catch((e) => console.error("finishMatch error", e));
@@ -237,22 +242,22 @@ function startRound(match) {
   const round = { city, clicks: {} };
   match.rounds[match.currentRound] = round;
 
+  const cityMeta = pickCityMeta(city);
+
   io.to(getRoomName(match.id)).emit("round_starting", {
     roundIndex: match.currentRound,
     countdownSeconds: 5,
-    cityName: city.name,
+    cityName: cityMeta.name, // bakåtkompatibelt
+    city: cityMeta, // ✅ nytt: debug + continent label
   });
 
-  // SOLO: bot klickar random (men giltigt lon/lat) efter kort delay
   if (match.isSolo) {
     setTimeout(() => {
       const r = match.rounds[match.currentRound];
       if (!r || match.finished) return;
 
-      // random lon/lat (lite bias mot “inom rimligt” men helt random funkar)
       const lon = -180 + Math.random() * 360;
-      const lat = -60 + Math.random() * 120; // undvik extrema polerna lite (valfritt)
-
+      const lat = -60 + Math.random() * 120;
       const timeMs = 600 + Math.random() * 1400;
 
       if (!r.clicks[BOT_NAME]) {
@@ -277,7 +282,6 @@ function nextRound(match) {
   startRound(match);
 }
 
-// lon/lat-only
 function calculateClick(city, lon, lat, timeMs, scorer) {
   const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
   const score = scorer(distanceKm, timeMs);
@@ -286,7 +290,6 @@ function calculateClick(city, lon, lat, timeMs, scorer) {
 
 async function finishMatch(match) {
   match.finished = true;
-
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
 
@@ -299,9 +302,7 @@ async function finishMatch(match) {
   if (total[pA] < total[pB]) winner = pA;
   else if (total[pB] < total[pA]) winner = pB;
 
-  // Uppdatera stats: hoppa över BOT helt
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
-
   if (realPlayers.length > 0) {
     const client = await pool.connect();
     try {
@@ -317,7 +318,6 @@ async function finishMatch(match) {
         );
       }
 
-      // wins/losses bara om båda är riktiga användare
       const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
       if (winner && bothReal) {
         const loser = winner === pA ? pB : pA;
@@ -377,7 +377,6 @@ io.on("connection", (socket) => {
     tryMatchRandom();
   });
 
-  // ✅ SOLO
   socket.on("start_solo_match", () => {
     if (!currentUser) return;
     const match = createMatch(currentUser, BOT_NAME, { isSolo: true });
@@ -405,25 +404,17 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  // lon/lat-only
   socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;
     if (!match.players.includes(currentUser)) return;
-
     if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
 
     const round = match.rounds[match.currentRound];
     if (!round) return;
 
     if (!round.clicks[currentUser]) {
-      round.clicks[currentUser] = calculateClick(
-        round.city,
-        lon,
-        lat,
-        timeMs,
-        match.scorer
-      );
+      round.clicks[currentUser] = calculateClick(round.city, lon, lat, timeMs, match.scorer);
     }
 
     const [pA, pB] = match.players;

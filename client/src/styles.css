@@ -1,3 +1,10 @@
+/* client/src/styles.css */
+
+:root {
+  --map-image: url("./assets/world.png");
+  --map-debug-image: url("./assets/world_debug.png");
+}
+
 html,
 body,
 #root {
@@ -5,8 +12,10 @@ body,
   padding: 0;
   height: 100%;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #000;
 }
 
+/* ---------- Shared UI (login/lobby panels) ---------- */
 .screen {
   min-height: 100vh;
   display: flex;
@@ -82,80 +91,236 @@ button:disabled {
   text-align: left;
 }
 
-/* GAME */
-.game-screen {
-  flex-direction: column;
-  align-items: stretch;
-  padding: 16px;
-}
-
-.game-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 8px;
-  width: 100%;
-  max-width: 1200px;
-}
-
-.game-header-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.city-info {
-  text-align: right;
-  max-width: 300px;
-}
-
-/* ✅ ENDA definitionen av .world-map */
-.world-map {
-  width: 100%;
-  max-width: 1200px;
-  min-height: 55vh;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  position: relative;
+/* ---------- GAME: Fullscreen minimalist ---------- */
+.game-root {
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
-  cursor: crosshair;
+}
 
-  background-image: url("./assets/world.png");
-  background-size: 100% 100%;
+/* Kartan täcker exakt hela fönstret */
+.world-map-full {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  cursor: crosshair;
+  overflow: hidden;
+  background-image: var(--map-image);
   background-repeat: no-repeat;
   background-position: center;
+  background-size: 100% 100%;
 }
 
-.map-hint {
+/* ✅ Debug-läge: byt till world_debug.png */
+.world-map-full.is-debug {
+  background-image: var(--map-debug-image);
+}
+
+/* HUD score left/right */
+.hud {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 14px;
+  z-index: 5;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.2px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.hud-left {
+  left: 14px;
+  text-align: left;
+}
+
+.hud-right {
+  right: 14px;
+  text-align: right;
+}
+
+.hud-name {
   font-size: 12px;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 4px 8px;
+  opacity: 0.75;
+}
+
+.hud-score {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Action buttons: minimal */
+.hud-actions {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 6;
+}
+
+/* Viktigt: gör hud-knappar helt “egna” så globala button-styles inte ställer till det */
+.hud-actions .hud-btn {
+  margin: 0;
+  padding: 6px 10px;
   border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(6px);
+  opacity: 1;
 }
 
-.results-panel {
-  background: #020617;
-  border-radius: 12px;
-  padding: 10px;
-  max-width: 1200px;
-  width: 100%;
+.hud-actions .hud-btn:hover {
+  opacity: 1; /* override global button:hover */
 }
 
-.results-panel ul {
-  list-style: none;
-  padding-left: 0;
+/* City bottom (endast stadnamn) */
+.city-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 6;
+  user-select: none;
+  pointer-events: none;
 }
 
-.results-panel li {
-  margin-bottom: 8px;
+.city-label {
+  margin-top: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+/* ✅ Minimal crosshair */
+.crosshair {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  z-index: 8; /* över linsen */
+  pointer-events: none;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  transform: translate(-50%, -50%);
+}
+
+.crosshair::before {
+  width: 12px;
+  height: 1px;
+}
+
+.crosshair::after {
+  width: 1px;
+  height: 12px;
+}
+
+/* ✅ Lens: centrum = exakt muspekare */
+.lens {
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  z-index: 7; /* under crosshair */
+  pointer-events: none;
+  transform: translate(-50%, -50%); /* left/top = centrum */
+
+  background-image: var(--map-image);
+  background-repeat: no-repeat;
+  background-position: center; /* stabil default */
+
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* ✅ Lens ska följa debug-bild också */
+.world-map-full.is-debug .lens {
+  background-image: var(--map-debug-image);
+}
+
+/* Debug markers */
+.debug-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  pointer-events: none;
+}
+
+.debug-dot-click {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+.debug-dot-target {
+  background: rgba(0, 255, 180, 0.95);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Finish overlay */
+.finish-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.finish-card {
+  width: min(420px, calc(100vw - 32px));
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 16px 16px 14px;
+  color: rgba(255, 255, 255, 0.93);
+}
+
+.finish-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  opacity: 0.8;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.finish-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 14px;
 }
 
-.final-result {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #1f2937;
+.finish-row:first-of-type {
+  border-top: none;
+}
+
+.finish-winner {
+  margin-top: 12px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.finish-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
 }

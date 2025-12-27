@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
+// client/src/App.jsx
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { io } from "socket.io-client";
 import { geoRobinson } from "d3-geo-projection";
 import { login, register, logout, getLeaderboard, API_BASE } from "./api";
@@ -7,10 +8,15 @@ import Lobby from "./components/Lobby.jsx";
 import Game from "./components/Game.jsx";
 
 /**
- * Referenspunkter: stadens lon/lat + pixel (x,y) i DIN kartbild.
- * OBS: Dessa pixlar gäller om world.png är EXAKT samma crop/ratio som din guidebild.
+ * MAP_REFS är pixelpunkter från en "bas-bild" (din guide).
+ * Viktigt: vi skalar refs till aktuell renderad kartstorlek innan kalibrering.
+ *
+ * SÄTT dessa till den faktiska storleken som dina x/y kommer ifrån.
+ * (Alltså den bild/canvas där du mätte upp punkterna.)
  */
-const MAP_REFS = [
+const MAP_REF_BASE_SIZE = { width: 1600, height: 800 };
+
+const MAP_REFS_BASE = [
   { name: "San Francisco", lon: -122.4194, lat: 37.7749, x: 247.5, y: 212.5 },
   { name: "Miami", lon: -80.1918, lat: 25.7617, x: 404.5, y: 272.5 },
   { name: "New York", lon: -74.006, lat: 40.7128, x: 449.6, y: 197.8 },
@@ -22,16 +28,15 @@ const MAP_REFS = [
   { name: "Cape Town", lon: 18.4241, lat: -33.9249, x: 821.8, y: 565.4 },
   { name: "Bangkok", lon: 100.5018, lat: 13.7563, x: 1179.5, y: 330.5 },
   { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 1322.5, y: 222.5 },
-  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 }
+  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 },
 ];
 
-/** Linjär regression: y ≈ a*x + b */
 function fitLinear(xs, ys) {
   const n = xs.length;
   const meanX = xs.reduce((s, v) => s + v, 0) / n;
   const meanY = ys.reduce((s, v) => s + v, 0) / n;
-
-  let num = 0, den = 0;
+  let num = 0,
+    den = 0;
   for (let i = 0; i < n; i++) {
     const dx = xs[i] - meanX;
     num += dx * (ys[i] - meanY);
@@ -43,10 +48,11 @@ function fitLinear(xs, ys) {
 }
 
 /**
- * (xImg,yImg) pixlar på din bild -> [lon,lat]
- * via Robinson + kalibrering (skala+offset i x/y) baserat på MAP_REFS.
+ * Skapar kalibrerad projection + invert för din exakta world.png:
+ * - project(lon,lat) -> {x,y} i render-pixlar (för debug markör)
+ * - invert(x,y) -> [lon,lat] (för spelar-klick)
  */
-function makeCalibratedInvert({ width, height, refs }) {
+function makeCalibratedProjection({ width, height, refs }) {
   if (!width || !height) return null;
   if (!refs || refs.length < 2) return null;
 
@@ -71,36 +77,71 @@ function makeCalibratedInvert({ width, height, refs }) {
   const { a: ax, b: bx } = fitLinear(projXs, imgXs);
   const { a: ay, b: by } = fitLinear(projYs, imgYs);
 
-  return function invertFromImage(xImg, yImg) {
-    const xProj = (xImg - bx) / ax;
-    const yProj = (yImg - by) / ay;
-    return proj.invert([xProj, yProj]); // [lon, lat] eller null
+  const project = (lon, lat) => {
+    const p = proj([lon, lat]);
+    if (!p) return null;
+    const x = ax * p[0] + bx;
+    const y = ay * p[1] + by;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
   };
+
+  const invert = (x, y) => {
+    const xProj = (x - bx) / ax;
+    const yProj = (y - by) / ay;
+    return proj.invert([xProj, yProj]);
+  };
+
+  return { project, invert };
 }
 
 export default function App() {
-  const [session, setSession] = useState(null); // {sessionId, username}
+  const [session, setSession] = useState(null);
   const [socket, setSocket] = useState(null);
   const [lobbyState, setLobbyState] = useState({ onlineCount: 0 });
   const [leaderboard, setLeaderboard] = useState([]);
   const [match, setMatch] = useState(null);
+
   const [gameState, setGameState] = useState({
     currentRound: -1,
     cityName: null,
+    city: null, // <-- får vi nu från servern i round_starting
     roundResults: [],
-    finalResult: null
+    finalResult: null,
   });
 
-  // Game rapporterar in aktuell rendered size
+  const [debugShowTarget, setDebugShowTarget] = useState(false);
+  const toggleDebugShowTarget = useCallback(() => {
+    setDebugShowTarget((v) => !v);
+  }, []);
+
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
-  const mapInvert = useMemo(() => {
-    return makeCalibratedInvert({
+  // Skala MAP_REFS till aktuell mapSize
+  const scaledRefs = useMemo(() => {
+    const { width, height } = mapSize;
+    if (!width || !height) return null;
+
+    const sx = width / MAP_REF_BASE_SIZE.width;
+    const sy = height / MAP_REF_BASE_SIZE.height;
+
+    return MAP_REFS_BASE.map((r) => ({
+      ...r,
+      x: r.x * sx,
+      y: r.y * sy,
+    }));
+  }, [mapSize.width, mapSize.height]);
+
+  const calibrated = useMemo(() => {
+    return makeCalibratedProjection({
       width: mapSize.width,
       height: mapSize.height,
-      refs: MAP_REFS
+      refs: scaledRefs,
     });
-  }, [mapSize.width, mapSize.height]);
+  }, [mapSize.width, mapSize.height, scaledRefs]);
+
+  const mapInvert = calibrated?.invert ?? null;
+  const mapProject = calibrated?.project ?? null;
 
   useEffect(() => {
     if (!session) return;
@@ -123,17 +164,30 @@ export default function App() {
 
     s.on("match_started", (data) => {
       setMatch(data);
-      setGameState({ currentRound: -1, cityName: null, roundResults: [], finalResult: null });
+      setGameState({
+        currentRound: -1,
+        cityName: null,
+        city: null,
+        roundResults: [],
+        finalResult: null,
+      });
+      setDebugShowTarget(false);
     });
 
-    s.on("round_starting", ({ roundIndex, cityName }) => {
-      setGameState((prev) => ({ ...prev, currentRound: roundIndex, cityName }));
+    // ✅ ta emot cityMeta också
+    s.on("round_starting", ({ roundIndex, cityName, city }) => {
+      setGameState((prev) => ({
+        ...prev,
+        currentRound: roundIndex,
+        cityName: cityName ?? city?.name ?? null,
+        city: city ?? null,
+      }));
     });
 
     s.on("round_result", ({ roundIndex, city, results }) => {
       setGameState((prev) => ({
         ...prev,
-        roundResults: [...prev.roundResults, { roundIndex, city, results }]
+        roundResults: [...prev.roundResults, { roundIndex, city, results }],
       }));
     });
 
@@ -152,7 +206,9 @@ export default function App() {
   const handleAuth = async (mode, username, password) => {
     try {
       const data =
-        mode === "login" ? await login(username, password) : await register(username, password);
+        mode === "login"
+          ? await login(username, password)
+          : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
@@ -166,8 +222,15 @@ export default function App() {
       if (socket) socket.disconnect();
       setSocket(null);
       setMatch(null);
-      setGameState({ currentRound: -1, cityName: null, roundResults: [], finalResult: null });
+      setGameState({
+        currentRound: -1,
+        cityName: null,
+        city: null,
+        roundResults: [],
+        finalResult: null,
+      });
       setSession(null);
+      setDebugShowTarget(false);
     }
   };
 
@@ -194,7 +257,10 @@ export default function App() {
       onLogout={handleLogout}
       onLeaveMatch={() => setMatch(null)}
       mapInvert={mapInvert}
+      mapProject={mapProject}
       onMapSize={setMapSize}
+      debugShowTarget={debugShowTarget}
+      onToggleDebugShowTarget={toggleDebugShowTarget}
     />
   );
 }

@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+// client/src/components/Game.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
-function isInsideEllipse(x, y, w, h) {
-  const nx = (x - w / 2) / (w / 2);
-  const ny = (y - h / 2) / (h / 2);
-  return nx * nx + ny * ny <= 1;
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
 }
 
 export default function Game({
@@ -13,18 +12,33 @@ export default function Game({
   gameState,
   onLogout,
   onLeaveMatch,
-  mapInvert, // (xPx, yPx) => [lon, lat] | null
-  onMapSize // ({width, height}) => void
+  mapInvert, // (x,y) -> [lon,lat]
+  mapProject, // (lon,lat) -> {x,y}
+  onMapSize,
+  debugShowTarget,
+  onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
-  const [roundTimerStart, setRoundTimerStart] = useState(null);
+
+  const myName = session.username;
+  const opponentName = useMemo(() => {
+    return match.players.find((p) => p !== myName) || "Motståndare";
+  }, [match.players, myName]);
+
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
-  const [lastClickInfo, setLastClickInfo] = useState(null);
+  const [roundTimerStart, setRoundTimerStart] = useState(null);
+
+  const [myClickPx, setMyClickPx] = useState(null); // {x,y}
+  const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
+
+  const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
+  const rafRef = useRef(null);
 
   useEffect(() => {
     setHasClickedThisRound(false);
-    setLastClickInfo(null);
     setRoundTimerStart(null);
+    setMyClickPx(null);
+    setMyLastClickLL(null);
   }, [gameState.currentRound]);
 
   useEffect(() => {
@@ -42,12 +56,60 @@ export default function Game({
     return () => ro.disconnect();
   }, [onMapSize]);
 
+  const myScoreSoFar = useMemo(() => {
+    let total = 0;
+    for (const r of gameState.roundResults) {
+      const res = r?.results?.[myName];
+      if (res && Number.isFinite(res.score)) total += res.score;
+    }
+    return total;
+  }, [gameState.roundResults, myName]);
+
+  const oppScoreSoFar = useMemo(() => {
+    let total = 0;
+    for (const r of gameState.roundResults) {
+      const res = r?.results?.[opponentName];
+      if (res && Number.isFinite(res.score)) total += res.score;
+    }
+    return total;
+  }, [gameState.roundResults, opponentName]);
+
+  const matchFinished = !!gameState.finalResult;
+
+  // Endast stadnamn (ingen “Afrika”-label)
+  const cityLabel = gameState.cityName || "";
+
+  // Debug target dot (kräver city.lat/lon + mapProject)
+  const targetPx = useMemo(() => {
+    if (!debugShowTarget) return null;
+    const c = gameState.city;
+    if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lon)) return null;
+    if (!mapProject) return null;
+    return mapProject(c.lon, c.lat);
+  }, [debugShowTarget, gameState.city, mapProject]);
+
+  const onPointerMove = (e) => {
+    if (!mapRef.current) return;
+    const rect = mapRef.current.getBoundingClientRect();
+    const x = clamp(e.clientX - rect.left, 0, rect.width);
+    const y = clamp(e.clientY - rect.top, 0, rect.height);
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      setPointer({ x, y, inside: true });
+    });
+  };
+
+  const onPointerLeave = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setPointer((p) => ({ ...p, inside: false }));
+  };
+
   const onMapClick = (e) => {
     if (!socket || !match) return;
     if (hasClickedThisRound) return;
     if (!mapRef.current) return;
 
-    // INGEN FALLBACK: måste ha mapInvert
     if (!mapInvert) {
       alert("Kartan är inte kalibrerad än (mapInvert saknas).");
       return;
@@ -57,114 +119,165 @@ export default function Game({
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
 
-    if (!isInsideEllipse(xPx, yPx, rect.width, rect.height)) return;
-
     const now = performance.now();
     const start = roundTimerStart ?? now;
     if (!roundTimerStart) setRoundTimerStart(now);
     const timeMs = now - start;
 
-    const ll = mapInvert(xPx, yPx); // [lon, lat] eller null
+    const ll = mapInvert(xPx, yPx);
     if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
 
     const [lon, lat] = ll;
     if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
+
     setHasClickedThisRound(true);
-    setLastClickInfo({ timeMs, lon, lat });
+    setMyClickPx({ x: xPx, y: yPx });
+    setMyLastClickLL({ lon, lat, timeMs });
   };
 
-  const myName = session.username;
-  const opponentName = match.players.find((p) => p !== myName) || "Motståndare";
+  const lensStyle = useMemo(() => {
+    if (!pointer.inside || !mapRef.current) return null;
+    const rect = mapRef.current.getBoundingClientRect();
 
-  const myTotal = gameState.finalResult?.totalScores?.[myName] ?? null;
-  const oppTotal = gameState.finalResult?.totalScores?.[opponentName] ?? null;
+    const zoom = 3;
+    const bgSizeX = rect.width * zoom;
+    const bgSizeY = rect.height * zoom;
+
+    // 80 = ~radie (matchar CSS 160px diameter)
+    const bgPosX = -(pointer.x * zoom - 80);
+    const bgPosY = -(pointer.y * zoom - 80);
+
+    return {
+      left: pointer.x,
+      top: pointer.y,
+      backgroundSize: `${bgSizeX}px ${bgSizeY}px`,
+      backgroundPosition: `${bgPosX}px ${bgPosY}px`,
+    };
+  }, [pointer]);
 
   return (
-    <div className="screen game-screen">
-      <div className="game-header">
-        <div>
-          <h2>Match #{match.matchId}</h2>
-          <p>
-            Du: <strong>{myName}</strong>
-          </p>
-          <p>Mot: {opponentName}</p>
-          <p>
-            Runda: {gameState.currentRound + 1}/{match.totalRounds}
-          </p>
-        </div>
-
-        <div className="game-header-actions">
-          <button onClick={onLeaveMatch}>Avsluta match</button>
-          <button onClick={onLogout}>Logga ut</button>
-        </div>
-
-        <div className="city-info">
-          <h3>{gameState.cityName || "Väntar på nästa stad..."}</h3>
-          {lastClickInfo && (
-            <p>
-              Din tid: {(lastClickInfo.timeMs / 1000).toFixed(3)} s
-              <br />
-              Poängen visas när båda har klickat.
-            </p>
-          )}
-        </div>
-      </div>
-
+    <div className="game-root">
       <div
-        className="world-map"
+        className={`world-map-full ${debugShowTarget ? "is-debug" : ""}`}
         ref={mapRef}
         onClick={onMapClick}
+        onMouseMove={onPointerMove}
+        onMouseLeave={onPointerLeave}
         title="Klicka där du tror att staden ligger"
       >
-        <span className="map-hint">Klicka på kartan där du tror att staden ligger</span>
-      </div>
+        {/* Poäng */}
+        <div className="hud hud-left">
+          <div className="hud-name">{myName}</div>
+          <div className="hud-score">{Math.round(myScoreSoFar)}</div>
+        </div>
 
-      <div className="results-panel">
-        <h3>Rundresultat</h3>
-        <ul>
-          {gameState.roundResults.map((r) => {
-            const myRes = r.results[myName];
-            const oppRes = r.results[opponentName];
-            return (
-              <li key={r.roundIndex}>
-                <strong>Runda {r.roundIndex + 1}</strong> – {r.city.name}
-                <br />
-                Du:{" "}
-                {myRes
-                  ? `${myRes.distanceKm.toFixed(0)} km, ${(myRes.timeMs / 1000).toFixed(
-                      3
-                    )} s, poäng ${myRes.score.toFixed(0)}`
-                  : "ingen klick"}
-                <br />
-                {opponentName}:{" "}
-                {oppRes
-                  ? `${oppRes.distanceKm.toFixed(0)} km, ${(oppRes.timeMs / 1000).toFixed(
-                      3
-                    )} s, poäng ${oppRes.score.toFixed(0)}`
-                  : "ingen klick"}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="hud hud-right">
+          <div className="hud-name">{opponentName}</div>
+          <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
+        </div>
 
-        {gameState.finalResult && (
-          <div className="final-result">
-            <h3>Slutresultat</h3>
-            {myTotal != null && oppTotal != null && (
-              <>
-                <p>Dina totalpoäng: {Number(myTotal).toFixed(0)}</p>
-                <p>Motståndarens totalpoäng: {Number(oppTotal).toFixed(0)}</p>
-              </>
-            )}
-            <p>
-              {gameState.finalResult.winner === myName
-                ? "Du vann! 🎉"
-                : gameState.finalResult.winner
-                ? "Du förlorade."
-                : "Oavgjort!"}
-            </p>
+        {/* Actions */}
+        <div className="hud-actions">
+          <button
+            className="hud-btn"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onToggleDebugShowTarget();
+            }}
+          >
+            {debugShowTarget ? "Debug: ON" : "Debug"}
+          </button>
+
+          <button
+            className="hud-btn"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onLeaveMatch();
+            }}
+          >
+            Lämna
+          </button>
+
+          <button
+            className="hud-btn"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              onLogout();
+            }}
+          >
+            Logga ut
+          </button>
+        </div>
+
+        {/* Bottom: endast stadnamn */}
+        <div className="city-bottom">
+          <div className="city-label">{cityLabel || "…"}</div>
+        </div>
+
+        {/* Crosshair */}
+        <div
+          className="crosshair"
+          style={{ left: pointer.x, top: pointer.y, opacity: pointer.inside ? 1 : 0 }}
+        />
+
+        {/* Lens */}
+        {lensStyle && <div className="lens" style={lensStyle} />}
+
+        {/* Debug: target + din klickpunkt */}
+        {debugShowTarget && targetPx && (
+          <div className="debug-dot debug-dot-target" style={{ left: targetPx.x, top: targetPx.y }} />
+        )}
+
+        {debugShowTarget && myClickPx && (
+          <div
+            className="debug-dot debug-dot-click"
+            style={{ left: myClickPx.x, top: myClickPx.y }}
+            title={
+              myLastClickLL
+                ? `Din klick: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(3)}`
+                : "Din klick"
+            }
+          />
+        )}
+
+        {/* Slutoverlay */}
+        {matchFinished && (
+          <div className="finish-overlay">
+            <div className="finish-card">
+              <div className="finish-title">Slutresultat</div>
+
+              <div className="finish-row">
+                <span>{myName}</span>
+                <span>{Math.round(myScoreSoFar)}</span>
+              </div>
+
+              <div className="finish-row">
+                <span>{opponentName}</span>
+                <span>{Math.round(oppScoreSoFar)}</span>
+              </div>
+
+              <div className="finish-winner">
+                {gameState.finalResult.winner === myName
+                  ? "Du vann"
+                  : gameState.finalResult.winner
+                  ? "Du förlorade"
+                  : "Oavgjort"}
+              </div>
+
+              <div className="finish-actions">
+                <button
+                  className="hud-btn"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    onLeaveMatch();
+                  }}
+                >
+                  Till lobby
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
