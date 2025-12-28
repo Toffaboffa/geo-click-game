@@ -21,12 +21,10 @@ app.use(express.json());
 function hashPassword(pw) {
   return crypto.createHash("sha256").update(pw).digest("hex");
 }
-
 function sessionTtlMs() {
   const days = Number(process.env.SESSION_TTL_DAYS || 30);
   return days * 24 * 60 * 60 * 1000;
 }
-
 async function createSession(username) {
   const id = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + sessionTtlMs());
@@ -37,7 +35,6 @@ async function createSession(username) {
   ]);
   return id;
 }
-
 async function getUsernameFromSession(sessionId) {
   const now = new Date();
   const { rows } = await pool.query(
@@ -46,7 +43,6 @@ async function getUsernameFromSession(sessionId) {
   );
   return rows[0]?.username ?? null;
 }
-
 setInterval(() => {
   pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
@@ -164,7 +160,6 @@ function getRoomName(matchId) {
 function createMatch(playerA, playerB, opts = {}) {
   const matchId = crypto.randomBytes(8).toString("hex");
   const scorer = createRoundScorer();
-
   const match = {
     id: matchId,
     players: [playerA, playerB],
@@ -174,6 +169,12 @@ function createMatch(playerA, playerB, opts = {}) {
     finished: false,
     scorer,
     isSolo: !!opts.isSolo,
+
+    // start-ready gate (NYTT)
+    awaitingStartReady: true,
+    startReady: new Set(),
+    startReadyTimeout: null,
+
     // intermission/ready state
     awaitingReady: false,
     ready: new Set(),
@@ -181,7 +182,6 @@ function createMatch(playerA, playerB, opts = {}) {
     readyTimeout: null,
     countdownTimeout: null,
   };
-
   matches.set(matchId, match);
   return match;
 }
@@ -197,6 +197,38 @@ function tryMatchRandom() {
   lobby.randomQueue.delete(b);
   const match = createMatch(a, b);
   startMatch(match);
+}
+
+function clearStartReady(match) {
+  if (match.startReadyTimeout) clearTimeout(match.startReadyTimeout);
+  match.startReadyTimeout = null;
+  match.awaitingStartReady = false;
+  match.startReady = new Set();
+}
+
+function beginStartReady(match) {
+  match.awaitingStartReady = true;
+  match.startReady = new Set();
+  const room = getRoomName(match.id);
+
+  io.to(room).emit("start_ready_prompt", { matchId: match.id });
+
+  // Om någon inte trycker “redo” (t.ex. hängt laddning), starta ändå efter 30s
+  match.startReadyTimeout = setTimeout(() => {
+    if (match.finished) return;
+    clearStartReady(match);
+    startRound(match);
+  }, 30_000);
+
+  // SOLO: auto-start snabbare om man vill (men vi väntar gärna på klientens “redo”)
+  if (match.isSolo) {
+    // fallback ännu snabbare (ifall klient aldrig skickar)
+    match.startReadyTimeout = setTimeout(() => {
+      if (match.finished) return;
+      clearStartReady(match);
+      startRound(match);
+    }, 10_000);
+  }
 }
 
 function startMatch(match) {
@@ -216,7 +248,9 @@ function startMatch(match) {
     isSolo: false,
   });
 
-  startRound(match);
+  // ❌ startRound direkt (bort)
+  // ✅ vänta på start-ready
+  beginStartReady(match);
 }
 
 function startSoloMatch(match, playerSocket) {
@@ -230,22 +264,18 @@ function startSoloMatch(match, playerSocket) {
     isSolo: true,
   });
 
-  startRound(match);
+  beginStartReady(match);
 }
 
-// ✅ här lägger vi till countryCode + population
 function pickCityMeta(city) {
   const continent = city?.continent ?? city?.region ?? null;
-  const countryCode = city?.countryCode ?? city?.cc ?? city?.country ?? null;
-  const population = city?.population ?? null;
-
   return {
-    name: String(city?.name ?? "Okänd stad"),
+    name: city?.name ?? "Okänd stad",
     continent,
     lat: Number(city?.lat),
     lon: Number(city?.lon),
-    countryCode: countryCode ? String(countryCode) : null,
-    population: population != null ? String(population) : null,
+    countryCode: city?.countryCode ?? null,
+    population: city?.population ?? null,
   };
 }
 
@@ -260,7 +290,6 @@ function clearIntermissionTimers(match) {
   if (match.readyPromptTimeout) clearTimeout(match.readyPromptTimeout);
   if (match.readyTimeout) clearTimeout(match.readyTimeout);
   if (match.countdownTimeout) clearTimeout(match.countdownTimeout);
-
   match.readyPromptTimeout = null;
   match.readyTimeout = null;
   match.countdownTimeout = null;
@@ -271,7 +300,7 @@ function beginIntermission(match) {
   match.ready = new Set();
   const room = getRoomName(match.id);
 
-  // SOLO: gå vidare automatiskt (ingen "redo" behövs)
+  // SOLO: gå vidare automatiskt
   if (match.isSolo) {
     match.readyPromptTimeout = setTimeout(() => {
       if (match.finished) return;
@@ -280,13 +309,11 @@ function beginIntermission(match) {
     return;
   }
 
-  // Efter ~3.5s: visa “Ready”-knappen i klienten
   match.readyPromptTimeout = setTimeout(() => {
     if (match.finished) return;
     io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
   }, 3500);
 
-  // Om inte båda är ready inom 20s -> starta ändå countdown
   match.readyTimeout = setTimeout(() => {
     if (match.finished) return;
     startNextRoundCountdown(match);
@@ -299,10 +326,9 @@ function startNextRoundCountdown(match) {
 
   clearIntermissionTimers(match);
   const room = getRoomName(match.id);
-
   match.awaitingReady = false;
-  const seconds = 5;
 
+  const seconds = 5;
   io.to(room).emit("next_round_countdown", { seconds });
 
   match.countdownTimeout = setTimeout(() => {
@@ -311,7 +337,6 @@ function startNextRoundCountdown(match) {
 }
 
 function startRound(match) {
-  // säkerställ clean state
   clearIntermissionTimers(match);
   match.awaitingReady = false;
   match.ready = new Set();
@@ -368,6 +393,7 @@ function nextRound(match) {
 async function finishMatch(match) {
   match.finished = true;
   clearIntermissionTimers(match);
+  clearStartReady(match);
 
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
@@ -382,12 +408,10 @@ async function finishMatch(match) {
   else if (total[pB] < total[pA]) winner = pB;
 
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
-
   if (realPlayers.length > 0) {
     const client = await pool.connect();
     try {
       await client.query("begin");
-
       for (const u of realPlayers) {
         await client.query(
           `update users
@@ -397,21 +421,18 @@ async function finishMatch(match) {
           [u, total[u] ?? 0]
         );
       }
-
       const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
       if (winner && bothReal) {
         const loser = winner === pA ? pB : pA;
         await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
         await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
       }
-
       await client.query(
         `update users
          set avg_score = case when played > 0 then total_score / played else 0 end
          where username = any($1::text[])`,
         [realPlayers]
       );
-
       await client.query("commit");
     } catch (e) {
       await client.query("rollback");
@@ -481,11 +502,41 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
+  // ✅ NYTT: redo för att STARTA matchen (efter att kartan laddat)
+  socket.on("player_start_ready", ({ matchId }) => {
+    const match = matches.get(matchId);
+    if (!match || match.finished) return;
+    if (!match.players.includes(currentUser)) return;
+    if (!match.awaitingStartReady) return;
+
+    match.startReady.add(currentUser);
+
+    const [pA, pB] = match.players;
+    const bothReady = match.startReady.has(pA) && match.startReady.has(pB);
+
+    // SOLO: om bot är motståndare, räcker att du är ready
+    if (match.isSolo) {
+      if (match.startReady.has(pA) || match.startReady.has(pB)) {
+        clearStartReady(match);
+        startRound(match);
+      }
+      return;
+    }
+
+    if (bothReady) {
+      clearStartReady(match);
+      startRound(match);
+    }
+  });
+
   socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;
     if (!match.players.includes(currentUser)) return;
     if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
+
+    // start-ready gate => inga klick innan första runda startat
+    if (match.awaitingStartReady) return;
 
     const round = match.rounds[match.currentRound];
     if (!round) return;
@@ -516,8 +567,8 @@ io.on("connection", (socket) => {
     if (roundIndex !== match.currentRound) return;
 
     match.ready.add(currentUser);
-    const [pA, pB] = match.players;
 
+    const [pA, pB] = match.players;
     const bothReady = match.ready.has(pA) && match.ready.has(pB);
     if (bothReady) startNextRoundCountdown(match);
   });

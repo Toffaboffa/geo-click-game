@@ -4,24 +4,33 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
-
 function shortCityName(name) {
   if (!name) return "";
   return String(name).split(",")[0].trim();
 }
-
 function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
 }
-
-// "SE" -> 🇸🇪
-function flagEmoji(countryCode) {
-  const cc = String(countryCode || "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(cc)) return "";
+function isoToFlagEmoji(cc) {
+  const code = String(cc || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return "";
   const A = 0x1f1e6;
-  const codePoints = [...cc].map((ch) => A + (ch.charCodeAt(0) - 65));
-  return String.fromCodePoint(...codePoints);
+  return String.fromCodePoint(
+    A + (code.charCodeAt(0) - 65),
+    A + (code.charCodeAt(1) - 65)
+  );
+}
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export default function Game({
@@ -38,16 +47,21 @@ export default function Game({
   onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
-  const myName = session.username;
 
+  const myName = session.username;
   const opponentName = useMemo(() => {
     return match.players.find((p) => p !== myName) || "Motståndare";
   }, [match.players, myName]);
+
+  // --- map load gate (NYTT) ---
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [startReadySent, setStartReadySent] = useState(false);
 
   // --- click state ---
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
   const [myClickPx, setMyClickPx] = useState(null); // {x,y}
   const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
+  const [myDistanceKm, setMyDistanceKm] = useState(null); // number
   const [oppClickPx, setOppClickPx] = useState(null); // {x,y} after round_result if available
 
   // --- pointer + lens ---
@@ -63,29 +77,45 @@ export default function Game({
   const [showReadyButton, setShowReadyButton] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
   const [countdown, setCountdown] = useState(null); // number | null
-  const countdownIntervalRef = useRef(null);
 
   // -------- city meta ----------
-  const cityLabel = shortCityName(gameState.cityName || gameState.city?.name || "");
-  const cityFlag = flagEmoji(gameState.city?.countryCode);
-  const cityPop = gameState.city?.population ? String(gameState.city.population) : null;
+  const cityNameRaw = gameState.cityName || gameState.city?.name || "";
+  const cityLabel = shortCityName(cityNameRaw);
+  const flag = isoToFlagEmoji(gameState.city?.countryCode);
+  const pop = gameState.city?.population ? String(gameState.city.population) : null;
+
+  // -------- preload map image (CSS var) ----------
+  useEffect(() => {
+    setMapLoaded(false);
+    try {
+      const rootStyle = getComputedStyle(document.documentElement);
+      const v = rootStyle.getPropertyValue("--map-image") || "";
+      // v kan vara: url("./assets/world.png")
+      const m = v.match(/url\((['"]?)(.*?)\1\)/i);
+      const url = m?.[2];
+      if (!url) {
+        setMapLoaded(true);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => setMapLoaded(true);
+      img.onerror = () => setMapLoaded(true);
+      img.src = url;
+    } catch {
+      setMapLoaded(true);
+    }
+  }, []);
 
   // -------- reset per ny runda ----------
   useEffect(() => {
     setHasClickedThisRound(false);
     setMyClickPx(null);
     setMyLastClickLL(null);
+    setMyDistanceKm(null);
     setOppClickPx(null);
-
     setShowReadyButton(false);
     setIAmReady(false);
-
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
     setCountdown(null);
-
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
@@ -95,12 +125,10 @@ export default function Game({
   useEffect(() => {
     if (!mapRef.current || !onMapSize) return;
     const el = mapRef.current;
-
     const report = () => {
       const rect = el.getBoundingClientRect();
       onMapSize({ width: rect.width, height: rect.height });
     };
-
     report();
     const ro = new ResizeObserver(() => report());
     ro.observe(el);
@@ -111,14 +139,12 @@ export default function Game({
   useEffect(() => {
     if (!timerRunning) return;
     let raf = 0;
-
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const now = performance.now();
       const start = roundStartPerf ?? now;
       setElapsedMs(now - start);
     };
-
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [timerRunning, roundStartPerf]);
@@ -144,14 +170,18 @@ export default function Game({
 
   const matchFinished = !!gameState.finalResult;
 
-  // -------- debug target dot ----------
+  // -------- target px (för reveal direkt efter klick) ----------
   const targetPx = useMemo(() => {
-    if (!debugShowTarget) return null;
     const c = gameState.city;
     if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lon)) return null;
     if (!mapProject) return null;
     return mapProject(c.lon, c.lat);
-  }, [debugShowTarget, gameState.city, mapProject]);
+  }, [gameState.city, mapProject]);
+
+  const shouldShowTarget = useMemo(() => {
+    // visa target direkt när du klickat (och fortsätt visa när resultat kommer)
+    return !!hasClickedThisRound || !!oppClickPx || !!debugShowTarget;
+  }, [hasClickedThisRound, oppClickPx, debugShowTarget]);
 
   // -------- socket events ----------
   useEffect(() => {
@@ -160,55 +190,38 @@ export default function Game({
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
 
-      // rita motståndarens klick om servern skickar lon/lat
+      // försök rita motståndarens klick om servern skickar lon/lat
       try {
         const oppRes = results?.[opponentName];
-        if (
-          oppRes &&
-          mapProject &&
-          Number.isFinite(oppRes.lon) &&
-          Number.isFinite(oppRes.lat)
-        ) {
+        if (oppRes && mapProject && Number.isFinite(oppRes.lon) && Number.isFinite(oppRes.lat)) {
           const px = mapProject(oppRes.lon, oppRes.lat);
           if (px) setOppClickPx(px);
         }
       } catch (_) {}
-    };
 
-    const onReadyPrompt = () => {
-      setShowReadyButton(true);
+      setTimeout(() => setShowReadyButton(true), 3500);
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
       setShowReadyButton(false);
       setIAmReady(false);
-
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-        countdownIntervalRef.current = null;
-      }
-
       setCountdown(seconds);
       let left = seconds;
-
-      countdownIntervalRef.current = setInterval(() => {
+      const t = setInterval(() => {
         left -= 1;
         setCountdown(left);
         if (left <= 0) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
+          clearInterval(t);
           setCountdown(null);
         }
       }, 1000);
     };
 
     socket.on("round_result", onRoundResult);
-    socket.on("ready_prompt", onReadyPrompt);
     socket.on("next_round_countdown", onNextRoundCountdown);
 
     return () => {
       socket.off("round_result", onRoundResult);
-      socket.off("ready_prompt", onReadyPrompt);
       socket.off("next_round_countdown", onNextRoundCountdown);
     };
   }, [socket, opponentName, mapProject]);
@@ -219,7 +232,6 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
-
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => setPointer({ x, y, inside: true }));
   };
@@ -237,6 +249,9 @@ export default function Game({
 
     // Lås input om vi är i ready/countdown-läge
     if (showReadyButton || countdown !== null) return;
+
+    // Lås input om matchen inte startat än (redo-gate)
+    if (gameState.currentRound < 0) return;
 
     if (!mapInvert) {
       alert("Kartan är inte kalibrerad än (mapInvert saknas).");
@@ -257,6 +272,15 @@ export default function Game({
     setTimerRunning(false);
     const timeMs = elapsedMs;
 
+    // ✅ beräkna distance direkt på klienten (så du slipper vänta på opponent)
+    const c = gameState.city;
+    if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+      const km = haversineKm(lat, lon, c.lat, c.lon);
+      setMyDistanceKm(km);
+    } else {
+      setMyDistanceKm(null);
+    }
+
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
 
     setHasClickedThisRound(true);
@@ -271,11 +295,8 @@ export default function Game({
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
-
-    // 80 = halva 160px (lens)
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
-
     return {
       left: pointer.x,
       top: pointer.y,
@@ -290,6 +311,15 @@ export default function Game({
     setIAmReady(true);
     socket.emit("player_ready", { matchId: match.matchId, roundIndex: gameState.currentRound });
   };
+
+  const onPressStartReady = () => {
+    if (!socket || !match) return;
+    if (startReadySent) return;
+    setStartReadySent(true);
+    socket.emit("player_start_ready", { matchId: match.matchId });
+  };
+
+  const showStartGate = !matchFinished && gameState.currentRound < 0;
 
   return (
     <div className="game-root">
@@ -306,6 +336,7 @@ export default function Game({
           <div className="hud-name">{myName}</div>
           <div className="hud-score">{Math.round(myScoreSoFar)}</div>
         </div>
+
         <div className="hud hud-right">
           <div className="hud-name">{opponentName}</div>
           <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
@@ -326,19 +357,12 @@ export default function Game({
 
         {/* Bottom strip (fullbredd tonad) */}
         <div className="city-bottom">
-          <div className="city-bar">
+          <div className="city-strip">
             <div className="city-label">
-              {cityLabel || "…"} {cityFlag ? <span style={{ marginLeft: 8 }}>{cityFlag}</span> : null}
+              {cityLabel || "…"} {flag ? <span className="city-flag">{flag}</span> : null}
             </div>
-
-            {cityPop ? (
-              <div className="city-countdown" style={{ marginTop: 6 }}>
-                Pop: {cityPop}
-              </div>
-            ) : null}
-
+            {pop ? <div className="city-pop">Pop: {pop}</div> : null}
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
-
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
@@ -354,25 +378,40 @@ export default function Game({
         {/* Lens */}
         {lensStyle && <div className="lens" style={lensStyle} />}
 
+        {/* ✅ Target marker (visa direkt efter klick) */}
+        {shouldShowTarget && targetPx && (
+          <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }} />
+        )}
+
         {/* Click markers */}
         {myClickPx && (
-          <div
-            className="click-marker click-marker-me"
-            style={{ left: myClickPx.x, top: myClickPx.y }}
-            title={
-              myLastClickLL
-                ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(
-                    3
-                  )} (${fmtMs(myLastClickLL.timeMs)}s)`
-                : "Du"
-            }
-          />
+          <>
+            <div
+              className="click-marker click-marker-me"
+              style={{ left: myClickPx.x, top: myClickPx.y }}
+              title={
+                myLastClickLL
+                  ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(
+                      3
+                    )} (${fmtMs(myLastClickLL.timeMs)}s)`
+                  : "Du"
+              }
+            />
+            {Number.isFinite(myDistanceKm) && (
+              <div
+                className="click-distance"
+                style={{ left: myClickPx.x, top: myClickPx.y + 16 }}
+              >
+                {Math.round(myDistanceKm)} km
+              </div>
+            )}
+          </>
         )}
+
         {oppClickPx && (
           <div
             className="click-marker click-marker-opp"
             style={{ left: oppClickPx.x, top: oppClickPx.y }}
-            title="Motståndare"
           />
         )}
 
@@ -389,6 +428,15 @@ export default function Game({
           <div className="ready-overlay">
             <button className="ready-btn" onClick={onPressReady} disabled={iAmReady}>
               {iAmReady ? "Väntar på andra..." : "Redo för nästa"}
+            </button>
+          </div>
+        )}
+
+        {/* ✅ Start gate overlay (NYTT) */}
+        {showStartGate && (
+          <div className="ready-overlay">
+            <button className="ready-btn" onClick={onPressStartReady} disabled={!mapLoaded || startReadySent}>
+              {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar på andra..." : "Redo"}
             </button>
           </div>
         )}

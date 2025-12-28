@@ -417,3 +417,47 @@ button:disabled {
   display: flex;
   justify-content: center;
 }
+
+.city-flag {
+  margin-left: 8px;
+  font-size: 1.05em;
+}
+
+.city-pop {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+/* Target marker (stadens riktiga position) */
+.target-marker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  z-index: 13;
+  pointer-events: none;
+  background: rgba(0, 255, 180, 0.95);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+/* Km-label under din klick-prick */
+.click-distance {
+  position: absolute;
+  transform: translate(-50%, 0);
+  z-index: 14;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+}
