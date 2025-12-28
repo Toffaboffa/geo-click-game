@@ -164,6 +164,7 @@ function getRoomName(matchId) {
 function createMatch(playerA, playerB, opts = {}) {
   const matchId = crypto.randomBytes(8).toString("hex");
   const scorer = createRoundScorer();
+
   const match = {
     id: matchId,
     players: [playerA, playerB],
@@ -173,15 +174,14 @@ function createMatch(playerA, playerB, opts = {}) {
     finished: false,
     scorer,
     isSolo: !!opts.isSolo,
-
     // intermission/ready state
     awaitingReady: false,
     ready: new Set(),
-
     readyPromptTimeout: null,
     readyTimeout: null,
     countdownTimeout: null,
   };
+
   matches.set(matchId, match);
   return match;
 }
@@ -210,7 +210,7 @@ function startMatch(match) {
   io.sockets.sockets.get(sB)?.join(roomName);
 
   io.to(roomName).emit("match_started", {
-    matchId: match.id, // ✅ klienten använder match.matchId
+    matchId: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: false,
@@ -233,13 +233,19 @@ function startSoloMatch(match, playerSocket) {
   startRound(match);
 }
 
+// ✅ här lägger vi till countryCode + population
 function pickCityMeta(city) {
   const continent = city?.continent ?? city?.region ?? null;
+  const countryCode = city?.countryCode ?? city?.cc ?? city?.country ?? null;
+  const population = city?.population ?? null;
+
   return {
-    name: city?.name ?? "Okänd stad",
+    name: String(city?.name ?? "Okänd stad"),
     continent,
     lat: Number(city?.lat),
     lon: Number(city?.lon),
+    countryCode: countryCode ? String(countryCode) : null,
+    population: population != null ? String(population) : null,
   };
 }
 
@@ -292,11 +298,11 @@ function startNextRoundCountdown(match) {
   if (!match.awaitingReady) return;
 
   clearIntermissionTimers(match);
-
   const room = getRoomName(match.id);
-  match.awaitingReady = false;
 
+  match.awaitingReady = false;
   const seconds = 5;
+
   io.to(room).emit("next_round_countdown", { seconds });
 
   match.countdownTimeout = setTimeout(() => {
@@ -376,6 +382,7 @@ async function finishMatch(match) {
   else if (total[pB] < total[pA]) winner = pB;
 
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
+
   if (realPlayers.length > 0) {
     const client = await pool.connect();
     try {
@@ -509,8 +516,8 @@ io.on("connection", (socket) => {
     if (roundIndex !== match.currentRound) return;
 
     match.ready.add(currentUser);
-
     const [pA, pB] = match.players;
+
     const bothReady = match.ready.has(pA) && match.ready.has(pB);
     if (bothReady) startNextRoundCountdown(match);
   });

@@ -15,6 +15,15 @@ function fmtMs(ms) {
   return s.toFixed(2);
 }
 
+// "SE" -> 🇸🇪
+function flagEmoji(countryCode) {
+  const cc = String(countryCode || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return "";
+  const A = 0x1f1e6;
+  const codePoints = [...cc].map((ch) => A + (ch.charCodeAt(0) - 65));
+  return String.fromCodePoint(...codePoints);
+}
+
 export default function Game({
   session,
   socket,
@@ -29,8 +38,8 @@ export default function Game({
   onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
-
   const myName = session.username;
+
   const opponentName = useMemo(() => {
     return match.players.find((p) => p !== myName) || "Motståndare";
   }, [match.players, myName]);
@@ -54,9 +63,12 @@ export default function Game({
   const [showReadyButton, setShowReadyButton] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
   const [countdown, setCountdown] = useState(null); // number | null
+  const countdownIntervalRef = useRef(null);
 
-  // -------- city label ----------
+  // -------- city meta ----------
   const cityLabel = shortCityName(gameState.cityName || gameState.city?.name || "");
+  const cityFlag = flagEmoji(gameState.city?.countryCode);
+  const cityPop = gameState.city?.population ? String(gameState.city.population) : null;
 
   // -------- reset per ny runda ----------
   useEffect(() => {
@@ -67,11 +79,15 @@ export default function Game({
 
     setShowReadyButton(false);
     setIAmReady(false);
+
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
     setCountdown(null);
 
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
-    // starta timer när vi faktiskt har en runda
     setTimerRunning(gameState.currentRound >= 0);
   }, [gameState.currentRound]);
 
@@ -94,8 +110,8 @@ export default function Game({
   // -------- timer loop ----------
   useEffect(() => {
     if (!timerRunning) return;
-
     let raf = 0;
+
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const now = performance.now();
@@ -142,10 +158,9 @@ export default function Game({
     if (!socket) return;
 
     const onRoundResult = ({ results }) => {
-      // stoppa timer (om den inte redan är stoppad)
       setTimerRunning(false);
 
-      // försök rita motståndarens klick om servern skickar lon/lat
+      // rita motståndarens klick om servern skickar lon/lat
       try {
         const oppRes = results?.[opponentName];
         if (
@@ -158,33 +173,42 @@ export default function Game({
           if (px) setOppClickPx(px);
         }
       } catch (_) {}
+    };
 
-      // visa ready-knapp efter 3-4s (client-side)
-      setTimeout(() => setShowReadyButton(true), 3500);
+    const onReadyPrompt = () => {
+      setShowReadyButton(true);
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
       setShowReadyButton(false);
       setIAmReady(false);
 
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+
       setCountdown(seconds);
       let left = seconds;
 
-      const t = setInterval(() => {
+      countdownIntervalRef.current = setInterval(() => {
         left -= 1;
         setCountdown(left);
         if (left <= 0) {
-          clearInterval(t);
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
           setCountdown(null);
         }
       }, 1000);
     };
 
     socket.on("round_result", onRoundResult);
+    socket.on("ready_prompt", onReadyPrompt);
     socket.on("next_round_countdown", onNextRoundCountdown);
 
     return () => {
       socket.off("round_result", onRoundResult);
+      socket.off("ready_prompt", onReadyPrompt);
       socket.off("next_round_countdown", onNextRoundCountdown);
     };
   }, [socket, opponentName, mapProject]);
@@ -244,7 +268,6 @@ export default function Game({
   const lensStyle = useMemo(() => {
     if (!pointer.inside || !mapRef.current) return null;
     const rect = mapRef.current.getBoundingClientRect();
-
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
@@ -303,9 +326,19 @@ export default function Game({
 
         {/* Bottom strip (fullbredd tonad) */}
         <div className="city-bottom">
-          <div className="city-strip">
-            <div className="city-label">{cityLabel || "…"}</div>
+          <div className="city-bar">
+            <div className="city-label">
+              {cityLabel || "…"} {cityFlag ? <span style={{ marginLeft: 8 }}>{cityFlag}</span> : null}
+            </div>
+
+            {cityPop ? (
+              <div className="city-countdown" style={{ marginTop: 6 }}>
+                Pop: {cityPop}
+              </div>
+            ) : null}
+
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
+
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
@@ -336,7 +369,11 @@ export default function Game({
           />
         )}
         {oppClickPx && (
-          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
+          <div
+            className="click-marker click-marker-opp"
+            style={{ left: oppClickPx.x, top: oppClickPx.y }}
+            title="Motståndare"
+          />
         )}
 
         {/* Debug target + debug click */}
@@ -344,10 +381,7 @@ export default function Game({
           <div className="debug-dot debug-dot-target" style={{ left: targetPx.x, top: targetPx.y }} />
         )}
         {debugShowTarget && myClickPx && (
-          <div
-            className="debug-dot debug-dot-click"
-            style={{ left: myClickPx.x, top: myClickPx.y }}
-          />
+          <div className="debug-dot debug-dot-click" style={{ left: myClickPx.x, top: myClickPx.y }} />
         )}
 
         {/* Ready overlay */}
