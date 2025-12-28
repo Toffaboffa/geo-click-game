@@ -8,40 +8,63 @@ import Lobby from "./components/Lobby.jsx";
 import Game from "./components/Game.jsx";
 
 /**
- * MAP_REFS är pixelpunkter från en "bas-bild" (din guide).
- * Viktigt: vi skalar refs till aktuell renderad kartstorlek innan kalibrering.
- *
- * SÄTT dessa till den faktiska storleken som dina x/y kommer ifrån.
- * (Alltså den bild/canvas där du mätte upp punkterna.)
+ * Pixelpunkter uppmätta på din bas-bild (world_debug.png / world.png).
+ * Vi skalar refs till aktuell renderad kartstorlek innan kalibrering.
  */
-const MAP_REF_BASE_SIZE = { width: 1600, height: 800 };
+const MAP_REF_BASE_SIZE = { width: 5600, height: 2900 };
 
 const MAP_REFS_BASE = [
-  { name: "San Francisco", lon: -122.4194, lat: 37.7749, x: 247.5, y: 212.5 },
-  { name: "Miami", lon: -80.1918, lat: 25.7617, x: 404.5, y: 272.5 },
-  { name: "New York", lon: -74.006, lat: 40.7128, x: 449.6, y: 197.8 },
-  { name: "Rio de Janeiro", lon: -43.1729, lat: -22.9068, x: 561.2, y: 510.6 },
-  { name: "Reykjavik", lon: -21.9426, lat: 64.1466, x: 678.6, y: 87.2 },
-  { name: "Stockholm", lon: 18.0686, lat: 59.3293, x: 817.5, y: 108.5 },
-  { name: "Athens", lon: 23.7275, lat: 37.9838, x: 843.3, y: 211.0 },
-  { name: "Doha", lon: 51.531, lat: 25.2854, x: 965.5, y: 273.5 },
-  { name: "Cape Town", lon: 18.4241, lat: -33.9249, x: 821.8, y: 565.4 },
-  { name: "Bangkok", lon: 100.5018, lat: 13.7563, x: 1179.5, y: 330.5 },
-  { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 1322.5, y: 222.5 },
-  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 1447.5, y: 601.5 },
+  { name: "San Francisco", lon: -122.4194, lat: 37.7749, x: 903, y: 777 },
+  { name: "Miami", lon: -80.1918, lat: 25.7617, x: 1477, y: 995 },
+  { name: "New York", lon: -74.006, lat: 40.7128, x: 1641, y: 723 },
+  { name: "Rio de Janeiro", lon: -43.1729, lat: -22.9068, x: 2048, y: 1865 },
+  { name: "Reykjavik", lon: -21.9426, lat: 64.1466, x: 2475, y: 319 },
+  { name: "Stockholm", lon: 18.0686, lat: 59.3293, x: 2982, y: 396 },
+  { name: "Athens", lon: 23.7275, lat: 37.9838, x: 3077, y: 771 },
+  { name: "Doha", lon: 51.531, lat: 25.2854, x: 3522, y: 998 },
+  { name: "Cape Town", lon: 18.4241, lat: -33.9249, x: 2998, y: 2065 },
+  { name: "Bangkok", lon: 100.5018, lat: 13.7563, x: 4304, y: 1208 },
+  { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 4824, y: 812 },
+  { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 5280, y: 2198 },
 ];
 
+const GRID_REFS_BASE = [
+  // lon,lat = x,y (base 5600x2900)
+  { name: "G 0,0", lon: 0, lat: 0, x: 2713, y: 1459 },
+  { name: "G 0,30", lon: 0, lat: 30, x: 2719, y: 917 },
+  { name: "G 0,60", lon: 0, lat: 60, x: 2745, y: 389 },
+  { name: "G 0,-30", lon: 0, lat: -30, x: 2719, y: 2001 },
+  { name: "G 0,-60", lon: 0, lat: -60, x: 2745, y: 2529 },
+
+  { name: "G 150,0", lon: 150, lat: 0, x: 5102, y: 1459 },
+  { name: "G 150,30", lon: 150, lat: 30, x: 5013, y: 917 },
+  { name: "G 150,60", lon: 150, lat: 60, x: 4653, y: 389 },
+  { name: "G 150,-30", lon: 150, lat: -30, x: 5013, y: 2001 },
+  { name: "G 150,-60", lon: 150, lat: -60, x: 4652, y: 2529 },
+
+  { name: "G -150,60", lon: -150, lat: 60, x: 838, y: 389 },
+  { name: "G -150,30", lon: -150, lat: 30, x: 427, y: 917 },
+  { name: "G -150,0", lon: -150, lat: 0, x: 325, y: 1459 },
+  { name: "G -150,-30", lon: -150, lat: -30, x: 427, y: 2001 },
+  { name: "G -150,-60", lon: -150, lat: -60, x: 838, y: 2529 },
+];
+
+const ALL_REFS_BASE = [...MAP_REFS_BASE, ...GRID_REFS_BASE];
+
+/** Linjär regression: y ≈ a*x + b */
 function fitLinear(xs, ys) {
   const n = xs.length;
   const meanX = xs.reduce((s, v) => s + v, 0) / n;
   const meanY = ys.reduce((s, v) => s + v, 0) / n;
-  let num = 0,
-    den = 0;
+
+  let num = 0;
+  let den = 0;
   for (let i = 0; i < n; i++) {
     const dx = xs[i] - meanX;
     num += dx * (ys[i] - meanY);
     den += dx * dx;
   }
+
   const a = den === 0 ? 1 : num / den;
   const b = meanY - a * meanX;
   return { a, b };
@@ -105,7 +128,7 @@ export default function App() {
   const [gameState, setGameState] = useState({
     currentRound: -1,
     cityName: null,
-    city: null, // <-- får vi nu från servern i round_starting
+    city: null, // kommer från servern i round_starting
     roundResults: [],
     finalResult: null,
   });
@@ -115,9 +138,10 @@ export default function App() {
     setDebugShowTarget((v) => !v);
   }, []);
 
+  // Game rapporterar in aktuell renderad size
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
-  // Skala MAP_REFS till aktuell mapSize
+  // Skala ALLA refs (städer + grid) till aktuell mapSize
   const scaledRefs = useMemo(() => {
     const { width, height } = mapSize;
     if (!width || !height) return null;
@@ -125,7 +149,7 @@ export default function App() {
     const sx = width / MAP_REF_BASE_SIZE.width;
     const sy = height / MAP_REF_BASE_SIZE.height;
 
-    return MAP_REFS_BASE.map((r) => ({
+    return ALL_REFS_BASE.map((r) => ({
       ...r,
       x: r.x * sx,
       y: r.y * sy,
@@ -133,6 +157,7 @@ export default function App() {
   }, [mapSize.width, mapSize.height]);
 
   const calibrated = useMemo(() => {
+    if (!scaledRefs) return null;
     return makeCalibratedProjection({
       width: mapSize.width,
       height: mapSize.height,
@@ -174,7 +199,6 @@ export default function App() {
       setDebugShowTarget(false);
     });
 
-    // ✅ ta emot cityMeta också
     s.on("round_starting", ({ roundIndex, cityName, city }) => {
       setGameState((prev) => ({
         ...prev,
