@@ -103,7 +103,6 @@ button:disabled {
   position: relative;
   cursor: crosshair;
   overflow: hidden;
-
   background-image: var(--map-image);
   background-repeat: no-repeat;
   background-position: center;
@@ -186,11 +185,12 @@ button:disabled {
   user-select: none;
 }
 
-.city-bar {
+/* OBS: stöd både gamla .city-bar och nya .city-strip */
+.city-bar,
+.city-strip {
   width: 100%;
   padding: 16px 14px 18px;
   text-align: center;
-
   /* tonad “rad” som hjälper text över Antarktis */
   background: linear-gradient(
     to top,
@@ -234,7 +234,6 @@ button:disabled {
   transform: translate(-50%, -50%);
   z-index: 9; /* över linsen */
   pointer-events: none;
-
   opacity: 0.72;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
 }
@@ -268,14 +267,11 @@ button:disabled {
   border: 2px solid rgba(255, 255, 255, 0.90);
   z-index: 8;
   pointer-events: none;
-
   /* Din JS sätter left/top + bgSize/bgPosition */
   transform: translate(-50%, -50%);
-
   background-image: var(--map-image);
   background-repeat: no-repeat;
   background-position: center;
-
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
@@ -292,7 +288,6 @@ button:disabled {
   transform: translate(-50%, -50%);
   z-index: 13;
   pointer-events: none;
-
   box-shadow:
     0 0 0 2px rgba(0, 0, 0, 0.35),
     0 10px 22px rgba(0, 0, 0, 0.35);
@@ -339,19 +334,16 @@ button:disabled {
 
 .ready-btn {
   pointer-events: auto;
-
   margin-top: 0;
   padding: 12px 18px;
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
-
   /* override globala hover-opacity */
   opacity: 1;
 }

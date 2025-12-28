@@ -4,14 +4,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
+
 function shortCityName(name) {
   if (!name) return "";
   return String(name).split(",")[0].trim();
 }
+
 function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
 }
+
 function isoToFlagEmoji(cc) {
   const code = String(cc || "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return "";
@@ -21,6 +24,7 @@ function isoToFlagEmoji(cc) {
     A + (code.charCodeAt(1) - 65)
   );
 }
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -47,13 +51,13 @@ export default function Game({
   onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
-
   const myName = session.username;
+
   const opponentName = useMemo(() => {
     return match.players.find((p) => p !== myName) || "Motståndare";
   }, [match.players, myName]);
 
-  // --- map load gate (NYTT) ---
+  // --- map load gate ---
   const [mapLoaded, setMapLoaded] = useState(false);
   const [startReadySent, setStartReadySent] = useState(false);
 
@@ -62,13 +66,13 @@ export default function Game({
   const [myClickPx, setMyClickPx] = useState(null); // {x,y}
   const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
   const [myDistanceKm, setMyDistanceKm] = useState(null); // number
-  const [oppClickPx, setOppClickPx] = useState(null); // {x,y} after round_result if available
+  const [oppClickPx, setOppClickPx] = useState(null); // {x,y}
 
   // --- pointer + lens ---
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
-  // --- timer (start on round start, stop on click) ---
+  // --- timer ---
   const [roundStartPerf, setRoundStartPerf] = useState(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -76,7 +80,7 @@ export default function Game({
   // --- ready / countdown ---
   const [showReadyButton, setShowReadyButton] = useState(false);
   const [iAmReady, setIAmReady] = useState(false);
-  const [countdown, setCountdown] = useState(null); // number | null
+  const [countdown, setCountdown] = useState(null);
 
   // -------- city meta ----------
   const cityNameRaw = gameState.cityName || gameState.city?.name || "";
@@ -90,7 +94,6 @@ export default function Game({
     try {
       const rootStyle = getComputedStyle(document.documentElement);
       const v = rootStyle.getPropertyValue("--map-image") || "";
-      // v kan vara: url("./assets/world.png")
       const m = v.match(/url\((['"]?)(.*?)\1\)/i);
       const url = m?.[2];
       if (!url) {
@@ -113,9 +116,11 @@ export default function Game({
     setMyLastClickLL(null);
     setMyDistanceKm(null);
     setOppClickPx(null);
+
     setShowReadyButton(false);
     setIAmReady(false);
     setCountdown(null);
+
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
@@ -125,10 +130,12 @@ export default function Game({
   useEffect(() => {
     if (!mapRef.current || !onMapSize) return;
     const el = mapRef.current;
+
     const report = () => {
       const rect = el.getBoundingClientRect();
       onMapSize({ width: rect.width, height: rect.height });
     };
+
     report();
     const ro = new ResizeObserver(() => report());
     ro.observe(el);
@@ -139,12 +146,14 @@ export default function Game({
   useEffect(() => {
     if (!timerRunning) return;
     let raf = 0;
+
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const now = performance.now();
       const start = roundStartPerf ?? now;
       setElapsedMs(now - start);
     };
+
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [timerRunning, roundStartPerf]);
@@ -179,7 +188,6 @@ export default function Game({
   }, [gameState.city, mapProject]);
 
   const shouldShowTarget = useMemo(() => {
-    // visa target direkt när du klickat (och fortsätt visa när resultat kommer)
     return !!hasClickedThisRound || !!oppClickPx || !!debugShowTarget;
   }, [hasClickedThisRound, oppClickPx, debugShowTarget]);
 
@@ -187,13 +195,22 @@ export default function Game({
   useEffect(() => {
     if (!socket) return;
 
+    const onStartReadyPrompt = () => {
+      // om servern säger "redo-läge" igen, lås upp knappen lokalt
+      setStartReadySent(false);
+    };
+
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
 
-      // försök rita motståndarens klick om servern skickar lon/lat
       try {
         const oppRes = results?.[opponentName];
-        if (oppRes && mapProject && Number.isFinite(oppRes.lon) && Number.isFinite(oppRes.lat)) {
+        if (
+          oppRes &&
+          mapProject &&
+          Number.isFinite(oppRes.lon) &&
+          Number.isFinite(oppRes.lat)
+        ) {
           const px = mapProject(oppRes.lon, oppRes.lat);
           if (px) setOppClickPx(px);
         }
@@ -205,6 +222,7 @@ export default function Game({
     const onNextRoundCountdown = ({ seconds }) => {
       setShowReadyButton(false);
       setIAmReady(false);
+
       setCountdown(seconds);
       let left = seconds;
       const t = setInterval(() => {
@@ -217,10 +235,12 @@ export default function Game({
       }, 1000);
     };
 
+    socket.on("start_ready_prompt", onStartReadyPrompt);
     socket.on("round_result", onRoundResult);
     socket.on("next_round_countdown", onNextRoundCountdown);
 
     return () => {
+      socket.off("start_ready_prompt", onStartReadyPrompt);
       socket.off("round_result", onRoundResult);
       socket.off("next_round_countdown", onNextRoundCountdown);
     };
@@ -232,6 +252,7 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
+
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => setPointer({ x, y, inside: true }));
   };
@@ -261,22 +282,19 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
-
     const ll = mapInvert(xPx, yPx);
-    if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
 
+    if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
     const [lon, lat] = ll;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
 
-    // stoppa timer exakt när man klickar
     setTimerRunning(false);
     const timeMs = elapsedMs;
 
-    // ✅ beräkna distance direkt på klienten (så du slipper vänta på opponent)
+    // distance direkt
     const c = gameState.city;
     if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
-      const km = haversineKm(lat, lon, c.lat, c.lon);
-      setMyDistanceKm(km);
+      setMyDistanceKm(haversineKm(lat, lon, c.lat, c.lon));
     } else {
       setMyDistanceKm(null);
     }
@@ -297,6 +315,7 @@ export default function Game({
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
+
     return {
       left: pointer.x,
       top: pointer.y,
@@ -355,21 +374,25 @@ export default function Game({
           </button>
         </div>
 
-        {/* Bottom strip (fullbredd tonad) */}
+        {/* Bottom strip (OBS: city-bar matchar din CSS och fixar centrering/toning) */}
         <div className="city-bottom">
-          <div className="city-strip">
+          <div className="city-bar">
             <div className="city-label">
-              {cityLabel || "…"} {flag ? <span className="city-flag">{flag}</span> : null}
+              {cityLabel || "…"}
+              {flag ? <span className="city-flag">{flag}</span> : null}
             </div>
+
             {pop ? <div className="city-pop">Pop: {pop}</div> : null}
+
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
+
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
           </div>
         </div>
 
-        {/* Crosshair (tonad, liten) */}
+        {/* Crosshair */}
         <div
           className="crosshair"
           style={{ left: pointer.x, top: pointer.y, opacity: pointer.inside ? 1 : 0 }}
@@ -378,7 +401,7 @@ export default function Game({
         {/* Lens */}
         {lensStyle && <div className="lens" style={lensStyle} />}
 
-        {/* ✅ Target marker (visa direkt efter klick) */}
+        {/* Target marker (visa direkt efter klick) */}
         {shouldShowTarget && targetPx && (
           <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }} />
         )}
@@ -398,10 +421,7 @@ export default function Game({
               }
             />
             {Number.isFinite(myDistanceKm) && (
-              <div
-                className="click-distance"
-                style={{ left: myClickPx.x, top: myClickPx.y + 16 }}
-              >
+              <div className="click-distance" style={{ left: myClickPx.x, top: myClickPx.y + 16 }}>
                 {Math.round(myDistanceKm)} km
               </div>
             )}
@@ -409,10 +429,7 @@ export default function Game({
         )}
 
         {oppClickPx && (
-          <div
-            className="click-marker click-marker-opp"
-            style={{ left: oppClickPx.x, top: oppClickPx.y }}
-          />
+          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
         )}
 
         {/* Debug target + debug click */}
@@ -432,16 +449,20 @@ export default function Game({
           </div>
         )}
 
-        {/* ✅ Start gate overlay (NYTT) */}
+        {/* Start gate overlay */}
         {showStartGate && (
           <div className="ready-overlay">
-            <button className="ready-btn" onClick={onPressStartReady} disabled={!mapLoaded || startReadySent}>
+            <button
+              className="ready-btn"
+              onClick={onPressStartReady}
+              disabled={!mapLoaded || startReadySent}
+            >
               {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar på andra..." : "Redo"}
             </button>
           </div>
         )}
 
-        {/* Finish overlay (oförändrad) */}
+        {/* Finish overlay */}
         {matchFinished && (
           <div className="finish-overlay">
             <div className="finish-card">
