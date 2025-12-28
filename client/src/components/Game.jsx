@@ -1,20 +1,17 @@
 // client/src/components/Game.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
-
 function shortCityName(name) {
   if (!name) return "";
   return String(name).split(",")[0].trim();
 }
-
 function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
 }
-
 function isoToFlagEmoji(cc) {
   const code = String(cc || "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return "";
@@ -24,7 +21,6 @@ function isoToFlagEmoji(cc) {
     A + (code.charCodeAt(1) - 65)
   );
 }
-
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -71,6 +67,13 @@ export default function Game({
   // --- pointer + lens ---
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
+
+  // --- UI hover gate (NYTT): dölj lens/crosshair när musen är på knappar ---
+  const [hoveringUi, setHoveringUi] = useState(false);
+  const setHoveringUiSafe = useCallback((v) => {
+    setHoveringUi(v);
+    if (v) setPointer((p) => ({ ...p, inside: false }));
+  }, []);
 
   // --- timer ---
   const [roundStartPerf, setRoundStartPerf] = useState(null);
@@ -130,12 +133,10 @@ export default function Game({
   useEffect(() => {
     if (!mapRef.current || !onMapSize) return;
     const el = mapRef.current;
-
     const report = () => {
       const rect = el.getBoundingClientRect();
       onMapSize({ width: rect.width, height: rect.height });
     };
-
     report();
     const ro = new ResizeObserver(() => report());
     ro.observe(el);
@@ -146,14 +147,12 @@ export default function Game({
   useEffect(() => {
     if (!timerRunning) return;
     let raf = 0;
-
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const now = performance.now();
       const start = roundStartPerf ?? now;
       setElapsedMs(now - start);
     };
-
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [timerRunning, roundStartPerf]);
@@ -202,7 +201,6 @@ export default function Game({
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
-
       try {
         const oppRes = results?.[opponentName];
         if (
@@ -215,14 +213,12 @@ export default function Game({
           if (px) setOppClickPx(px);
         }
       } catch (_) {}
-
       setTimeout(() => setShowReadyButton(true), 3500);
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
       setShowReadyButton(false);
       setIAmReady(false);
-
       setCountdown(seconds);
       let left = seconds;
       const t = setInterval(() => {
@@ -248,11 +244,11 @@ export default function Game({
 
   // -------- pointer / lens ----------
   const onPointerMove = (e) => {
+    if (hoveringUi) return; // ✅ dölj/pausa lens när musen är på knappar
     if (!mapRef.current) return;
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
-
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => setPointer({ x, y, inside: true }));
   };
@@ -268,9 +264,11 @@ export default function Game({
     if (hasClickedThisRound) return;
     if (!mapRef.current) return;
 
+    // ✅ om vi klickar på UI som ligger ovanpå kartan, ignorera kart-klick
+    if (hoveringUi) return;
+
     // Lås input om vi är i ready/countdown-läge
     if (showReadyButton || countdown !== null) return;
-
     // Lås input om matchen inte startat än (redo-gate)
     if (gameState.currentRound < 0) return;
 
@@ -282,9 +280,10 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
-    const ll = mapInvert(xPx, yPx);
 
+    const ll = mapInvert(xPx, yPx);
     if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
+
     const [lon, lat] = ll;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
 
@@ -300,7 +299,6 @@ export default function Game({
     }
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
-
     setHasClickedThisRound(true);
     setMyClickPx({ x: xPx, y: yPx });
     setMyLastClickLL({ lon, lat, timeMs });
@@ -308,6 +306,7 @@ export default function Game({
 
   // -------- lens style ----------
   const lensStyle = useMemo(() => {
+    if (hoveringUi) return null; // ✅ dölj lens när musen är på UI
     if (!pointer.inside || !mapRef.current) return null;
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
@@ -315,14 +314,20 @@ export default function Game({
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
-
     return {
       left: pointer.x,
       top: pointer.y,
       backgroundSize: `${bgSizeX}px ${bgSizeY}px`,
       backgroundPosition: `${bgPosX}px ${bgPosY}px`,
     };
-  }, [pointer]);
+  }, [pointer, hoveringUi]);
+
+  // -------- button helpers (NYTT): stoppa bubbling till kartan ----------
+  const stop = (fn) => (e) => {
+    e.preventDefault?.();
+    e.stopPropagation?.();
+    fn?.(e);
+  };
 
   const onPressReady = () => {
     if (!socket || !match) return;
@@ -355,37 +360,37 @@ export default function Game({
           <div className="hud-name">{myName}</div>
           <div className="hud-score">{Math.round(myScoreSoFar)}</div>
         </div>
-
         <div className="hud hud-right">
           <div className="hud-name">{opponentName}</div>
           <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
         </div>
 
         {/* Actions */}
-        <div className="hud-actions">
-          <button className="hud-btn" onClick={onToggleDebugShowTarget}>
+        <div
+          className="hud-actions"
+          onMouseEnter={() => setHoveringUiSafe(true)}
+          onMouseLeave={() => setHoveringUiSafe(false)}
+        >
+          <button className="hud-btn" onClick={stop(onToggleDebugShowTarget)}>
             {debugShowTarget ? "Debug: ON" : "Debug"}
           </button>
-          <button className="hud-btn" onClick={onLeaveMatch}>
+          <button className="hud-btn" onClick={stop(onLeaveMatch)}>
             Lämna
           </button>
-          <button className="hud-btn" onClick={onLogout}>
+          <button className="hud-btn" onClick={stop(onLogout)}>
             Logga ut
           </button>
         </div>
 
-        {/* Bottom strip (OBS: city-bar matchar din CSS och fixar centrering/toning) */}
+        {/* Bottom strip */}
         <div className="city-bottom">
           <div className="city-bar">
             <div className="city-label">
               {cityLabel || "…"}
               {flag ? <span className="city-flag">{flag}</span> : null}
             </div>
-
             {pop ? <div className="city-pop">Pop: {pop}</div> : null}
-
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
-
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
@@ -395,13 +400,17 @@ export default function Game({
         {/* Crosshair */}
         <div
           className="crosshair"
-          style={{ left: pointer.x, top: pointer.y, opacity: pointer.inside ? 1 : 0 }}
+          style={{
+            left: pointer.x,
+            top: pointer.y,
+            opacity: pointer.inside && !hoveringUi ? 1 : 0,
+          }}
         />
 
         {/* Lens */}
         {lensStyle && <div className="lens" style={lensStyle} />}
 
-        {/* Target marker (visa direkt efter klick) */}
+        {/* Target marker */}
         {shouldShowTarget && targetPx && (
           <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }} />
         )}
@@ -427,9 +436,11 @@ export default function Game({
             )}
           </>
         )}
-
         {oppClickPx && (
-          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
+          <div
+            className="click-marker click-marker-opp"
+            style={{ left: oppClickPx.x, top: oppClickPx.y }}
+          />
         )}
 
         {/* Debug target + debug click */}
@@ -442,8 +453,12 @@ export default function Game({
 
         {/* Ready overlay */}
         {showReadyButton && !matchFinished && (
-          <div className="ready-overlay">
-            <button className="ready-btn" onClick={onPressReady} disabled={iAmReady}>
+          <div
+            className="ready-overlay"
+            onMouseEnter={() => setHoveringUiSafe(true)}
+            onMouseLeave={() => setHoveringUiSafe(false)}
+          >
+            <button className="ready-btn" onClick={stop(onPressReady)} disabled={iAmReady}>
               {iAmReady ? "Väntar på andra..." : "Redo för nästa"}
             </button>
           </div>
@@ -451,10 +466,14 @@ export default function Game({
 
         {/* Start gate overlay */}
         {showStartGate && (
-          <div className="ready-overlay">
+          <div
+            className="ready-overlay"
+            onMouseEnter={() => setHoveringUiSafe(true)}
+            onMouseLeave={() => setHoveringUiSafe(false)}
+          >
             <button
               className="ready-btn"
-              onClick={onPressStartReady}
+              onClick={stop(onPressStartReady)}
               disabled={!mapLoaded || startReadySent}
             >
               {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar på andra..." : "Redo"}
@@ -464,7 +483,11 @@ export default function Game({
 
         {/* Finish overlay */}
         {matchFinished && (
-          <div className="finish-overlay">
+          <div
+            className="finish-overlay"
+            onMouseEnter={() => setHoveringUiSafe(true)}
+            onMouseLeave={() => setHoveringUiSafe(false)}
+          >
             <div className="finish-card">
               <div className="finish-title">Slutresultat</div>
               <div className="finish-row">
@@ -483,7 +506,7 @@ export default function Game({
                   : "Oavgjort"}
               </div>
               <div className="finish-actions">
-                <button className="hud-btn" onClick={onLeaveMatch}>
+                <button className="hud-btn" onClick={stop(onLeaveMatch)}>
                   Till lobby
                 </button>
               </div>
