@@ -1,5 +1,4 @@
 /* client/src/styles.css */
-
 :root {
   --map-image: url("./assets/world.png");
   --map-debug-image: url("./assets/world_debug.png");
@@ -91,32 +90,32 @@ button:disabled {
   text-align: left;
 }
 
-/* ---------- GAME: Fullscreen minimalist ---------- */
+/* ---------- GAME ---------- */
 .game-root {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
 }
 
-/* Kartan täcker exakt hela fönstret */
 .world-map-full {
   width: 100vw;
   height: 100vh;
   position: relative;
   cursor: crosshair;
   overflow: hidden;
+
   background-image: var(--map-image);
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
 }
 
-/* ✅ Debug-läge: byt till world_debug.png */
+/* Debug-läge: byt till world_debug.png */
 .world-map-full.is-debug {
   background-image: var(--map-debug-image);
 }
 
-/* HUD score left/right */
+/* ---------- HUD ---------- */
 .hud {
   position: absolute;
   top: 14px;
@@ -148,7 +147,7 @@ button:disabled {
   font-weight: 700;
 }
 
-/* Action buttons: minimal */
+/* ---------- Actions (egna styles så globala button inte stör) ---------- */
 .hud-actions {
   position: absolute;
   top: 12px;
@@ -159,7 +158,6 @@ button:disabled {
   z-index: 6;
 }
 
-/* Viktigt: gör hud-knappar helt “egna” så globala button-styles inte ställer till det */
 .hud-actions .hud-btn {
   margin: 0;
   padding: 6px 10px;
@@ -174,37 +172,71 @@ button:disabled {
 }
 
 .hud-actions .hud-btn:hover {
-  opacity: 1; /* override global button:hover */
+  opacity: 1;
 }
 
-/* City bottom (endast stadnamn) */
+/* ---------- Bottom city bar (tonad rad över hela bredden) ---------- */
 .city-bottom {
   position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  text-align: center;
-  z-index: 6;
-  user-select: none;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
   pointer-events: none;
+  user-select: none;
+}
+
+.city-bar {
+  width: 100%;
+  padding: 16px 14px 18px;
+  text-align: center;
+
+  /* tonad “rad” som hjälper text över Antarktis */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.80),
+    rgba(0, 0, 0, 0.55),
+    rgba(0, 0, 0, 0.0)
+  );
 }
 
 .city-label {
-  margin-top: 0;
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 28px;
+  font-weight: 900;
   letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
 }
 
-/* ✅ Minimal crosshair */
+.city-timer {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+.city-countdown {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* ---------- Crosshair: mindre + mer tonad ---------- */
 .crosshair {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   transform: translate(-50%, -50%);
-  z-index: 8; /* över linsen */
+  z-index: 9; /* över linsen */
   pointer-events: none;
+
+  opacity: 0.72;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
 }
 
 .crosshair::before,
@@ -213,51 +245,75 @@ button:disabled {
   position: absolute;
   left: 50%;
   top: 50%;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.72);
   transform: translate(-50%, -50%);
 }
 
 .crosshair::before {
-  width: 12px;
+  width: 10px;
   height: 1px;
 }
 
 .crosshair::after {
   width: 1px;
-  height: 12px;
+  height: 10px;
 }
 
-/* ✅ Lens: centrum = exakt muspekare */
+/* ---------- Lens ---------- */
 .lens {
   position: absolute;
   width: 160px;
   height: 160px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  z-index: 7; /* under crosshair */
+  border: 2px solid rgba(255, 255, 255, 0.90);
+  z-index: 8;
   pointer-events: none;
-  transform: translate(-50%, -50%); /* left/top = centrum */
+
+  /* Din JS sätter left/top + bgSize/bgPosition */
+  transform: translate(-50%, -50%);
 
   background-image: var(--map-image);
   background-repeat: no-repeat;
-  background-position: center; /* stabil default */
+  background-position: center;
 
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
-/* ✅ Lens ska följa debug-bild också */
 .world-map-full.is-debug .lens {
   background-image: var(--map-debug-image);
 }
 
-/* Debug markers */
+/* ---------- Click markers (du + motståndare) ---------- */
+.click-marker {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  z-index: 13;
+  pointer-events: none;
+
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.35),
+    0 10px 22px rgba(0, 0, 0, 0.35);
+}
+
+.click-marker-me {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.click-marker-opp {
+  background: rgba(255, 70, 70, 0.92);
+}
+
+/* ---------- Debug markers (behåll) ---------- */
 .debug-dot {
   position: absolute;
   width: 10px;
   height: 10px;
   border-radius: 999px;
   transform: translate(-50%, -50%);
-  z-index: 9;
+  z-index: 14;
   pointer-events: none;
 }
 
@@ -271,7 +327,44 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
 }
 
-/* Finish overlay */
+/* ---------- Ready overlay ---------- */
+.ready-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 18;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.ready-btn {
+  pointer-events: auto;
+
+  margin-top: 0;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+
+  /* override globala hover-opacity */
+  opacity: 1;
+}
+
+.ready-btn:hover {
+  opacity: 1;
+}
+
+.ready-btn:disabled {
+  opacity: 0.55;
+}
+
+/* ---------- Finish overlay (oförändrad) ---------- */
 .finish-overlay {
   position: absolute;
   inset: 0;

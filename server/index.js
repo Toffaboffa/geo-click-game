@@ -10,9 +10,7 @@ import { haversineDistanceKm, createRoundScorer } from "./gameLogic.js";
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 app.use(cors());
 app.use(express.json());
@@ -23,10 +21,12 @@ app.use(express.json());
 function hashPassword(pw) {
   return crypto.createHash("sha256").update(pw).digest("hex");
 }
+
 function sessionTtlMs() {
   const days = Number(process.env.SESSION_TTL_DAYS || 30);
   return days * 24 * 60 * 60 * 1000;
 }
+
 async function createSession(username) {
   const id = crypto.randomBytes(16).toString("hex");
   const expiresAt = new Date(Date.now() + sessionTtlMs());
@@ -37,6 +37,7 @@ async function createSession(username) {
   ]);
   return id;
 }
+
 async function getUsernameFromSession(sessionId) {
   const now = new Date();
   const { rows } = await pool.query(
@@ -45,6 +46,7 @@ async function getUsernameFromSession(sessionId) {
   );
   return rows[0]?.username ?? null;
 }
+
 setInterval(() => {
   pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
@@ -151,14 +153,19 @@ const lobby = {
   onlineUsers: new Set(),
   randomQueue: new Set(),
 };
-const socketsByUser = new Map();
-const matches = new Map();
+
+const socketsByUser = new Map(); // username -> socket.id
+const matches = new Map(); // matchId -> match
+
+function getRoomName(matchId) {
+  return `match_${matchId}`;
+}
 
 function createMatch(playerA, playerB, opts = {}) {
-  const id = crypto.randomBytes(8).toString("hex");
+  const matchId = crypto.randomBytes(8).toString("hex");
   const scorer = createRoundScorer();
   const match = {
-    id,
+    id: matchId,
     players: [playerA, playerB],
     currentRound: 0,
     totalRounds: 10,
@@ -166,13 +173,17 @@ function createMatch(playerA, playerB, opts = {}) {
     finished: false,
     scorer,
     isSolo: !!opts.isSolo,
-  };
-  matches.set(id, match);
-  return match;
-}
 
-function getRoomName(matchId) {
-  return `match_${matchId}`;
+    // intermission/ready state
+    awaitingReady: false,
+    ready: new Set(),
+
+    readyPromptTimeout: null,
+    readyTimeout: null,
+    countdownTimeout: null,
+  };
+  matches.set(matchId, match);
+  return match;
 }
 
 function broadcastLobby() {
@@ -199,7 +210,7 @@ function startMatch(match) {
   io.sockets.sockets.get(sB)?.join(roomName);
 
   io.to(roomName).emit("match_started", {
-    matchId: match.id,
+    matchId: match.id, // ✅ klienten använder match.matchId
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: false,
@@ -232,7 +243,73 @@ function pickCityMeta(city) {
   };
 }
 
+// ✅ spara lon/lat i click-result så klienten kan rita markers
+function calculateClick(city, lon, lat, timeMs, scorer) {
+  const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
+  const score = scorer(distanceKm, timeMs);
+  return { lon, lat, timeMs, distanceKm, score };
+}
+
+function clearIntermissionTimers(match) {
+  if (match.readyPromptTimeout) clearTimeout(match.readyPromptTimeout);
+  if (match.readyTimeout) clearTimeout(match.readyTimeout);
+  if (match.countdownTimeout) clearTimeout(match.countdownTimeout);
+
+  match.readyPromptTimeout = null;
+  match.readyTimeout = null;
+  match.countdownTimeout = null;
+}
+
+function beginIntermission(match) {
+  match.awaitingReady = true;
+  match.ready = new Set();
+  const room = getRoomName(match.id);
+
+  // SOLO: gå vidare automatiskt (ingen "redo" behövs)
+  if (match.isSolo) {
+    match.readyPromptTimeout = setTimeout(() => {
+      if (match.finished) return;
+      startNextRoundCountdown(match);
+    }, 1200);
+    return;
+  }
+
+  // Efter ~3.5s: visa “Ready”-knappen i klienten
+  match.readyPromptTimeout = setTimeout(() => {
+    if (match.finished) return;
+    io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
+  }, 3500);
+
+  // Om inte båda är ready inom 20s -> starta ändå countdown
+  match.readyTimeout = setTimeout(() => {
+    if (match.finished) return;
+    startNextRoundCountdown(match);
+  }, 20_000);
+}
+
+function startNextRoundCountdown(match) {
+  if (match.finished) return;
+  if (!match.awaitingReady) return;
+
+  clearIntermissionTimers(match);
+
+  const room = getRoomName(match.id);
+  match.awaitingReady = false;
+
+  const seconds = 5;
+  io.to(room).emit("next_round_countdown", { seconds });
+
+  match.countdownTimeout = setTimeout(() => {
+    nextRound(match);
+  }, seconds * 1000);
+}
+
 function startRound(match) {
+  // säkerställ clean state
+  clearIntermissionTimers(match);
+  match.awaitingReady = false;
+  match.ready = new Set();
+
   if (match.currentRound >= match.totalRounds) {
     finishMatch(match).catch((e) => console.error("finishMatch error", e));
     return;
@@ -246,11 +323,11 @@ function startRound(match) {
 
   io.to(getRoomName(match.id)).emit("round_starting", {
     roundIndex: match.currentRound,
-    countdownSeconds: 5,
-    cityName: cityMeta.name, // bakåtkompatibelt
-    city: cityMeta, // ✅ nytt: debug + continent label
+    cityName: cityMeta.name,
+    city: cityMeta,
   });
 
+  // SOLO: bot klickar efter kort delay
   if (match.isSolo) {
     setTimeout(() => {
       const r = match.rounds[match.currentRound];
@@ -271,7 +348,7 @@ function startRound(match) {
           city: r.city,
           results: r.clicks,
         });
-        nextRound(match);
+        beginIntermission(match);
       }
     }, 500);
   }
@@ -282,14 +359,10 @@ function nextRound(match) {
   startRound(match);
 }
 
-function calculateClick(city, lon, lat, timeMs, scorer) {
-  const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
-  const score = scorer(distanceKm, timeMs);
-  return { timeMs, distanceKm, score };
-}
-
 async function finishMatch(match) {
   match.finished = true;
+  clearIntermissionTimers(match);
+
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
 
@@ -341,10 +414,7 @@ async function finishMatch(match) {
     }
   }
 
-  io.to(getRoomName(match.id)).emit("match_finished", {
-    totalScores: total,
-    winner,
-  });
+  io.to(getRoomName(match.id)).emit("match_finished", { totalScores: total, winner });
 }
 
 // =====================
@@ -413,6 +483,9 @@ io.on("connection", (socket) => {
     const round = match.rounds[match.currentRound];
     if (!round) return;
 
+    // intermission => inga klick
+    if (match.awaitingReady) return;
+
     if (!round.clicks[currentUser]) {
       round.clicks[currentUser] = calculateClick(round.city, lon, lat, timeMs, match.scorer);
     }
@@ -424,8 +497,22 @@ io.on("connection", (socket) => {
         city: round.city,
         results: round.clicks,
       });
-      nextRound(match);
+      beginIntermission(match);
     }
+  });
+
+  socket.on("player_ready", ({ matchId, roundIndex }) => {
+    const match = matches.get(matchId);
+    if (!match || match.finished) return;
+    if (!match.players.includes(currentUser)) return;
+    if (!match.awaitingReady) return;
+    if (roundIndex !== match.currentRound) return;
+
+    match.ready.add(currentUser);
+
+    const [pA, pB] = match.players;
+    const bothReady = match.ready.has(pA) && match.ready.has(pB);
+    if (bothReady) startNextRoundCountdown(match);
   });
 
   socket.on("disconnect", () => {
@@ -442,6 +529,4 @@ io.on("connection", (socket) => {
 // Starta servern
 // =====================
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log("Server lyssnar på port", PORT);
-});
+server.listen(PORT, () => console.log("Server lyssnar på port", PORT));

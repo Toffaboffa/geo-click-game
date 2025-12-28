@@ -29,7 +29,6 @@ const MAP_REFS_BASE = [
 ];
 
 const GRID_REFS_BASE = [
-  // lon,lat = x,y (base 5600x2900)
   { name: "G 0,0", lon: 0, lat: 0, x: 2713, y: 1459 },
   { name: "G 0,30", lon: 0, lat: 30, x: 2719, y: 917 },
   { name: "G 0,60", lon: 0, lat: 60, x: 2745, y: 389 },
@@ -64,17 +63,11 @@ function fitLinear(xs, ys) {
     num += dx * (ys[i] - meanY);
     den += dx * dx;
   }
-
   const a = den === 0 ? 1 : num / den;
   const b = meanY - a * meanX;
   return { a, b };
 }
 
-/**
- * Skapar kalibrerad projection + invert för din exakta world.png:
- * - project(lon,lat) -> {x,y} i render-pixlar (för debug markör)
- * - invert(x,y) -> [lon,lat] (för spelar-klick)
- */
 function makeCalibratedProjection({ width, height, refs }) {
   if (!width || !height) return null;
   if (!refs || refs.length < 2) return null;
@@ -87,7 +80,7 @@ function makeCalibratedProjection({ width, height, refs }) {
   const imgYs = [];
 
   for (const r of refs) {
-    const p = proj([r.lon, r.lat]); // [xProj, yProj]
+    const p = proj([r.lon, r.lat]);
     if (!p || Number.isNaN(p[0]) || Number.isNaN(p[1])) continue;
     projXs.push(p[0]);
     projYs.push(p[1]);
@@ -121,14 +114,15 @@ function makeCalibratedProjection({ width, height, refs }) {
 export default function App() {
   const [session, setSession] = useState(null);
   const [socket, setSocket] = useState(null);
+
   const [lobbyState, setLobbyState] = useState({ onlineCount: 0 });
   const [leaderboard, setLeaderboard] = useState([]);
-  const [match, setMatch] = useState(null);
 
+  const [match, setMatch] = useState(null);
   const [gameState, setGameState] = useState({
     currentRound: -1,
     cityName: null,
-    city: null, // kommer från servern i round_starting
+    city: null,
     roundResults: [],
     finalResult: null,
   });
@@ -138,10 +132,8 @@ export default function App() {
     setDebugShowTarget((v) => !v);
   }, []);
 
-  // Game rapporterar in aktuell renderad size
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
-  // Skala ALLA refs (städer + grid) till aktuell mapSize
   const scaledRefs = useMemo(() => {
     const { width, height } = mapSize;
     if (!width || !height) return null;
@@ -168,6 +160,18 @@ export default function App() {
   const mapInvert = calibrated?.invert ?? null;
   const mapProject = calibrated?.project ?? null;
 
+  const resetToLobbyState = useCallback(() => {
+    setMatch(null);
+    setGameState({
+      currentRound: -1,
+      cityName: null,
+      city: null,
+      roundResults: [],
+      finalResult: null,
+    });
+    setDebugShowTarget(false);
+  }, []);
+
   useEffect(() => {
     if (!session) return;
 
@@ -177,6 +181,7 @@ export default function App() {
 
     s.on("auth_error", (msg) => {
       alert(msg);
+      // logga ut helt om session är kass
       handleLogout();
     });
 
@@ -245,17 +250,14 @@ export default function App() {
     } finally {
       if (socket) socket.disconnect();
       setSocket(null);
-      setMatch(null);
-      setGameState({
-        currentRound: -1,
-        cityName: null,
-        city: null,
-        roundResults: [],
-        finalResult: null,
-      });
+      resetToLobbyState();
       setSession(null);
-      setDebugShowTarget(false);
     }
+  };
+
+  const handleLeaveMatch = () => {
+    // Vi lämnar bara UI:t till lobby (servern får vi fixa “leave match” i index.js sen)
+    resetToLobbyState();
   };
 
   if (!session) return <Login onSubmit={handleAuth} />;
@@ -279,7 +281,7 @@ export default function App() {
       match={match}
       gameState={gameState}
       onLogout={handleLogout}
-      onLeaveMatch={() => setMatch(null)}
+      onLeaveMatch={handleLeaveMatch}
       mapInvert={mapInvert}
       mapProject={mapProject}
       onMapSize={setMapSize}
