@@ -288,9 +288,7 @@ button:disabled {
   transform: translate(-50%, -50%);
   z-index: 13;
   pointer-events: none;
-  box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.35),
-    0 10px 22px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 10px 22px rgba(0, 0, 0, 0.35);
 }
 
 .click-marker-me {
