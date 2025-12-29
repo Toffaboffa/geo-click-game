@@ -2,6 +2,9 @@
 :root {
   --map-image: url("./assets/world.png");
   --map-debug-image: url("./assets/world_debug.png");
+
+  /* ✅ NYTT: start/dashboard-bakgrund */
+  --start-bg-image: url("./assets/bg_start.png");
 }
 
 html,
@@ -20,7 +23,17 @@ body,
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #0f172a;
+
+  /* ✅ Bakgrunden ligger top-centrerad, och under finns din vanliga ton */
+  background-color: #0f172a;
+  background-image:
+    var(--start-bg-image),
+    radial-gradient(1200px 700px at 50% 15%, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0) 60%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: top center, center;
+  /* Behåll 1920px bred look men funka även på mindre skärmar */
+  background-size: min(1920px, 100%) auto, cover;
+
   color: #e5e7eb;
 }
 

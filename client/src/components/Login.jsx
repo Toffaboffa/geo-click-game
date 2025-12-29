@@ -14,7 +14,7 @@ export default function Login({ onSubmit }) {
   return (
     <div className="screen">
       <div className="panel">
-        <h1>GeoClick Duel</h1>
+        <h1>GeoSense</h1>
         <p>Logga in eller skapa konto med valfritt användarnamn och lösenord.</p>
 
         <div className="tabs">
