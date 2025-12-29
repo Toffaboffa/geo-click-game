@@ -236,7 +236,7 @@ export default function App() {
     if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
     authSlowTimerRef.current = setTimeout(() => {
       // efter ~1.2s: visa hint att servern kan vara “asleep”
-      setAuthHint("Startar servern… detta kan ta 30–60 sek första gången.");
+      setAuthHint("Loggar in, stäng inte fönstret.");
     }, 1200);
 
     try {
