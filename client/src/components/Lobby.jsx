@@ -5,7 +5,7 @@ import { getMe, setLeaderboardVisibility } from "../api";
 export default function Lobby({ session, socket, lobbyState, leaderboard, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
 
-  // ✅ NYTT: toggle för att visa/dölja dig i topplistan
+  // Toggle i UI (true = syns i leaderboard)
   const [showMeOnLeaderboard, setShowMeOnLeaderboard] = useState(true);
   const [savingVis, setSavingVis] = useState(false);
 
@@ -17,10 +17,14 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
       try {
         const me = await getMe(session.sessionId);
 
+        // Om server någon gång skickar showOnLeaderboard (framtidssäkert)
         if (!cancelled && typeof me?.showOnLeaderboard === "boolean") {
           setShowMeOnLeaderboard(me.showOnLeaderboard);
-        } else if (!cancelled && typeof me?.hidden === "boolean") {
-          // backup om servern returnerar hidden också
+          return;
+        }
+
+        // Nuvarande server-upplägg: hidden (true/false)
+        if (!cancelled && typeof me?.hidden === "boolean") {
           setShowMeOnLeaderboard(!me.hidden);
         }
       } catch {
@@ -29,7 +33,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     }
 
     if (session?.sessionId) load();
-
     return () => {
       cancelled = true;
     };
@@ -42,7 +45,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     try {
       await setLeaderboardVisibility(session.sessionId, next);
     } catch {
-      // om servern inte är uppdaterad än: ignorera
+      // om servern inte matchar än: ignorera (UI är fortfarande responsivt)
     } finally {
       setSavingVis(false);
     }
@@ -65,22 +68,20 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     setChallengeName("");
   };
 
-  // Servern returnerar redan Top 20 och filtrerar hidden = true.
-  // Men om du togglar lokalt innan leaderboard hinner refetcha kan vi spegla det i UI:
+  // Servern bör redan returnera top 20 + filtrera hidden = true.
+  // Men om du togglar lokalt innan leaderboard hinner refetcha: spegla det i UI.
   const leaderboardRows = useMemo(() => {
     const rows = Array.isArray(leaderboard) ? leaderboard : [];
-    const filtered = showMeOnLeaderboard
-      ? rows
-      : rows.filter((u) => u.username !== session.username);
+    const filtered = showMeOnLeaderboard ? rows : rows.filter((u) => u.username !== session.username);
     return filtered.slice(0, 20);
   }, [leaderboard, showMeOnLeaderboard, session.username]);
 
   const getRowClass = (rank, username) => {
     const classes = [];
     if (username === session.username) classes.push("is-me");
-    if (rank === 1) classes.push("rank-1");
-    else if (rank === 2) classes.push("rank-2");
-    else if (rank === 3) classes.push("rank-3");
+    if (rank === 1) classes.push("lb-top1");
+    else if (rank === 2) classes.push("lb-top2");
+    else if (rank === 3) classes.push("lb-top3");
     return classes.join(" ");
   };
 
@@ -114,7 +115,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </button>
         </form>
 
-        {/* ✅ NYTT: leaderboard privacy-toggle */}
+        {/* leaderboard privacy-toggle */}
         <div className="lobby-actions" style={{ marginTop: 8 }}>
           <button onClick={onToggleShowMe} disabled={savingVis}>
             {showMeOnLeaderboard ? "✅ Visas i topplistan" : "🙈 Dold i topplistan"}
@@ -122,11 +123,10 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         </div>
 
         <h3>Topplista (Top 20)</h3>
-
         <table className="leaderboard">
           <thead>
             <tr>
-              <th style={{ width: 56, textAlign: "right" }}>#</th>
+              <th className="lb-rank">#</th>
               <th>Spelare</th>
               <th>Spelade</th>
               <th>Vunna</th>
@@ -134,23 +134,15 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
               <th>PPM</th>
             </tr>
           </thead>
-
           <tbody>
             {leaderboardRows.map((u, idx) => {
               const rank = idx + 1;
-              const isTop1 = rank === 1;
-
               return (
                 <tr key={u.username} className={getRowClass(rank, u.username)}>
-                  <td style={{ textAlign: "right", fontWeight: 900 }}>
-                    {rank}
+                  <td className="lb-rank">
+                    <span>{rank}</span>
                   </td>
-
-                  <td style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
-                    {isTop1 ? <span title="Plats 1" style={{ marginRight: 6 }}>👑</span> : null}
-                    {u.username}
-                  </td>
-
+                  <td style={{ fontWeight: rank <= 3 ? 900 : undefined }}>{u.username}</td>
                   <td>{u.played}</td>
                   <td>{u.wins}</td>
                   <td>{u.losses}</td>
@@ -161,7 +153,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </tbody>
         </table>
 
-        {/* Tips: lägg CSS för rank-1/2/3 om du vill ha “extra fint” */}
       </div>
     </div>
   );

@@ -44,7 +44,7 @@ export async function getLeaderboard(sessionId) {
   return parseJson(res);
 }
 
-// ✅ NYTT: hämta “me” (inkl showOnLeaderboard)
+// ✅ hämta “me” (servern returnerar typiskt { username, hidden })
 export async function getMe(sessionId) {
   const res = await fetch(`${API_BASE}/api/me`, {
     headers: { "x-session-id": sessionId },
@@ -52,16 +52,24 @@ export async function getMe(sessionId) {
   return parseJson(res);
 }
 
-// ✅ NYTT: spara synlighet i topplistan
+/**
+ * ✅ Spara synlighet i topplistan
+ * UI använder showOnLeaderboard (true/false)
+ * Server använder hidden (true/false)
+ */
 export async function setLeaderboardVisibility(sessionId, showOnLeaderboard) {
-  const res = await fetch(`${API_BASE}/api/me/leaderboard-visibility`, {
-    method: "PATCH",
+  const hidden = !showOnLeaderboard;
+
+  // Server-endpointen du visade tidigare var POST /api/me/visibility
+  const res = await fetch(`${API_BASE}/api/me/visibility`, {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-session-id": sessionId,
     },
-    body: JSON.stringify({ showOnLeaderboard }),
+    body: JSON.stringify({ hidden }),
   });
+
   return parseJson(res);
 }
 
