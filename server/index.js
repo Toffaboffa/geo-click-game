@@ -16,6 +16,20 @@ app.use(cors());
 app.use(express.json());
 
 // =====================
+// Config
+// =====================
+const BOT_NAME = "__BOT__";
+const LEADERBOARD_LIMIT = 20;
+
+// Match/round timing
+const ROUND_TIMEOUT_MS = 20_000; // efter 20s: auto-result + vidare
+const PENALTY_TIME_MS = 20_000; // om man inte klickar: timeMs som max
+
+// Score normalization
+const SCORER_MAX_TIME_MS = 20_000; // normalisera tid i score över 20s
+const SCORER_MAX_DISTANCE_KM = 20_000;
+
+// =====================
 // Helpers (auth/sessions)
 // =====================
 function hashPassword(pw) {
@@ -40,10 +54,10 @@ async function createSession(username) {
 
 async function getUsernameFromSession(sessionId) {
   const now = new Date();
-  const { rows } = await pool.query(
-    "select username from sessions where id=$1 and expires_at > $2",
-    [sessionId, now]
-  );
+  const { rows } = await pool.query("select username from sessions where id=$1 and expires_at > $2", [
+    sessionId,
+    now,
+  ]);
   return rows[0]?.username ?? null;
 }
 
@@ -76,10 +90,13 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
     }
     const passwordHash = hashPassword(password);
+
+    // hidden får default false i DB (migration)
     await pool.query("insert into users (username, password_hash) values ($1, $2)", [
       username,
       passwordHash,
     ]);
+
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
@@ -123,6 +140,71 @@ app.post("/api/logout", authMiddleware, async (req, res) => {
 });
 
 // =====================
+// User visibility (hidden)
+// =====================
+
+// ✅ NYTT (matchar client/api.js):
+// GET /api/me -> { username, showOnLeaderboard, hidden }
+app.get("/api/me", authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `select username, coalesce(hidden,false) as hidden
+       from users
+       where username = $1`,
+      [req.username]
+    );
+
+    const me = rows[0];
+    if (!me) return res.status(404).json({ error: "Hittar inte användare" });
+
+    const hidden = !!me.hidden;
+    res.json({
+      username: me.username,
+      hidden,
+      showOnLeaderboard: !hidden, // ✅ klienten jobbar med showOnLeaderboard
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// ✅ NYTT (matchar client/api.js):
+// PATCH /api/me/leaderboard-visibility { showOnLeaderboard: boolean }
+app.patch("/api/me/leaderboard-visibility", authMiddleware, async (req, res) => {
+  try {
+    const { showOnLeaderboard } = req.body || {};
+    if (typeof showOnLeaderboard !== "boolean") {
+      return res.status(400).json({ error: "showOnLeaderboard måste vara boolean" });
+    }
+
+    const hidden = !showOnLeaderboard;
+    await pool.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
+
+    res.json({ ok: true, showOnLeaderboard, hidden });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// ✅ BACKWARD COMPAT (om du råkar ha gammal klient kvar):
+// POST /api/me/visibility { hidden: boolean }
+app.post("/api/me/visibility", authMiddleware, async (req, res) => {
+  try {
+    const { hidden } = req.body || {};
+    if (typeof hidden !== "boolean") {
+      return res.status(400).json({ error: "hidden måste vara boolean" });
+    }
+    await pool.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
+    res.json({ ok: true, hidden, showOnLeaderboard: !hidden });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// =====================
 // Leaderboard (DB)
 // =====================
 app.get("/api/leaderboard", async (_req, res) => {
@@ -135,8 +217,10 @@ app.get("/api/leaderboard", async (_req, res) => {
          losses,
          avg_score as "avgScore"
        from users
+       where coalesce(hidden, false) = false
        order by wins desc, avg_score asc
-       limit 50`
+       limit $1`,
+      [LEADERBOARD_LIMIT]
     );
     res.json(rows);
   } catch (e) {
@@ -148,7 +232,6 @@ app.get("/api/leaderboard", async (_req, res) => {
 // =====================
 // Lobby & matchning (Socket.io)
 // =====================
-const BOT_NAME = "__BOT__";
 const lobby = {
   onlineUsers: new Set(),
   randomQueue: new Set(),
@@ -163,7 +246,10 @@ function getRoomName(matchId) {
 
 function createMatch(playerA, playerB, opts = {}) {
   const matchId = crypto.randomBytes(8).toString("hex");
-  const scorer = createRoundScorer();
+
+  // ✅ maxTime = 20s i scorer
+  const scorer = createRoundScorer(SCORER_MAX_DISTANCE_KM, SCORER_MAX_TIME_MS);
+
   const match = {
     id: matchId,
     players: [playerA, playerB],
@@ -186,7 +272,7 @@ function createMatch(playerA, playerB, opts = {}) {
     readyTimeout: null,
     countdownTimeout: null,
 
-    // ✅ round timeout (NYTT)
+    // round timeout
     roundTimeout: null,
   };
 
@@ -218,10 +304,9 @@ function beginStartReady(match) {
   match.awaitingStartReady = true;
   match.startReady = new Set();
   const room = getRoomName(match.id);
-
   io.to(room).emit("start_ready_prompt", { matchId: match.id });
 
-  // Om någon inte trycker “redo”, starta ändå efter 30s
+  // Om någon inte trycker “redo”, starta ändå efter 30s (solo snabbare)
   if (!match.isSolo) {
     match.startReadyTimeout = setTimeout(() => {
       if (match.finished) return;
@@ -231,7 +316,6 @@ function beginStartReady(match) {
     return;
   }
 
-  // SOLO: fallback snabbare
   match.startReadyTimeout = setTimeout(() => {
     if (match.finished) return;
     clearStartReady(match);
@@ -285,19 +369,18 @@ function pickCityMeta(city) {
   };
 }
 
-// ✅ spara lon/lat i click-result så klienten kan rita markers
+// spara lon/lat i click-result så klienten kan rita markers
 function calculateClick(city, lon, lat, timeMs, scorer) {
   const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
   const score = scorer(distanceKm, timeMs);
   return { lon, lat, timeMs, distanceKm, score };
 }
 
-// ✅ timeout/straff “klick”
+// timeout/straff “klick” (max)
 function calculateTimeoutPenaltyClick(scorer) {
-  const distanceKm = 17000; // ~halvt jordklot
-  const timeMs = 20_000;
+  const distanceKm = SCORER_MAX_DISTANCE_KM; // ✅ max-distance => max distPenalty
+  const timeMs = PENALTY_TIME_MS; // ✅ 20s
   const score = scorer(distanceKm, timeMs);
-  // lon/lat null => klienten kan ignorera marker (Number.isFinite check)
   return { lon: null, lat: null, timeMs, distanceKm, score, timedOut: true };
 }
 
@@ -305,7 +388,6 @@ function clearIntermissionTimers(match) {
   if (match.readyPromptTimeout) clearTimeout(match.readyPromptTimeout);
   if (match.readyTimeout) clearTimeout(match.readyTimeout);
   if (match.countdownTimeout) clearTimeout(match.countdownTimeout);
-
   match.readyPromptTimeout = null;
   match.readyTimeout = null;
   match.countdownTimeout = null;
@@ -361,6 +443,7 @@ function startNextRoundCountdown(match) {
 function emitRoundResultAndIntermission(match, round) {
   if (!round || round.ended) return;
   round.ended = true;
+
   clearRoundTimeout(match);
 
   io.to(getRoomName(match.id)).emit("round_result", {
@@ -396,13 +479,12 @@ function startRound(match) {
     city: cityMeta,
   });
 
-  // ✅ NYTT: 20s timeout per runda
+  // ✅ 20s timeout per runda
   match.roundTimeout = setTimeout(() => {
     if (match.finished) return;
-
     const r = match.rounds[match.currentRound];
     if (!r || r.ended) return;
-    if (match.awaitingStartReady) return; // safety
+    if (match.awaitingStartReady) return;
 
     // Ge straff till alla som inte klickat
     for (const p of match.players) {
@@ -412,7 +494,7 @@ function startRound(match) {
     }
 
     emitRoundResultAndIntermission(match, r);
-  }, 20_000);
+  }, ROUND_TIMEOUT_MS);
 
   // SOLO: bot klickar efter kort delay
   if (match.isSolo) {
@@ -449,8 +531,8 @@ async function finishMatch(match) {
   clearRoundTimeout(match);
 
   const [pA, pB] = match.players;
-
   const total = { [pA]: 0, [pB]: 0 };
+
   match.rounds.forEach((r) => {
     total[pA] += r.clicks[pA]?.score ?? 0;
     total[pB] += r.clicks[pB]?.score ?? 0;
@@ -560,7 +642,7 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  // ✅ redo för att STARTA matchen (efter att kartan laddat)
+  // redo för att STARTA matchen (efter att kartan laddat)
   socket.on("player_start_ready", ({ matchId }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;
@@ -572,7 +654,7 @@ io.on("connection", (socket) => {
     const [pA, pB] = match.players;
     const bothReady = match.startReady.has(pA) && match.startReady.has(pB);
 
-    // SOLO: om bot är motståndare, räcker att du är ready
+    // SOLO: räcker att du är ready
     if (match.isSolo) {
       if (match.startReady.has(pA) || match.startReady.has(pB)) {
         clearStartReady(match);
@@ -620,9 +702,9 @@ io.on("connection", (socket) => {
     if (roundIndex !== match.currentRound) return;
 
     match.ready.add(currentUser);
+
     const [pA, pB] = match.players;
     const bothReady = match.ready.has(pA) && match.ready.has(pB);
-
     if (bothReady) startNextRoundCountdown(match);
   });
 
