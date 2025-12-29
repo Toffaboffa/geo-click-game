@@ -464,3 +464,9 @@ button:disabled {
   letter-spacing: 0.02em;
   backdrop-filter: blur(6px);
 }
+
+.login-loading-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.8;
+}

@@ -4,11 +4,19 @@ export default function Login({ onSubmit }) {
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
-    onSubmit(mode, username, password);
+    if (loading) return;
+
+    setLoading(true);
+    try {
+      await onSubmit(mode, username, password);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -19,14 +27,18 @@ export default function Login({ onSubmit }) {
 
         <div className="tabs">
           <button
+            type="button"
             className={mode === "login" ? "active" : ""}
             onClick={() => setMode("login")}
+            disabled={loading}
           >
             Logga in
           </button>
           <button
+            type="button"
             className={mode === "register" ? "active" : ""}
             onClick={() => setMode("register")}
+            disabled={loading}
           >
             Registrera
           </button>
@@ -38,6 +50,7 @@ export default function Login({ onSubmit }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
+            disabled={loading}
           />
           <input
             type="password"
@@ -45,10 +58,24 @@ export default function Login({ onSubmit }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            disabled={loading}
           />
-          <button type="submit">
-            {mode === "login" ? "Logga in" : "Skapa konto"}
+
+          <button type="submit" disabled={loading}>
+            {loading
+              ? mode === "login"
+                ? "Loggar in…"
+                : "Skapar konto…"
+              : mode === "login"
+              ? "Logga in"
+              : "Skapa konto"}
           </button>
+
+          {loading && (
+            <div className="login-loading-hint">
+              Startar servern… kan ta 30–60 sek första gången.
+            </div>
+          )}
         </form>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // client/src/App.jsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { geoRobinson } from "d3-geo-projection";
 import { login, register, logout, getLeaderboard, API_BASE } from "./api";
@@ -12,7 +12,6 @@ import Game from "./components/Game.jsx";
  * Vi skalar refs till aktuell renderad kartstorlek innan kalibrering.
  */
 const MAP_REF_BASE_SIZE = { width: 5600, height: 2900 };
-
 const MAP_REFS_BASE = [
   { name: "San Francisco", lon: -122.4194, lat: 37.7749, x: 903, y: 777 },
   { name: "Miami", lon: -80.1918, lat: 25.7617, x: 1477, y: 995 },
@@ -27,27 +26,23 @@ const MAP_REFS_BASE = [
   { name: "Tokyo", lon: 139.6917, lat: 35.6895, x: 4824, y: 812 },
   { name: "Wellington", lon: 174.7762, lat: -41.2866, x: 5280, y: 2198 },
 ];
-
 const GRID_REFS_BASE = [
   { name: "G 0,0", lon: 0, lat: 0, x: 2713, y: 1459 },
   { name: "G 0,30", lon: 0, lat: 30, x: 2719, y: 917 },
   { name: "G 0,60", lon: 0, lat: 60, x: 2745, y: 389 },
   { name: "G 0,-30", lon: 0, lat: -30, x: 2719, y: 2001 },
   { name: "G 0,-60", lon: 0, lat: -60, x: 2745, y: 2529 },
-
   { name: "G 150,0", lon: 150, lat: 0, x: 5102, y: 1459 },
   { name: "G 150,30", lon: 150, lat: 30, x: 5013, y: 917 },
   { name: "G 150,60", lon: 150, lat: 60, x: 4653, y: 389 },
   { name: "G 150,-30", lon: 150, lat: -30, x: 5013, y: 2001 },
   { name: "G 150,-60", lon: 150, lat: -60, x: 4652, y: 2529 },
-
   { name: "G -150,60", lon: -150, lat: 60, x: 838, y: 389 },
   { name: "G -150,30", lon: -150, lat: 30, x: 427, y: 917 },
   { name: "G -150,0", lon: -150, lat: 0, x: 325, y: 1459 },
   { name: "G -150,-30", lon: -150, lat: -30, x: 427, y: 2001 },
   { name: "G -150,-60", lon: -150, lat: -60, x: 838, y: 2529 },
 ];
-
 const ALL_REFS_BASE = [...MAP_REFS_BASE, ...GRID_REFS_BASE];
 
 /** Linjär regression: y ≈ a*x + b */
@@ -55,7 +50,6 @@ function fitLinear(xs, ys) {
   const n = xs.length;
   const meanX = xs.reduce((s, v) => s + v, 0) / n;
   const meanY = ys.reduce((s, v) => s + v, 0) / n;
-
   let num = 0;
   let den = 0;
   for (let i = 0; i < n; i++) {
@@ -87,7 +81,6 @@ function makeCalibratedProjection({ width, height, refs }) {
     imgXs.push(r.x);
     imgYs.push(r.y);
   }
-
   if (projXs.length < 2) return null;
 
   const { a: ax, b: bx } = fitLinear(projXs, imgXs);
@@ -132,15 +125,18 @@ export default function App() {
     setDebugShowTarget((v) => !v);
   }, []);
 
+  // ✅ NYTT: login/loading-state + “Render vaknar”-hint
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authHint, setAuthHint] = useState(null);
+  const authSlowTimerRef = useRef(null);
+
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
 
   const scaledRefs = useMemo(() => {
     const { width, height } = mapSize;
     if (!width || !height) return null;
-
     const sx = width / MAP_REF_BASE_SIZE.width;
     const sy = height / MAP_REF_BASE_SIZE.height;
-
     return ALL_REFS_BASE.map((r) => ({
       ...r,
       x: r.x * sx,
@@ -174,11 +170,9 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-
     const s = io(API_BASE, { transports: ["websocket"], path: "/socket.io" });
 
     s.on("connect", () => s.emit("auth", session.sessionId));
-
     s.on("auth_error", (msg) => {
       alert(msg);
       // logga ut helt om session är kass
@@ -233,14 +227,32 @@ export default function App() {
   }, [session]);
 
   const handleAuth = async (mode, username, password) => {
+    if (authLoading) return;
+
+    // reset UI
+    setAuthLoading(true);
+    setAuthHint(null);
+
+    if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
+    authSlowTimerRef.current = setTimeout(() => {
+      // efter ~1.2s: visa hint att servern kan vara “asleep”
+      setAuthHint("Startar servern… detta kan ta 30–60 sek första gången.");
+    }, 1200);
+
     try {
       const data =
         mode === "login"
           ? await login(username, password)
           : await register(username, password);
+
       setSession(data);
     } catch (e) {
       alert(e.message);
+    } finally {
+      if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
+      authSlowTimerRef.current = null;
+      setAuthLoading(false);
+      setAuthHint(null);
     }
   };
 
@@ -260,7 +272,15 @@ export default function App() {
     resetToLobbyState();
   };
 
-  if (!session) return <Login onSubmit={handleAuth} />;
+  if (!session) {
+    return (
+      <Login
+        onSubmit={handleAuth}
+        authLoading={authLoading}
+        authHint={authHint}
+      />
+    );
+  }
 
   if (!match) {
     return (
