@@ -77,14 +77,14 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           <button onClick={onLogout}>Logga ut</button>
         </div>
 
-        <p>Online spelare: {lobbyState.onlineCount}</p>
+        <p>Online just nu: {lobbyState.onlineCount}st.</p>
 
         <div className="lobby-actions">
           <button onClick={startRandom} disabled={!socket}>
             Spela mot slumpvis spelare
           </button>
           <button onClick={startSolo} disabled={!socket}>
-            Spela solo (random-bot)
+            Öva
           </button>
         </div>
 
