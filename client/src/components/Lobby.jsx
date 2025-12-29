@@ -41,7 +41,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
         <form onSubmit={challenge} className="challenge-form">
           <input
-            placeholder="Utmanar användare..."
+            placeholder="Utmana användare..."
             value={challengeName}
             onChange={(e) => setChallengeName(e.target.value)}
           />
