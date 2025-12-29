@@ -470,3 +470,10 @@ button:disabled {
   font-size: 12px;
   opacity: 0.8;
 }
+
+.login-copyright {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.75;
+}
