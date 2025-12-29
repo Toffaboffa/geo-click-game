@@ -11,7 +11,9 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* ✅ Viktigt: lägg till emoji-fonts så flaggor renderas */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   background: #000;
 }
 
@@ -22,7 +24,6 @@ body,
   justify-content: center;
   align-items: center;
 
-  /* Bakgrunden ligger top-centrerad, och under finns mörkblå ton */
   background-color: #0f172a;
   background-image:
     var(--start-bg-image),
@@ -30,8 +31,7 @@ body,
   background-repeat: no-repeat, no-repeat;
   background-position: top center, center;
   background-size: min(1920px, 100%) auto, cover;
-
-  /* Viktigt för “lång sida”: ingen repetition, bara mörkblå under */
+  /* ✅ lång sida: ingen repetition */
   background-attachment: scroll, scroll;
 
   color: #e5e7eb;
@@ -143,9 +143,9 @@ button:disabled {
 /* ---------- Leaderboard ---------- */
 .leaderboard {
   width: 100%;
-  border-collapse: separate; /* krävs för zebra att se bra ut */
+  border-collapse: separate;
   border-spacing: 0;
-  margin-top: 10px; /* ✅ lite extra avstånd från rubrik/form */
+  margin-top: 10px;
   font-size: 14px;
   overflow: hidden;
   border-radius: 12px;
@@ -164,7 +164,7 @@ button:disabled {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* ✅ centrera alla sifferkolumner (allt utom första) */
+/* ✅ centrera sifferkolumner */
 .leaderboard th:nth-child(n + 2),
 .leaderboard td:nth-child(n + 2) {
   text-align: center;
@@ -179,6 +179,7 @@ button:disabled {
 .leaderboard tbody tr:nth-child(odd) {
   background: rgba(15, 23, 42, 0.35);
 }
+
 .leaderboard tbody tr:nth-child(even) {
   background: rgba(15, 23, 42, 0.55);
 }
@@ -216,6 +217,7 @@ button:disabled {
   background-size: 100% 100%;
 }
 
+/* Debug-läge: byt till world_debug.png */
 .world-map-full.is-debug {
   background-image: var(--map-debug-image);
 }
@@ -328,6 +330,14 @@ button:disabled {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.78);
+}
+
+/* ✅ Viktigt: tvinga emoji-fonts på flaggan också */
+.city-flag {
+  margin-left: 8px;
+  font-size: 1.05em;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji",
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* ---------- Crosshair ---------- */
@@ -508,11 +518,6 @@ button:disabled {
   margin-top: 10px;
   display: flex;
   justify-content: center;
-}
-
-.city-flag {
-  margin-left: 8px;
-  font-size: 1.05em;
 }
 
 .city-pop {
