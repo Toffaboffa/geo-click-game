@@ -351,6 +351,17 @@ button:disabled {
   font-variant-emoji: emoji;
 }
 
+.city-flag-img {
+  margin-left: 8px;
+  height: 1.05em;
+  width: auto;
+  vertical-align: -0.12em;
+  image-rendering: auto;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 2px 14px rgba(0,0,0,0.55));
+}
+
 /* ---------- Crosshair ---------- */
 .crosshair {
   position: absolute;

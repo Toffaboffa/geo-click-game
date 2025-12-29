@@ -4,23 +4,34 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
+
 function shortCityName(name) {
   if (!name) return "";
   return String(name).split(",")[0].trim();
 }
+
 function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
 }
-function isoToFlagEmoji(cc) {
+
+// Gör en Twemoji (SVG) URL för en flagga baserat på ISO-2 landkod (t.ex. "SE").
+function isoToFlagTwemojiUrl(cc) {
   const code = String(cc || "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return "";
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+
+  // Regional Indicator Symbols: A = 0x1F1E6 ... Z = 0x1F1FF
   const A = 0x1f1e6;
-  return String.fromCodePoint(
-    A + (code.charCodeAt(0) - 65),
-    A + (code.charCodeAt(1) - 65)
-  );
+  const cp1 = A + (code.charCodeAt(0) - 65);
+  const cp2 = A + (code.charCodeAt(1) - 65);
+
+  const hex1 = cp1.toString(16);
+  const hex2 = cp2.toString(16);
+
+  // Twemoji CDN (Cloudflare). SVG är skarp och liten.
+  return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${hex1}-${hex2}.svg`;
 }
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -68,7 +79,7 @@ export default function Game({
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
-  // --- UI hover gate (NYTT): dölj lens/crosshair när musen är på knappar ---
+  // --- UI hover gate: dölj lens/crosshair när musen är på knappar ---
   const [hoveringUi, setHoveringUi] = useState(false);
   const setHoveringUiSafe = useCallback((v) => {
     setHoveringUi(v);
@@ -88,7 +99,10 @@ export default function Game({
   // -------- city meta ----------
   const cityNameRaw = gameState.cityName || gameState.city?.name || "";
   const cityLabel = shortCityName(cityNameRaw);
-  const flag = isoToFlagEmoji(gameState.city?.countryCode);
+
+  const countryCode = gameState.city?.countryCode || null;
+  const flagUrl = isoToFlagTwemojiUrl(countryCode);
+
   const pop = gameState.city?.population ? String(gameState.city.population) : null;
 
   // -------- preload map image (CSS var) ----------
@@ -111,7 +125,7 @@ export default function Game({
       setMapLoaded(true);
     }
   }, []);
-  
+
   // -------- reset per ny runda ----------
   useEffect(() => {
     setHasClickedThisRound(false);
@@ -119,11 +133,9 @@ export default function Game({
     setMyLastClickLL(null);
     setMyDistanceKm(null);
     setOppClickPx(null);
-
     setShowReadyButton(false);
     setIAmReady(false);
     setCountdown(null);
-
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
@@ -178,7 +190,7 @@ export default function Game({
 
   const matchFinished = !!gameState.finalResult;
 
-  // -------- target px (för reveal direkt efter klick) ----------
+  // -------- target px ----------
   const targetPx = useMemo(() => {
     const c = gameState.city;
     if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lon)) return null;
@@ -194,21 +206,13 @@ export default function Game({
   useEffect(() => {
     if (!socket) return;
 
-    const onStartReadyPrompt = () => {
-      // om servern säger "redo-läge" igen, lås upp knappen lokalt
-      setStartReadySent(false);
-    };
+    const onStartReadyPrompt = () => setStartReadySent(false);
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
       try {
         const oppRes = results?.[opponentName];
-        if (
-          oppRes &&
-          mapProject &&
-          Number.isFinite(oppRes.lon) &&
-          Number.isFinite(oppRes.lat)
-        ) {
+        if (oppRes && mapProject && Number.isFinite(oppRes.lon) && Number.isFinite(oppRes.lat)) {
           const px = mapProject(oppRes.lon, oppRes.lat);
           if (px) setOppClickPx(px);
         }
@@ -244,7 +248,7 @@ export default function Game({
 
   // -------- pointer / lens ----------
   const onPointerMove = (e) => {
-    if (hoveringUi) return; // ✅ dölj/pausa lens när musen är på knappar
+    if (hoveringUi) return;
     if (!mapRef.current) return;
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
@@ -263,13 +267,8 @@ export default function Game({
     if (!socket || !match) return;
     if (hasClickedThisRound) return;
     if (!mapRef.current) return;
-
-    // ✅ om vi klickar på UI som ligger ovanpå kartan, ignorera kart-klick
     if (hoveringUi) return;
-
-    // Lås input om vi är i ready/countdown-läge
     if (showReadyButton || countdown !== null) return;
-    // Lås input om matchen inte startat än (redo-gate)
     if (gameState.currentRound < 0) return;
 
     if (!mapInvert) {
@@ -290,7 +289,6 @@ export default function Game({
     setTimerRunning(false);
     const timeMs = elapsedMs;
 
-    // distance direkt
     const c = gameState.city;
     if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
       setMyDistanceKm(haversineKm(lat, lon, c.lat, c.lon));
@@ -306,14 +304,16 @@ export default function Game({
 
   // -------- lens style ----------
   const lensStyle = useMemo(() => {
-    if (hoveringUi) return null; // ✅ dölj lens när musen är på UI
+    if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
+
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
+
     return {
       left: pointer.x,
       top: pointer.y,
@@ -322,7 +322,7 @@ export default function Game({
     };
   }, [pointer, hoveringUi]);
 
-  // -------- button helpers (NYTT): stoppa bubbling till kartan ----------
+  // -------- button helpers ----------
   const stop = (fn) => (e) => {
     e.preventDefault?.();
     e.stopPropagation?.();
@@ -360,6 +360,7 @@ export default function Game({
           <div className="hud-name">{myName}</div>
           <div className="hud-score">{Math.round(myScoreSoFar)}</div>
         </div>
+
         <div className="hud hud-right">
           <div className="hud-name">{opponentName}</div>
           <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
@@ -387,10 +388,20 @@ export default function Game({
           <div className="city-bar">
             <div className="city-label">
               {cityLabel || "…"}
-              {flag ? <span className="city-flag">{flag}</span> : null}
+              {flagUrl ? (
+                <img
+                  className="city-flag-img"
+                  src={flagUrl}
+                  alt={countryCode ? `Flagga ${countryCode}` : "Flagga"}
+                  title={countryCode || ""}
+                  draggable={false}
+                />
+              ) : null}
             </div>
+
             {pop ? <div className="city-pop">Pop: {pop}</div> : null}
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
+
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
@@ -436,6 +447,7 @@ export default function Game({
             )}
           </>
         )}
+
         {oppClickPx && (
           <div
             className="click-marker click-marker-opp"
