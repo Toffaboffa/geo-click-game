@@ -2,8 +2,6 @@
 :root {
   --map-image: url("./assets/world.png");
   --map-debug-image: url("./assets/world_debug.png");
-
-  /* ✅ NYTT: start/dashboard-bakgrund */
   --start-bg-image: url("./assets/bg_start.png");
 }
 
@@ -24,15 +22,17 @@ body,
   justify-content: center;
   align-items: center;
 
-  /* ✅ Bakgrunden ligger top-centrerad, och under finns din vanliga ton */
+  /* Bakgrunden ligger top-centrerad, och under finns mörkblå ton */
   background-color: #0f172a;
   background-image:
     var(--start-bg-image),
     radial-gradient(1200px 700px at 50% 15%, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0) 60%);
   background-repeat: no-repeat, no-repeat;
   background-position: top center, center;
-  /* Behåll 1920px bred look men funka även på mindre skärmar */
   background-size: min(1920px, 100%) auto, cover;
+
+  /* Viktigt för “lång sida”: ingen repetition, bara mörkblå under */
+  background-attachment: scroll, scroll;
 
   color: #e5e7eb;
 }
@@ -57,6 +57,24 @@ body,
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.tabs button {
+  margin-top: 0; /* globala button har margin-top */
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(37, 99, 235, 0.25);
+}
+
+.tabs button.active {
+  background: #2563eb;
 }
 
 input {
@@ -89,18 +107,94 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.leaderboard {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 12px;
-  font-size: 14px;
+.login-loading-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.8;
 }
 
-.leaderboard th,
-.leaderboard td {
-  border-bottom: 1px solid #1f2937;
-  padding: 4px 6px;
+.auth-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.auth-copyright {
+  margin-top: 14px;
+  font-size: 12px;
+  opacity: 0.7;
+  text-align: center;
+  color: #e5e7eb;
+}
+
+/* Lobby spacing */
+.lobby-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 8px;
+}
+
+.challenge-form {
+  margin-top: 10px;
+  margin-bottom: 16px; /* ✅ lite luft innan topplistan */
+}
+
+/* ---------- Leaderboard ---------- */
+.leaderboard {
+  width: 100%;
+  border-collapse: separate; /* krävs för zebra att se bra ut */
+  border-spacing: 0;
+  margin-top: 10px; /* ✅ lite extra avstånd från rubrik/form */
+  font-size: 14px;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard thead th {
+  padding: 10px 10px;
   text-align: left;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(229, 231, 235, 0.92);
+  background: rgba(2, 6, 23, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ✅ centrera alla sifferkolumner (allt utom första) */
+.leaderboard th:nth-child(n + 2),
+.leaderboard td:nth-child(n + 2) {
+  text-align: center;
+}
+
+.leaderboard tbody td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ✅ zebra-ränder */
+.leaderboard tbody tr:nth-child(odd) {
+  background: rgba(15, 23, 42, 0.35);
+}
+.leaderboard tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.leaderboard tbody tr:hover {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+/* ✅ highlight “du själv” (lägg className="is-me" på tr) */
+.leaderboard tbody tr.is-me {
+  background: rgba(37, 99, 235, 0.22) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.35);
+}
+
+.leaderboard tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* ---------- GAME ---------- */
@@ -122,7 +216,6 @@ button:disabled {
   background-size: 100% 100%;
 }
 
-/* Debug-läge: byt till world_debug.png */
 .world-map-full.is-debug {
   background-image: var(--map-debug-image);
 }
@@ -159,7 +252,7 @@ button:disabled {
   font-weight: 700;
 }
 
-/* ---------- Actions (egna styles så globala button inte stör) ---------- */
+/* ---------- Actions ---------- */
 .hud-actions {
   position: absolute;
   top: 12px;
@@ -187,7 +280,7 @@ button:disabled {
   opacity: 1;
 }
 
-/* ---------- Bottom city bar (tonad rad över hela bredden) ---------- */
+/* ---------- Bottom city bar ---------- */
 .city-bottom {
   position: absolute;
   left: 0;
@@ -198,13 +291,11 @@ button:disabled {
   user-select: none;
 }
 
-/* OBS: stöd både gamla .city-bar och nya .city-strip */
 .city-bar,
 .city-strip {
   width: 100%;
   padding: 16px 14px 18px;
   text-align: center;
-  /* tonad “rad” som hjälper text över Antarktis */
   background: linear-gradient(
     to top,
     rgba(0, 0, 0, 0.80),
@@ -239,13 +330,13 @@ button:disabled {
   color: rgba(255, 255, 255, 0.78);
 }
 
-/* ---------- Crosshair: mindre + mer tonad ---------- */
+/* ---------- Crosshair ---------- */
 .crosshair {
   position: absolute;
   width: 10px;
   height: 10px;
   transform: translate(-50%, -50%);
-  z-index: 9; /* över linsen */
+  z-index: 9;
   pointer-events: none;
   opacity: 0.72;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
@@ -280,7 +371,6 @@ button:disabled {
   border: 2px solid rgba(255, 255, 255, 0.90);
   z-index: 8;
   pointer-events: none;
-  /* Din JS sätter left/top + bgSize/bgPosition */
   transform: translate(-50%, -50%);
   background-image: var(--map-image);
   background-repeat: no-repeat;
@@ -292,7 +382,7 @@ button:disabled {
   background-image: var(--map-debug-image);
 }
 
-/* ---------- Click markers (du + motståndare) ---------- */
+/* ---------- Click markers ---------- */
 .click-marker {
   position: absolute;
   width: 14px;
@@ -312,7 +402,7 @@ button:disabled {
   background: rgba(255, 70, 70, 0.92);
 }
 
-/* ---------- Debug markers (behåll) ---------- */
+/* ---------- Debug markers ---------- */
 .debug-dot {
   position: absolute;
   width: 10px;
@@ -355,7 +445,6 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
-  /* override globala hover-opacity */
   opacity: 1;
 }
 
@@ -367,7 +456,7 @@ button:disabled {
   opacity: 0.55;
 }
 
-/* ---------- Finish overlay (oförändrad) ---------- */
+/* ---------- Finish overlay ---------- */
 .finish-overlay {
   position: absolute;
   inset: 0;
@@ -435,7 +524,6 @@ button:disabled {
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
 }
 
-/* Target marker (stadens riktiga position) */
 .target-marker {
   position: absolute;
   width: 12px;
@@ -448,7 +536,6 @@ button:disabled {
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
 }
 
-/* Km-label under din klick-prick */
 .click-distance {
   position: absolute;
   transform: translate(-50%, 0);
@@ -464,24 +551,3 @@ button:disabled {
   letter-spacing: 0.02em;
   backdrop-filter: blur(6px);
 }
-
-.login-loading-hint {
-  margin-top: 10px;
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.auth-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.auth-copyright {
-  margin-top: 14px;
-  font-size: 12px;
-  opacity: 0.7;
-  text-align: center;
-  color: #e5e7eb;
-}
-

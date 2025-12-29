@@ -24,7 +24,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     <div className="screen">
       <div className="panel">
         <div className="panel-header">
-          <h2>Hej, {session.username}</h2>
+          <h2>Inloggad som: {session.username}</h2>
           <button onClick={onLogout}>Logga ut</button>
         </div>
 
@@ -58,7 +58,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
               <th>Spelade</th>
               <th>Vunna</th>
               <th>Förlorade</th>
-              <th>Genomsnittlig poäng</th>
+              <th>PPM</th>
             </tr>
           </thead>
           <tbody>
