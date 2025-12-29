@@ -336,8 +336,19 @@ button:disabled {
 .city-flag {
   margin-left: 8px;
   font-size: 1.05em;
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji",
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1;
+
+  /* ✅ tvinga emoji-fonts */
+  font-family:
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Segoe UI Symbol",
+    "Noto Color Emoji",
+    system-ui,
+    sans-serif;
+
+  /* (valfritt, hjälper i vissa browsers) */
+  font-variant-emoji: emoji;
 }
 
 /* ---------- Crosshair ---------- */
