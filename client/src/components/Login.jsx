@@ -18,8 +18,9 @@ export default function Login({ onSubmit }) {
     }
   };
 
-  return (
-    <div className="screen">
+return (
+  <div className="screen">
+    <div className="auth-wrap">
       <div className="panel">
         <h1>GeoSense</h1>
         <p>Logga in eller skapa konto med valfritt användarnamn och lösenord.</p>
@@ -71,13 +72,14 @@ export default function Login({ onSubmit }) {
 
           {loading && (
             <div className="login-loading-hint">
-              Loggar in, stäng inte fönstret.
+              Loggar in...
             </div>
           )}
         </form>
       </div>
 
-      <div className="login-copyright">© Kristoffer Åberg 2026</div>
+      <div className="auth-copyright">© Kristoffer Åberg 2026</div>
     </div>
-  );
+  </div>
+);
 }
