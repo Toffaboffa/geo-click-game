@@ -10,7 +10,6 @@ export default function Login({ onSubmit }) {
     e.preventDefault();
     if (!username || !password) return;
     if (loading) return;
-
     setLoading(true);
     try {
       await onSubmit(mode, username, password);
@@ -60,7 +59,6 @@ export default function Login({ onSubmit }) {
             autoComplete="current-password"
             disabled={loading}
           />
-
           <button type="submit" disabled={loading}>
             {loading
               ? mode === "login"
@@ -73,12 +71,13 @@ export default function Login({ onSubmit }) {
 
           {loading && (
             <div className="login-loading-hint">
-              Startar servern… kan ta 30–60 sek första gången.
+              Loggar in, stäng inte fönstret.
             </div>
           )}
         </form>
       </div>
-	  <br><p>© Kristoffer Åberg 2026</p>
+
+      <div className="login-copyright">© Kristoffer Åberg 2026</div>
     </div>
   );
 }
