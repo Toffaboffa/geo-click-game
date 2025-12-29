@@ -111,6 +111,12 @@ export default function Game({
       setMapLoaded(true);
     }
   }, []);
+  
+  useEffect(() => {
+  if (gameState.city) {
+    console.log("city.countryCode =", gameState.city.countryCode, "flag =", isoToFlagEmoji(gameState.city.countryCode));
+  }
+}, [gameState.city]);
 
   // -------- reset per ny runda ----------
   useEffect(() => {
