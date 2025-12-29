@@ -20,7 +20,7 @@ export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
 
 // Skapar en scorer för en match
 // Normaliserar avstånd & tid till poäng där lägre är bättre
-export function createRoundScorer(maxDistanceKm = 20000, maxTimeMs = 10000) {
+export function createRoundScorer(maxDistanceKm = 20000, maxTimeMs = 20000) {
   return function score(distanceKm, timeMs) {
     const distPenalty = Math.min(distanceKm / maxDistanceKm, 1);
     const timePenalty = Math.min(timeMs / maxTimeMs, 1);

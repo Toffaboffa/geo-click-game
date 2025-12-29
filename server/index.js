@@ -295,7 +295,7 @@ function calculateClick(city, lon, lat, timeMs, scorer) {
 // ✅ timeout/straff “klick”
 function calculateTimeoutPenaltyClick(scorer) {
   const distanceKm = 17000; // ~halvt jordklot
-  const timeMs = 120_000;
+  const timeMs = 20_000;
   const score = scorer(distanceKm, timeMs);
   // lon/lat null => klienten kan ignorera marker (Number.isFinite check)
   return { lon: null, lat: null, timeMs, distanceKm, score, timedOut: true };
@@ -396,7 +396,7 @@ function startRound(match) {
     city: cityMeta,
   });
 
-  // ✅ NYTT: 120s timeout per runda
+  // ✅ NYTT: 20s timeout per runda
   match.roundTimeout = setTimeout(() => {
     if (match.finished) return;
 
@@ -412,7 +412,7 @@ function startRound(match) {
     }
 
     emitRoundResultAndIntermission(match, r);
-  }, 120_000);
+  }, 20_000);
 
   // SOLO: bot klickar efter kort delay
   if (match.isSolo) {
