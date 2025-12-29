@@ -12,9 +12,11 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
   // Hämta sparat läge från servern
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
       try {
         const me = await getMe(session.sessionId);
+
         if (!cancelled && typeof me?.showOnLeaderboard === "boolean") {
           setShowMeOnLeaderboard(me.showOnLeaderboard);
         } else if (!cancelled && typeof me?.hidden === "boolean") {
@@ -25,7 +27,9 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         // om servern inte är uppdaterad än: ignorera
       }
     }
+
     if (session?.sessionId) load();
+
     return () => {
       cancelled = true;
     };
@@ -38,7 +42,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     try {
       await setLeaderboardVisibility(session.sessionId, next);
     } catch {
-      // om servern inte är uppdaterad än: ignorera (UI känns ändå responsivt)
+      // om servern inte är uppdaterad än: ignorera
     } finally {
       setSavingVis(false);
     }
@@ -65,9 +69,20 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
   // Men om du togglar lokalt innan leaderboard hinner refetcha kan vi spegla det i UI:
   const leaderboardRows = useMemo(() => {
     const rows = Array.isArray(leaderboard) ? leaderboard : [];
-    const filtered = showMeOnLeaderboard ? rows : rows.filter((u) => u.username !== session.username);
+    const filtered = showMeOnLeaderboard
+      ? rows
+      : rows.filter((u) => u.username !== session.username);
     return filtered.slice(0, 20);
   }, [leaderboard, showMeOnLeaderboard, session.username]);
+
+  const getRowClass = (rank, username) => {
+    const classes = [];
+    if (username === session.username) classes.push("is-me");
+    if (rank === 1) classes.push("rank-1");
+    else if (rank === 2) classes.push("rank-2");
+    else if (rank === 3) classes.push("rank-3");
+    return classes.join(" ");
+  };
 
   return (
     <div className="screen">
@@ -107,9 +122,11 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         </div>
 
         <h3>Topplista (Top 20)</h3>
+
         <table className="leaderboard">
           <thead>
             <tr>
+              <th style={{ width: 56, textAlign: "right" }}>#</th>
               <th>Spelare</th>
               <th>Spelade</th>
               <th>Vunna</th>
@@ -117,18 +134,34 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
               <th>PPM</th>
             </tr>
           </thead>
+
           <tbody>
-            {leaderboardRows.map((u) => (
-              <tr key={u.username} className={u.username === session.username ? "is-me" : ""}>
-                <td>{u.username}</td>
-                <td>{u.played}</td>
-                <td>{u.wins}</td>
-                <td>{u.losses}</td>
-                <td>{Number(u.avgScore).toFixed(0)}</td>
-              </tr>
-            ))}
+            {leaderboardRows.map((u, idx) => {
+              const rank = idx + 1;
+              const isTop1 = rank === 1;
+
+              return (
+                <tr key={u.username} className={getRowClass(rank, u.username)}>
+                  <td style={{ textAlign: "right", fontWeight: 900 }}>
+                    {rank}
+                  </td>
+
+                  <td style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
+                    {isTop1 ? <span title="Plats 1" style={{ marginRight: 6 }}>👑</span> : null}
+                    {u.username}
+                  </td>
+
+                  <td>{u.played}</td>
+                  <td>{u.wins}</td>
+                  <td>{u.losses}</td>
+                  <td>{Number(u.avgScore).toFixed(0)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+
+        {/* Tips: lägg CSS för rank-1/2/3 om du vill ha “extra fint” */}
       </div>
     </div>
   );
