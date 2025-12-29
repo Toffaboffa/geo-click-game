@@ -4,12 +4,10 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
-
 function shortCityName(name) {
   if (!name) return "";
   return String(name).split(",")[0].trim();
 }
-
 function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
@@ -19,16 +17,11 @@ function fmtMs(ms) {
 function isoToFlagTwemojiUrl(cc) {
   const code = String(cc || "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return null;
-
-  // Regional Indicator Symbols: A = 0x1F1E6 ... Z = 0x1F1FF
   const A = 0x1f1e6;
   const cp1 = A + (code.charCodeAt(0) - 65);
   const cp2 = A + (code.charCodeAt(1) - 65);
-
   const hex1 = cp1.toString(16);
   const hex2 = cp2.toString(16);
-
-  // Twemoji CDN (Cloudflare). SVG är skarp och liten.
   return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${hex1}-${hex2}.svg`;
 }
 
@@ -79,7 +72,7 @@ export default function Game({
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
-  // --- UI hover gate: dölj lens/crosshair när musen är på knappar ---
+  // --- UI hover gate: dölj lens/crosshair när musen är på knappar/overlays ---
   const [hoveringUi, setHoveringUi] = useState(false);
   const setHoveringUiSafe = useCallback((v) => {
     setHoveringUi(v);
@@ -99,11 +92,21 @@ export default function Game({
   // -------- city meta ----------
   const cityNameRaw = gameState.cityName || gameState.city?.name || "";
   const cityLabel = shortCityName(cityNameRaw);
-
   const countryCode = gameState.city?.countryCode || null;
   const flagUrl = isoToFlagTwemojiUrl(countryCode);
-
   const pop = gameState.city?.population ? String(gameState.city.population) : null;
+
+  const matchFinished = !!gameState.finalResult;
+  const showStartGate = !matchFinished && gameState.currentRound < 0;
+
+  // ✅ FIX: Om overlay “försvinner” utan mouseleave → återställ hoveringUi så linsen kan komma tillbaka
+  useEffect(() => {
+    // När vi inte längre visar någon overlay som “tar” hover (ready/start/finish),
+    // och vi inte är i countdown-läge, då ska hoveringUi inte kunna fastna på true.
+    if (!showReadyButton && !showStartGate && !matchFinished && countdown === null) {
+      setHoveringUi(false);
+    }
+  }, [showReadyButton, showStartGate, matchFinished, countdown]);
 
   // -------- preload map image (CSS var) ----------
   useEffect(() => {
@@ -139,6 +142,9 @@ export default function Game({
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
+
+    // ✅ extra säkerhet: ny runda = släpp UI-hover
+    setHoveringUi(false);
   }, [gameState.currentRound]);
 
   // -------- rapportera kartans storlek ----------
@@ -188,8 +194,6 @@ export default function Game({
     return total;
   }, [gameState.roundResults, opponentName]);
 
-  const matchFinished = !!gameState.finalResult;
-
   // -------- target px ----------
   const targetPx = useMemo(() => {
     const c = gameState.city;
@@ -217,13 +221,18 @@ export default function Game({
           if (px) setOppClickPx(px);
         }
       } catch (_) {}
+
       setTimeout(() => setShowReadyButton(true), 3500);
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
+      // ✅ När countdown startar: overlay läggs undan → släpp UI-hover direkt
+      setHoveringUi(false);
+
       setShowReadyButton(false);
       setIAmReady(false);
       setCountdown(seconds);
+
       let left = seconds;
       const t = setInterval(() => {
         left -= 1;
@@ -253,6 +262,7 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
+
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => setPointer({ x, y, inside: true }));
   };
@@ -279,7 +289,6 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
-
     const ll = mapInvert(xPx, yPx);
     if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
 
@@ -306,14 +315,12 @@ export default function Game({
   const lensStyle = useMemo(() => {
     if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
-
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
-
     return {
       left: pointer.x,
       top: pointer.y,
@@ -343,8 +350,6 @@ export default function Game({
     socket.emit("player_start_ready", { matchId: match.matchId });
   };
 
-  const showStartGate = !matchFinished && gameState.currentRound < 0;
-
   return (
     <div className="game-root">
       <div
@@ -360,7 +365,6 @@ export default function Game({
           <div className="hud-name">{myName}</div>
           <div className="hud-score">{Math.round(myScoreSoFar)}</div>
         </div>
-
         <div className="hud hud-right">
           <div className="hud-name">{opponentName}</div>
           <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
@@ -398,10 +402,8 @@ export default function Game({
                 />
               ) : null}
             </div>
-
             {pop ? <div className="city-pop">Pop: {pop}</div> : null}
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
-
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">Nästa runda om {countdown}s</div>
             )}
@@ -449,10 +451,7 @@ export default function Game({
         )}
 
         {oppClickPx && (
-          <div
-            className="click-marker click-marker-opp"
-            style={{ left: oppClickPx.x, top: oppClickPx.y }}
-          />
+          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
         )}
 
         {/* Debug target + debug click */}
