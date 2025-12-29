@@ -78,7 +78,7 @@ export default function Login({ onSubmit }) {
           )}
         </form>
       </div>
-	  <p>© Kristoffer Åberg 2026</p>
+	  <br><p>© Kristoffer Åberg 2026</p>
     </div>
   );
 }
