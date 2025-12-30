@@ -51,9 +51,13 @@ export default function Game({
   onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
+
   const myName = session.username;
 
+  const isPractice = !!match?.isPractice || !!match?.isSolo;
+
   const opponentName = useMemo(() => {
+    // i practice bryr vi oss inte om motståndare i UI, men behåll fallback för intern logik
     return match.players.find((p) => p !== myName) || "Motståndare";
   }, [match.players, myName]);
 
@@ -66,6 +70,8 @@ export default function Game({
   const [myClickPx, setMyClickPx] = useState(null); // {x,y}
   const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
   const [myDistanceKm, setMyDistanceKm] = useState(null); // number
+
+  // i practice vill vi INTE visa bot/opp-markör
   const [oppClickPx, setOppClickPx] = useState(null); // {x,y}
 
   // --- pointer + lens ---
@@ -101,8 +107,6 @@ export default function Game({
 
   // ✅ FIX: Om overlay “försvinner” utan mouseleave → återställ hoveringUi så linsen kan komma tillbaka
   useEffect(() => {
-    // När vi inte längre visar någon overlay som “tar” hover (ready/start/finish),
-    // och vi inte är i countdown-läge, då ska hoveringUi inte kunna fastna på true.
     if (!showReadyButton && !showStartGate && !matchFinished && countdown === null) {
       setHoveringUi(false);
     }
@@ -135,15 +139,16 @@ export default function Game({
     setMyClickPx(null);
     setMyLastClickLL(null);
     setMyDistanceKm(null);
+
+    // practice: se till att vi aldrig visar bot/opp-spår
     setOppClickPx(null);
+
     setShowReadyButton(false);
     setIAmReady(false);
     setCountdown(null);
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
-
-    // ✅ extra säkerhet: ny runda = släpp UI-hover
     setHoveringUi(false);
   }, [gameState.currentRound]);
 
@@ -203,8 +208,9 @@ export default function Game({
   }, [gameState.city, mapProject]);
 
   const shouldShowTarget = useMemo(() => {
-    return !!hasClickedThisRound || !!oppClickPx || !!debugShowTarget;
-  }, [hasClickedThisRound, oppClickPx, debugShowTarget]);
+    // practice: visa bara target när DU klickat (eller debug)
+    return !!hasClickedThisRound || (!!oppClickPx && !isPractice) || !!debugShowTarget;
+  }, [hasClickedThisRound, oppClickPx, debugShowTarget, isPractice]);
 
   // -------- socket events ----------
   useEffect(() => {
@@ -214,21 +220,28 @@ export default function Game({
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
-      try {
-        const oppRes = results?.[opponentName];
-        if (oppRes && mapProject && Number.isFinite(oppRes.lon) && Number.isFinite(oppRes.lat)) {
-          const px = mapProject(oppRes.lon, oppRes.lat);
-          if (px) setOppClickPx(px);
-        }
-      } catch (_) {}
 
-      setTimeout(() => setShowReadyButton(true), 3500);
+      // practice: ignorera motståndarens klick helt
+      if (!isPractice) {
+        try {
+          const oppRes = results?.[opponentName];
+          if (oppRes && mapProject && Number.isFinite(oppRes.lon) && Number.isFinite(oppRes.lat)) {
+            const px = mapProject(oppRes.lon, oppRes.lat);
+            if (px) setOppClickPx(px);
+          }
+        } catch (_) {}
+      } else {
+        setOppClickPx(null);
+      }
+
+      // ✅ endast multiplayer ska visa “Redo för nästa”
+      if (!isPractice) {
+        setTimeout(() => setShowReadyButton(true), 3500);
+      }
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
-      // ✅ När countdown startar: overlay läggs undan → släpp UI-hover direkt
       setHoveringUi(false);
-
       setShowReadyButton(false);
       setIAmReady(false);
       setCountdown(seconds);
@@ -253,12 +266,13 @@ export default function Game({
       socket.off("round_result", onRoundResult);
       socket.off("next_round_countdown", onNextRoundCountdown);
     };
-  }, [socket, opponentName, mapProject]);
+  }, [socket, opponentName, mapProject, isPractice]);
 
   // -------- pointer / lens ----------
   const onPointerMove = (e) => {
     if (hoveringUi) return;
     if (!mapRef.current) return;
+
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
@@ -289,6 +303,7 @@ export default function Game({
     const rect = mapRef.current.getBoundingClientRect();
     const xPx = e.clientX - rect.left;
     const yPx = e.clientY - rect.top;
+
     const ll = mapInvert(xPx, yPx);
     if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
 
@@ -306,6 +321,7 @@ export default function Game({
     }
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
+
     setHasClickedThisRound(true);
     setMyClickPx({ x: xPx, y: yPx });
     setMyLastClickLL({ lon, lat, timeMs });
@@ -315,12 +331,14 @@ export default function Game({
   const lensStyle = useMemo(() => {
     if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
+
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
+
     return {
       left: pointer.x,
       top: pointer.y,
@@ -362,13 +380,17 @@ export default function Game({
       >
         {/* Score */}
         <div className="hud hud-left">
-          <div className="hud-name">{myName}</div>
+          <div className="hud-name">{isPractice ? `${myName} (Öva)` : myName}</div>
           <div className="hud-score">{Math.round(myScoreSoFar)}</div>
         </div>
-        <div className="hud hud-right">
-          <div className="hud-name">{opponentName}</div>
-          <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
-        </div>
+
+        {/* Inget motståndar-HUD i Öva */}
+        {!isPractice && (
+          <div className="hud hud-right">
+            <div className="hud-name">{opponentName}</div>
+            <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
+          </div>
+        )}
 
         {/* Actions */}
         <div
@@ -428,7 +450,7 @@ export default function Game({
           <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }} />
         )}
 
-        {/* Click markers */}
+        {/* Click markers (endast din i Öva) */}
         {myClickPx && (
           <>
             <div
@@ -450,8 +472,12 @@ export default function Game({
           </>
         )}
 
-        {oppClickPx && (
-          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
+        {/* Ingen opp-marker i Öva */}
+        {!isPractice && oppClickPx && (
+          <div
+            className="click-marker click-marker-opp"
+            style={{ left: oppClickPx.x, top: oppClickPx.y }}
+          />
         )}
 
         {/* Debug target + debug click */}
@@ -462,8 +488,8 @@ export default function Game({
           <div className="debug-dot debug-dot-click" style={{ left: myClickPx.x, top: myClickPx.y }} />
         )}
 
-        {/* Ready overlay */}
-        {showReadyButton && !matchFinished && (
+        {/* Ready overlay (endast multiplayer) */}
+        {showReadyButton && !matchFinished && !isPractice && (
           <div
             className="ready-overlay"
             onMouseEnter={() => setHoveringUiSafe(true)}
@@ -487,7 +513,7 @@ export default function Game({
               onClick={stop(onPressStartReady)}
               disabled={!mapLoaded || startReadySent}
             >
-              {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar på andra..." : "Redo"}
+              {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar..." : "Redo"}
             </button>
           </div>
         )}
@@ -500,22 +526,30 @@ export default function Game({
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
             <div className="finish-card">
-              <div className="finish-title">Slutresultat</div>
+              <div className="finish-title">{isPractice ? "Övning klar" : "Slutresultat"}</div>
+
               <div className="finish-row">
                 <span>{myName}</span>
                 <span>{Math.round(myScoreSoFar)}</span>
               </div>
-              <div className="finish-row">
-                <span>{opponentName}</span>
-                <span>{Math.round(oppScoreSoFar)}</span>
-              </div>
-              <div className="finish-winner">
-                {gameState.finalResult.winner === myName
-                  ? "Du vann"
-                  : gameState.finalResult.winner
-                  ? "Du förlorade"
-                  : "Oavgjort"}
-              </div>
+
+              {!isPractice && (
+                <div className="finish-row">
+                  <span>{opponentName}</span>
+                  <span>{Math.round(oppScoreSoFar)}</span>
+                </div>
+              )}
+
+              {!isPractice && (
+                <div className="finish-winner">
+                  {gameState.finalResult.winner === myName
+                    ? "Du vann"
+                    : gameState.finalResult.winner
+                    ? "Du förlorade"
+                    : "Oavgjort"}
+                </div>
+              )}
+
               <div className="finish-actions">
                 <button className="hud-btn" onClick={stop(onLeaveMatch)}>
                   Till lobby
