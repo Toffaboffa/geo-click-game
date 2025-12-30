@@ -54,7 +54,7 @@ body,
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 
   /* ✅ fast bredd */
-  width: 820px;
+  width: 520px;
 
   /* ✅ säkerhetsnät för mobil / små fönster */
   max-width: calc(100vw - 32px);
@@ -94,7 +94,7 @@ body,
 }
 
 input {
-  width: 100%;
+  width: 80px;
   padding: 8px 10px;
   margin: 6px 0;
   border-radius: 8px;
