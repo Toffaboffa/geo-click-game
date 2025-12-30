@@ -138,9 +138,9 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
             <tr>
               <th className="lb-rank">#</th>
               <th>Spelare</th>
-              <th>Spelade</th>
-              <th>Vunna</th>
-              <th>Förlorade</th>
+              <th>SM</th>
+              <th>VM</th>
+              <th>FM</th>
               <th>Pct</th>
               <th>PPM</th>
             </tr>
