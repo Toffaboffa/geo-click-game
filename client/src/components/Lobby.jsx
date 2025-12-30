@@ -4,7 +4,6 @@ import { getMe, setLeaderboardVisibility } from "../api";
 
 export default function Lobby({ session, socket, lobbyState, leaderboard, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
-
   // Toggle i UI (true = syns i leaderboard)
   const [showMeOnLeaderboard, setShowMeOnLeaderboard] = useState(true);
   const [savingVis, setSavingVis] = useState(false);
@@ -16,19 +15,15 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     async function load() {
       try {
         const me = await getMe(session.sessionId);
-
-        // Om server någon gång skickar showOnLeaderboard (framtidssäkert)
         if (!cancelled && typeof me?.showOnLeaderboard === "boolean") {
           setShowMeOnLeaderboard(me.showOnLeaderboard);
           return;
         }
-
-        // Nuvarande server-upplägg: hidden (true/false)
         if (!cancelled && typeof me?.hidden === "boolean") {
           setShowMeOnLeaderboard(!me.hidden);
         }
       } catch {
-        // om servern inte är uppdaterad än: ignorera
+        // ignorera
       }
     }
 
@@ -40,12 +35,12 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
   const onToggleShowMe = async () => {
     const next = !showMeOnLeaderboard;
-    setShowMeOnLeaderboard(next); // direkt respons i UI
+    setShowMeOnLeaderboard(next);
     setSavingVis(true);
     try {
       await setLeaderboardVisibility(session.sessionId, next);
     } catch {
-      // om servern inte matchar än: ignorera (UI är fortfarande responsivt)
+      // ignorera
     } finally {
       setSavingVis(false);
     }
@@ -68,7 +63,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     setChallengeName("");
   };
 
-  // Servern bör redan returnera top 20 + filtrera hidden = true.
+  // Servern returnerar top 20 och filtrerar hidden + played>0.
   // Men om du togglar lokalt innan leaderboard hinner refetcha: spegla det i UI.
   const leaderboardRows = useMemo(() => {
     const rows = Array.isArray(leaderboard) ? leaderboard : [];
@@ -83,6 +78,20 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     else if (rank === 2) classes.push("lb-top2");
     else if (rank === 3) classes.push("lb-top3");
     return classes.join(" ");
+  };
+
+  const formatPct = (u) => {
+    // Primärt: använd pct från server (DB)
+    const pctDb = u?.pct;
+    if (typeof pctDb === "number" && Number.isFinite(pctDb)) return pctDb.toFixed(1);
+
+    // Backup: räkna i klient om pct saknas
+    const w = Number(u?.wins ?? 0);
+    const l = Number(u?.losses ?? 0);
+    const denom = w + l;
+    if (denom <= 0) return "-";
+    const pct = (100 * w) / denom;
+    return pct.toFixed(1);
   };
 
   return (
@@ -123,6 +132,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         </div>
 
         <h3>Topplista (Top 20)</h3>
+
         <table className="leaderboard">
           <thead>
             <tr>
@@ -131,6 +141,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
               <th>Spelade</th>
               <th>Vunna</th>
               <th>Förlorade</th>
+              <th>Pct</th>
               <th>PPM</th>
             </tr>
           </thead>
@@ -146,13 +157,13 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                   <td>{u.played}</td>
                   <td>{u.wins}</td>
                   <td>{u.losses}</td>
+                  <td>{formatPct(u)}</td>
                   <td>{Number(u.avgScore).toFixed(0)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-
       </div>
     </div>
   );
