@@ -20,8 +20,22 @@ body,
 .screen {
   min-height: 100vh;
   display: flex;
+
+  /* ✅ centrerad horisontellt */
   justify-content: center;
-  align-items: center;
+
+  /* ✅ INTE vertikalt centrerad – vi lägger panelen på fast avstånd från toppen */
+  align-items: flex-start;
+
+  /* ✅ fast avstånd från toppen */
+  padding-top: 300px;
+
+  /* ✅ lite marginal så den inte klistrar i kanterna på små skärmar */
+  padding-left: 16px;
+  padding-right: 16px;
+
+  box-sizing: border-box;
+
   background-color: #0f172a;
   background-image:
     var(--start-bg-image),
@@ -38,8 +52,14 @@ body,
   padding: 24px;
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  min-width: 320px;
-  max-width: 900px;
+
+  /* ✅ fast bredd */
+  width: 820px;
+
+  /* ✅ säkerhetsnät för mobil / små fönster */
+  max-width: calc(100vw - 32px);
+
+  box-sizing: border-box;
 }
 
 .panel h1,
@@ -175,6 +195,7 @@ button:disabled {
 .leaderboard tbody tr:nth-child(odd) {
   background: rgba(15, 23, 42, 0.35);
 }
+
 .leaderboard tbody tr:nth-child(even) {
   background: rgba(15, 23, 42, 0.55);
 }
@@ -194,7 +215,6 @@ button:disabled {
 }
 
 /* ===== NYTT: Rank + Top 3 styling ===== */
-
 /* Rank-cellen (första kolumnen) */
 .leaderboard td.lb-rank,
 .leaderboard th.lb-rank {
@@ -216,7 +236,7 @@ button:disabled {
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 10px 22px rgba(0,0,0,0.25);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
 }
 
 /* TOP 3: generellt lite mer “premium” */
@@ -236,7 +256,7 @@ button:disabled {
   ) !important;
   box-shadow:
     inset 0 0 0 1px rgba(245, 158, 11, 0.25),
-    0 18px 36px rgba(0,0,0,0.25);
+    0 18px 36px rgba(0, 0, 0, 0.25);
 }
 
 /* Plats 2: silver-ish */
@@ -246,8 +266,7 @@ button:disabled {
     rgba(148, 163, 184, 0.16),
     rgba(37, 99, 235, 0.10)
   ) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(148, 163, 184, 0.20);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.20);
 }
 
 /* Plats 3: bronze-ish */
@@ -257,8 +276,7 @@ button:disabled {
     rgba(217, 119, 6, 0.14),
     rgba(37, 99, 235, 0.08)
   ) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(217, 119, 6, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.18);
 }
 
 /* Krona för plats 1 (läggs efter rank-badgen) */
@@ -284,6 +302,7 @@ button:disabled {
     system-ui,
     sans-serif;
 }
+
 .leaderboard tbody tr.lb-top3 td.lb-rank > span::after {
   content: " 🥉";
   font-family:
@@ -314,6 +333,7 @@ button:disabled {
   background-size: 100% 100%;
 }
 
+/* Debug-läge: byt till world_debug.png */
 .world-map-full.is-debug {
   background-image: var(--map-debug-image);
 }
@@ -428,6 +448,7 @@ button:disabled {
   color: rgba(255, 255, 255, 0.78);
 }
 
+/* ✅ emoji-fonts på flaggan */
 .city-flag {
   margin-left: 8px;
   font-size: 1.05em;
@@ -668,4 +689,30 @@ button:disabled {
   font-weight: 800;
   letter-spacing: 0.02em;
   backdrop-filter: blur(6px);
+}
+
+/* ===== Blockera mobil ===== */
+.mobile-block {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* göm hela appen */
+  #root {
+    display: none;
+  }
+
+  /* visa en “blockerad på mobil”-sida */
+  body::before {
+    content: "Det här spelet stöds inte på mobil. Öppna på dator.";
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 24px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 800;
+    color: #e5e7eb;
+    background: #0f172a;
+  }
 }
