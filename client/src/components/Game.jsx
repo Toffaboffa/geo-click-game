@@ -24,6 +24,7 @@ function fmtSecFromMs(v) {
   if (!Number.isFinite(v)) return "—";
   return `${((v ?? 0) / 1000).toFixed(2)}s`;
 }
+
 // Gör en Twemoji (SVG) URL för en flagga baserat på ISO-2 landkod (t.ex. "SE").
 function isoToFlagTwemojiUrl(cc) {
   const code = String(cc || "").trim().toUpperCase();
@@ -35,6 +36,7 @@ function isoToFlagTwemojiUrl(cc) {
   const hex2 = cp2.toString(16);
   return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${hex1}-${hex2}.svg`;
 }
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -45,6 +47,40 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+// ---------- Progression UI helpers ----------
+function safeObj(v) {
+  return v && typeof v === "object" ? v : {};
+}
+function safeArr(v) {
+  return Array.isArray(v) ? v : [];
+}
+function numOr(v, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+function normalizeBadge(b) {
+  const o = safeObj(b);
+  const code = o.code || o.badge_code || o.badgeCode || o.key;
+  const name = o.name || o.badge_name || o.title || code;
+  const emoji = o.emoji || "🏷️";
+  const description = o.description || o.desc || "";
+  const iconUrl = o.iconUrl || o.icon_url || null;
+  return { code, name, emoji, description, iconUrl };
+}
+function normalizeDelta(d) {
+  const o = safeObj(d);
+  return {
+    username: o.username,
+    oldLevel: numOr(o.oldLevel ?? o.old_level, 0),
+    newLevel: numOr(o.newLevel ?? o.new_level, 0),
+    oldBadgesCount: numOr(o.oldBadgesCount ?? o.old_badges_count ?? o.badgesCountOld, 0),
+    newBadgesCount: numOr(o.newBadgesCount ?? o.new_badges_count ?? o.badgesCountNew, 0),
+    newBadges: safeArr(o.newBadges || o.new_badges)
+      .map(normalizeBadge)
+      .filter((x) => !!x.code),
+  };
 }
 
 export default function Game({
@@ -67,8 +103,9 @@ export default function Game({
   const isPractice = !!match?.isPractice || !!match?.isSolo;
 
   const opponentName = useMemo(() => {
-    return match.players.find((p) => p !== myName) || "Motståndare";
-  }, [match.players, myName]);
+    const players = Array.isArray(match?.players) ? match.players : [];
+    return players.find((p) => p !== myName) || "Motståndare";
+  }, [match?.players, myName]);
 
   // --- map load gate ---
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -387,7 +424,6 @@ export default function Game({
       const myScore = Number.isFinite(myRes?.score) ? myRes.score : null;
       const oppScore = Number.isFinite(oppRes?.score) ? oppRes.score : null;
 
-      // Vem vann rundan? (lägst score vinner)
       let myWon = false;
       let oppWon = false;
       if (!isPractice && Number.isFinite(myScore) && Number.isFinite(oppScore)) {
@@ -421,6 +457,42 @@ export default function Game({
 
     return { rows: mapped, totals };
   }, [gameState.roundResults, myName, opponentName, isPractice]);
+
+  // -------- Progression delta (finish overlay) ----------
+  const progression = useMemo(() => {
+    const final = safeObj(gameState.finalResult);
+    const pd = safeObj(final.progressionDelta);
+    const myDeltaRaw = pd?.[myName];
+    const oppDeltaRaw = pd?.[opponentName];
+
+    const myDelta = myDeltaRaw ? normalizeDelta(myDeltaRaw) : null;
+    const oppDelta = oppDeltaRaw ? normalizeDelta(oppDeltaRaw) : null;
+
+    const myLevelUp = !!myDelta && myDelta.newLevel > myDelta.oldLevel;
+    const oppLevelUp = !!oppDelta && oppDelta.newLevel > oppDelta.oldLevel;
+
+    const myNewBadges = myDelta?.newBadges || [];
+    const oppNewBadges = oppDelta?.newBadges || [];
+
+    const myBadgesCountUp = !!myDelta && myDelta.newBadgesCount > myDelta.oldBadgesCount;
+    const oppBadgesCountUp = !!oppDelta && oppDelta.newBadgesCount > oppDelta.oldBadgesCount;
+
+    return {
+      myDelta,
+      oppDelta,
+      myLevelUp,
+      oppLevelUp,
+      myNewBadges,
+      oppNewBadges,
+      hasAnything:
+        myNewBadges.length > 0 ||
+        oppNewBadges.length > 0 ||
+        myLevelUp ||
+        oppLevelUp ||
+        myBadgesCountUp ||
+        oppBadgesCountUp,
+    };
+  }, [gameState.finalResult, myName, opponentName]);
 
   return (
     <div className="game-root">
@@ -512,9 +584,9 @@ export default function Game({
               style={{ left: myClickPx.x, top: myClickPx.y }}
               title={
                 myLastClickLL
-                  ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(
-                      3
-                    )} (${fmtMs(myLastClickLL.timeMs)}s)`
+                  ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(3)} (${fmtMs(
+                      myLastClickLL.timeMs
+                    )}s)`
                   : "Du"
               }
             />
@@ -528,10 +600,7 @@ export default function Game({
 
         {/* Ingen opp-marker i Öva */}
         {!isPractice && oppClickPx && (
-          <div
-            className="click-marker click-marker-opp"
-            style={{ left: oppClickPx.x, top: oppClickPx.y }}
-          />
+          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
         )}
 
         {/* Debug target + debug click */}
@@ -562,11 +631,7 @@ export default function Game({
             onMouseEnter={() => setHoveringUiSafe(true)}
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
-            <button
-              className="ready-btn"
-              onClick={stop(onPressStartReady)}
-              disabled={!mapLoaded || startReadySent}
-            >
+            <button className="ready-btn" onClick={stop(onPressStartReady)} disabled={!mapLoaded || startReadySent}>
               {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar..." : "Redo"}
             </button>
           </div>
@@ -604,6 +669,65 @@ export default function Game({
                 </div>
               )}
 
+              {/* ✅ Progression: badges + level up (endast riktiga matcher) */}
+              {!isPractice && progression.hasAnything && (
+                <div className="finish-progression">
+                  {/* Jag */}
+                  {progression.myDelta && (
+                    <div className="finish-prog-block">
+                      <div className="finish-prog-title">
+                        {myName}
+                        {progression.myLevelUp ? (
+                          <span className="level-up-chip">
+                            ⬆️ Level {progression.myDelta.oldLevel} → {progression.myDelta.newLevel}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {progression.myNewBadges.length > 0 ? (
+                        <div className="finish-badges">
+                          {progression.myNewBadges.map((b) => (
+                            <div key={b.code} className="badge-pill" title={b.description || ""}>
+                              <span className="badge-emoji">{b.emoji || "🏷️"}</span>
+                              <span className="badge-name">{b.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="finish-prog-muted">Inga nya badges.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Motståndare */}
+                  {progression.oppDelta && (
+                    <div className="finish-prog-block">
+                      <div className="finish-prog-title">
+                        {opponentName}
+                        {progression.oppLevelUp ? (
+                          <span className="level-up-chip">
+                            ⬆️ Level {progression.oppDelta.oldLevel} → {progression.oppDelta.newLevel}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {progression.oppNewBadges.length > 0 ? (
+                        <div className="finish-badges">
+                          {progression.oppNewBadges.map((b) => (
+                            <div key={b.code} className="badge-pill" title={b.description || ""}>
+                              <span className="badge-emoji">{b.emoji || "🏷️"}</span>
+                              <span className="badge-name">{b.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="finish-prog-muted">Inga nya badges.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ✅ Per-runda tabell */}
               <div className="rounds-table-wrap">
                 <table className="rounds-table">
@@ -629,27 +753,15 @@ export default function Game({
                         <td className="rt-round">{r.idx}</td>
                         <td className="rt-city">{r.cityLabel}</td>
 
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
-                          {fmtScore(r.my.score)}
-                        </td>
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
-                          {fmtKm(r.my.distanceKm)}
-                        </td>
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
-                          {fmtSecFromMs(r.my.timeMs)}
-                        </td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtScore(r.my.score)}</td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtKm(r.my.distanceKm)}</td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtSecFromMs(r.my.timeMs)}</td>
 
                         {!isPractice && (
                           <>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
-                              {fmtScore(r.opp.score)}
-                            </td>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
-                              {fmtKm(r.opp.distanceKm)}
-                            </td>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
-                              {fmtSecFromMs(r.opp.timeMs)}
-                            </td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtScore(r.opp.score)}</td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtKm(r.opp.distanceKm)}</td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtSecFromMs(r.opp.timeMs)}</td>
                           </>
                         )}
                       </tr>

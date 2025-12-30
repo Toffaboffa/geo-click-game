@@ -214,8 +214,16 @@ export default function App() {
       }));
     });
 
-    s.on("match_finished", ({ totalScores, winner }) => {
-      setGameState((prev) => ({ ...prev, finalResult: { totalScores, winner } }));
+    // ✅ här: ta emot progressionDelta också
+    s.on("match_finished", ({ totalScores, winner, progressionDelta }) => {
+      setGameState((prev) => ({
+        ...prev,
+        finalResult: {
+          totalScores,
+          winner,
+          progressionDelta: progressionDelta || {},
+        },
+      }));
       getLeaderboard(session.sessionId).then(setLeaderboard).catch(console.error);
     });
 
@@ -240,11 +248,7 @@ export default function App() {
     }, 1200);
 
     try {
-      const data =
-        mode === "login"
-          ? await login(username, password)
-          : await register(username, password);
-
+      const data = mode === "login" ? await login(username, password) : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
@@ -273,13 +277,7 @@ export default function App() {
   };
 
   if (!session) {
-    return (
-      <Login
-        onSubmit={handleAuth}
-        authLoading={authLoading}
-        authHint={authHint}
-      />
-    );
+    return <Login onSubmit={handleAuth} authLoading={authLoading} authHint={authHint} />;
   }
 
   if (!match) {

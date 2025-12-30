@@ -7,6 +7,11 @@ import cors from "cors";
 import crypto from "crypto";
 import { cities } from "./cities.js";
 import { haversineDistanceKm, createRoundScorer } from "./gameLogic.js";
+import {
+  getBadgesCatalogWithCriteria,
+  mapBadgesByCode,
+  evaluateEligibleBadgeCodes,
+} from "./badgesEngine.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -78,6 +83,110 @@ async function authMiddleware(req, res, next) {
 }
 
 // =====================
+// Helpers (schema-capabilities)
+// =====================
+const _colCache = new Map(); // key: `${table}.${col}` -> boolean
+async function hasColumn(db, table, column) {
+  const key = `${table}.${column}`;
+  if (_colCache.has(key)) return _colCache.get(key);
+  const { rows } = await db.query(
+    `select 1
+     from information_schema.columns
+     where table_schema='public'
+       and table_name=$1
+       and column_name=$2
+     limit 1`,
+    [table, column]
+  );
+  const ok = rows.length > 0;
+  _colCache.set(key, ok);
+  return ok;
+}
+
+// =====================
+// Helpers (badges/progression)
+// =====================
+function normalizeBadgeRow(r) {
+  return {
+    ...r,
+
+    code: r.code,
+    groupKey: r.groupKey ?? r.group_key ?? null,
+    groupName: r.groupName ?? r.group_name ?? null,
+    sortInGroup: r.sortInGroup ?? r.sort_in_group ?? null,
+    iconUrl: r.iconUrl ?? r.icon_url ?? null,
+    earnedAt: r.earnedAt ?? r.earned_at ?? null,
+
+    group_key: r.groupKey ?? r.group_key ?? null,
+    group_name: r.groupName ?? r.group_name ?? null,
+    sort_in_group: r.sortInGroup ?? r.sort_in_group ?? null,
+    icon_url: r.iconUrl ?? r.icon_url ?? null,
+    earned_at: r.earnedAt ?? r.earned_at ?? null,
+
+    badge_code: r.code ?? r.badge_code ?? null,
+  };
+}
+
+async function getPublicUserRow(username) {
+  const { rows } = await pool.query(
+    `select
+       username,
+       played,
+       wins,
+       losses,
+       avg_score as "avgScore",
+       pct,
+       coalesce(level, 0) as level,
+       coalesce(badges_count, 0) as "badgesCount"
+     from users
+     where username = $1`,
+    [username]
+  );
+  return rows[0] ?? null;
+}
+
+async function getUserEarnedBadges(username) {
+  const { rows } = await pool.query(
+    `select
+       ub.badge_code as code,
+       ub.earned_at as "earnedAt",
+       b.group_key as "groupKey",
+       b.group_name as "groupName",
+       b.sort_in_group as "sortInGroup",
+       b.name,
+       b.description,
+       b.emoji,
+       b.icon_url as "iconUrl"
+     from public.user_badges ub
+     join public.badges b on b.code = ub.badge_code
+     where ub.username = $1
+     order by b.group_key asc, b.sort_in_group asc, ub.earned_at asc`,
+    [username]
+  );
+  return rows.map(normalizeBadgeRow);
+}
+
+async function buildProgressPayload(username) {
+  const user = await getPublicUserRow(username);
+  if (!user) return null;
+  const earnedBadges = await getUserEarnedBadges(username);
+
+  return {
+    username: user.username,
+    level: user.level,
+    badgesCount: user.badgesCount,
+    stats: {
+      played: user.played,
+      wins: user.wins,
+      losses: user.losses,
+      avgScore: user.avgScore,
+      pct: user.pct,
+    },
+    earnedBadges,
+  };
+}
+
+// =====================
 // Auth endpoints (DB)
 // =====================
 app.post("/api/register", async (req, res) => {
@@ -87,7 +196,6 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
     }
     const passwordHash = hashPassword(password);
-    // hidden får default false i DB (migration)
     await pool.query("insert into users (username, password_hash) values ($1, $2)", [
       username,
       passwordHash,
@@ -137,7 +245,6 @@ app.post("/api/logout", authMiddleware, async (req, res) => {
 // =====================
 // User visibility (hidden)
 // =====================
-// GET /api/me -> { username, showOnLeaderboard, hidden }
 app.get("/api/me", authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -160,7 +267,6 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   }
 });
 
-// PATCH /api/me/leaderboard-visibility { showOnLeaderboard: boolean }
 app.patch("/api/me/leaderboard-visibility", authMiddleware, async (req, res) => {
   try {
     const { showOnLeaderboard } = req.body || {};
@@ -177,7 +283,6 @@ app.patch("/api/me/leaderboard-visibility", authMiddleware, async (req, res) => 
 });
 
 // BACKWARD COMPAT:
-// POST /api/me/visibility { hidden: boolean }
 app.post("/api/me/visibility", authMiddleware, async (req, res) => {
   try {
     const { hidden } = req.body || {};
@@ -193,14 +298,62 @@ app.post("/api/me/visibility", authMiddleware, async (req, res) => {
 });
 
 // =====================
+// Badges API
+// =====================
+app.get("/api/badges", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `select
+         code,
+         group_key as "groupKey",
+         group_name as "groupName",
+         sort_in_group as "sortInGroup",
+         name,
+         description,
+         emoji,
+         icon_url as "iconUrl"
+       from public.badges
+       order by group_key asc, sort_in_group asc, id asc`
+    );
+    res.json(rows.map(normalizeBadgeRow));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// ===== Progression endpoints =====
+async function handleMeProgress(req, res) {
+  try {
+    const payload = await buildProgressPayload(req.username);
+    if (!payload) return res.status(404).json({ error: "Hittar inte användare" });
+    res.json(payload);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+}
+app.get("/api/me/progress", authMiddleware, handleMeProgress);
+app.get("/api/me/progression", authMiddleware, handleMeProgress);
+
+async function handleUserProgress(req, res) {
+  try {
+    const username = String(req.params.username || "").trim();
+    if (!username) return res.status(400).json({ error: "username saknas" });
+    const payload = await buildProgressPayload(username);
+    if (!payload) return res.status(404).json({ error: "Hittar inte användare" });
+    res.json(payload);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+}
+app.get("/api/users/:username/progress", handleUserProgress);
+app.get("/api/users/:username/progression", handleUserProgress);
+
+// =====================
 // Leaderboard (DB)
 // =====================
-// Sortering:
-// 1) avg_score ASC (lägst PPM bäst)
-// 2) pct DESC (högst win% bäst)
-// 3) played DESC (tie-break)
-// 4) username ASC
-// + spelare med played = 0 visas inte
 app.get("/api/leaderboard", async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -210,7 +363,9 @@ app.get("/api/leaderboard", async (_req, res) => {
          wins,
          losses,
          avg_score as "avgScore",
-         pct
+         pct,
+         coalesce(level, 0) as level,
+         coalesce(badges_count, 0) as "badgesCount"
        from users
        where coalesce(hidden, false) = false
          and played > 0
@@ -247,7 +402,6 @@ function getRoomName(matchId) {
 function createMatch(playerA, playerB, opts = {}) {
   const matchId = crypto.randomBytes(8).toString("hex");
   const scorer = createRoundScorer(SCORER_MAX_DISTANCE_KM, SCORER_MAX_TIME_MS);
-
   const match = {
     id: matchId,
     players: [playerA, playerB],
@@ -257,25 +411,17 @@ function createMatch(playerA, playerB, opts = {}) {
     finished: false,
     scorer,
     isSolo: !!opts.isSolo,
-    // ✅ NYTT: practice-match (Öva) ska INTE skriva till DB
     isPractice: !!opts.isPractice,
-
-    // start-ready gate
     awaitingStartReady: true,
     startReady: new Set(),
     startReadyTimeout: null,
-
-    // intermission/ready state
     awaitingReady: false,
     ready: new Set(),
     readyPromptTimeout: null,
     readyTimeout: null,
     countdownTimeout: null,
-
-    // round timeout
     roundTimeout: null,
   };
-
   matches.set(matchId, match);
   return match;
 }
@@ -304,23 +450,13 @@ function beginStartReady(match) {
   match.awaitingStartReady = true;
   match.startReady = new Set();
   const room = getRoomName(match.id);
-
   io.to(room).emit("start_ready_prompt", { matchId: match.id });
-
-  if (!match.isSolo) {
-    match.startReadyTimeout = setTimeout(() => {
-      if (match.finished) return;
-      clearStartReady(match);
-      startRound(match);
-    }, 30_000);
-    return;
-  }
 
   match.startReadyTimeout = setTimeout(() => {
     if (match.finished) return;
     clearStartReady(match);
     startRound(match);
-  }, 10_000);
+  }, match.isSolo ? 10_000 : 30_000);
 }
 
 function startMatch(match) {
@@ -346,7 +482,6 @@ function startMatch(match) {
 
 function startSoloMatch(match, playerSocket) {
   const roomName = getRoomName(match.id);
-
   playerSocket.join(roomName);
 
   io.to(roomName).emit("match_started", {
@@ -369,7 +504,12 @@ function pickCityMeta(city) {
     lon: Number(city?.lon),
     countryCode: city?.countryCode ?? null,
     population: city?.population ?? null,
+    isCapital: city?.isCapital ?? false,
   };
+}
+
+function normalizeCityForBadge(city) {
+  return pickCityMeta(city);
 }
 
 function calculateClick(city, lon, lat, timeMs, scorer) {
@@ -404,7 +544,6 @@ function beginIntermission(match) {
   match.ready = new Set();
   const room = getRoomName(match.id);
 
-  // SOLO: gå vidare automatiskt
   if (match.isSolo) {
     match.readyPromptTimeout = setTimeout(() => {
       if (match.finished) return;
@@ -429,13 +568,12 @@ function startNextRoundCountdown(match) {
   if (!match.awaitingReady) return;
 
   clearIntermissionTimers(match);
-
   const room = getRoomName(match.id);
+
   match.awaitingReady = false;
-
   const seconds = 5;
-  io.to(room).emit("next_round_countdown", { seconds });
 
+  io.to(room).emit("next_round_countdown", { seconds });
   match.countdownTimeout = setTimeout(() => {
     nextRound(match);
   }, seconds * 1000);
@@ -443,7 +581,6 @@ function startNextRoundCountdown(match) {
 
 function emitRoundResultAndIntermission(match, round) {
   if (!round || round.ended) return;
-
   round.ended = true;
   clearRoundTimeout(match);
 
@@ -473,6 +610,7 @@ function startRound(match) {
   match.rounds[match.currentRound] = round;
 
   const cityMeta = pickCityMeta(city);
+
   io.to(getRoomName(match.id)).emit("round_starting", {
     roundIndex: match.currentRound,
     cityName: cityMeta.name,
@@ -481,7 +619,6 @@ function startRound(match) {
 
   match.roundTimeout = setTimeout(() => {
     if (match.finished) return;
-
     const r = match.rounds[match.currentRound];
     if (!r || r.ended) return;
     if (match.awaitingStartReady) return;
@@ -491,11 +628,9 @@ function startRound(match) {
         r.clicks[p] = calculateTimeoutPenaltyClick(match.scorer);
       }
     }
-
     emitRoundResultAndIntermission(match, r);
   }, ROUND_TIMEOUT_MS);
 
-  // SOLO: bot klickar efter kort delay (behåll för att rundan ska kunna avslutas snabbt)
   if (match.isSolo) {
     setTimeout(() => {
       const r = match.rounds[match.currentRound];
@@ -522,9 +657,172 @@ function nextRound(match) {
   startRound(match);
 }
 
+function buildMatchAnalytics(match, totalScores) {
+  const [pA, pB] = match.players;
+
+  const per = {
+    [pA]: { totalScore: totalScores[pA] ?? 0, rounds: [] },
+    [pB]: { totalScore: totalScores[pB] ?? 0, rounds: [] },
+  };
+
+  for (const r of match.rounds) {
+    const city = normalizeCityForBadge(r.city);
+    for (const p of match.players) {
+      const c = r.clicks[p] || {};
+      per[p].rounds.push({
+        distanceKm: c.distanceKm ?? null,
+        timeMs: c.timeMs ?? null,
+        score: c.score ?? null,
+        city,
+      });
+    }
+  }
+
+  return per;
+}
+
+async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalScores) {
+  const [pA, pB] = match.players;
+  const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
+
+  const progressionDelta = {}; // username -> { oldLevel, newLevel, oldBadgesCount, newBadgesCount, newBadges: [...] }
+
+  if (match.isPractice) return progressionDelta;
+  if (realPlayers.length === 0) return progressionDelta;
+
+  const per = buildMatchAnalytics(match, totalScores);
+
+  const catalog = await getBadgesCatalogWithCriteria(dbClient);
+  const byCode = mapBadgesByCode(catalog);
+
+  const hasWinStreak = await hasColumn(dbClient, "users", "win_streak");
+  const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
+  const hasLevel = await hasColumn(dbClient, "users", "level");
+
+  for (const u of realPlayers) {
+    const { rows: userRows } = await dbClient.query(
+      `select
+         username,
+         played,
+         wins,
+         losses,
+         coalesce(level, 0) as level,
+         coalesce(badges_count, 0) as badges_count
+         ${hasWinStreak ? ", coalesce(win_streak, 0) as win_streak" : ""}
+       from users
+       where username = $1
+       for update`,
+      [u]
+    );
+    const user = userRows[0];
+    if (!user) continue;
+
+    const isWinner = winner === u;
+    const opp = u === pA ? pB : pA;
+
+    const eligibleCodes = evaluateEligibleBadgeCodes({
+      catalog,
+      userStats: user,
+      isWinner,
+      totalScore: per[u]?.totalScore,
+      rounds: per[u]?.rounds,
+      oppTotalScore: per[opp]?.totalScore,
+      oppRounds: per[opp]?.rounds,
+    });
+
+    // Prefilter: ta bort redan earned innan insert (snabbare + renare)
+    let missingCodes = eligibleCodes;
+    if (eligibleCodes.length) {
+      const { rows: already } = await dbClient.query(
+        `select badge_code
+         from public.user_badges
+         where username = $1
+           and badge_code = any($2::text[])`,
+        [u, eligibleCodes]
+      );
+      const alreadySet = new Set(already.map((r) => r.badge_code).filter(Boolean));
+      missingCodes = eligibleCodes.filter((c) => !alreadySet.has(c));
+    }
+
+    // Insert: endast NEW
+    let newlyInsertedCodes = [];
+    if (missingCodes.length) {
+      const meta = {
+        source: "match_finished",
+        matchId: match.id,
+        winner: isWinner,
+      };
+
+      const { rows: ins } = await dbClient.query(
+        `insert into public.user_badges (username, badge_code, earned_at, match_id, meta)
+         select $1, x, now(), $2, $3::jsonb
+         from unnest($4::text[]) as x
+         on conflict (username, badge_code) do nothing
+         returning badge_code`,
+        [u, match.id, JSON.stringify(meta), missingCodes]
+      );
+
+      newlyInsertedCodes = ins.map((r) => r.badge_code).filter(Boolean);
+    }
+
+    // Räkna badges efter ev insert (gör alltid: håller systemet i synk)
+    const { rows: cntRows } = await dbClient.query(
+      `select count(*)::int as c from public.user_badges where username = $1`,
+      [u]
+    );
+    const newBadgesCount = cntRows[0]?.c ?? user.badges_count ?? 0;
+
+    // Level = badges_count (enkelt & tydligt i början)
+    const newLevel = newBadgesCount;
+
+    // Uppdatera users om kolumnerna finns
+    if (hasBadgesCount || hasLevel) {
+      const sets = [];
+      const params = [u];
+      let i = 2;
+
+      if (hasBadgesCount) {
+        sets.push(`badges_count = $${i++}`);
+        params.push(newBadgesCount);
+      }
+      if (hasLevel) {
+        sets.push(`level = $${i++}`);
+        params.push(newLevel);
+      }
+      if (sets.length) {
+        await dbClient.query(`update users set ${sets.join(", ")} where username = $1`, params);
+      }
+    }
+
+    const newBadges = newlyInsertedCodes
+      .map((code) => byCode.get(code))
+      .filter(Boolean)
+      .map((b) => ({
+        code: b.code,
+        name: b.name,
+        description: b.description,
+        emoji: b.emoji,
+        groupKey: b.groupKey,
+        groupName: b.groupName,
+        sortInGroup: b.sortInGroup,
+        iconUrl: b.iconUrl,
+      }));
+
+    progressionDelta[u] = {
+      username: u,
+      oldLevel: user.level,
+      newLevel,
+      oldBadgesCount: user.badges_count,
+      newBadgesCount,
+      newBadges,
+    };
+  }
+
+  return progressionDelta;
+}
+
 async function finishMatch(match) {
   match.finished = true;
-
   clearIntermissionTimers(match);
   clearStartReady(match);
   clearRoundTimeout(match);
@@ -537,20 +835,22 @@ async function finishMatch(match) {
     total[pB] += r.clicks[pB]?.score ?? 0;
   });
 
-  // ✅ I practice (Öva) bryr vi oss inte om winner (UI visar bara din poäng)
   let winner = null;
   if (!match.isPractice) {
     if (total[pA] < total[pB]) winner = pA;
     else if (total[pB] < total[pA]) winner = pB;
   }
 
-  // ✅ DB: skriv INTE något alls för Öva/practice
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
+
+  let progressionDelta = {};
+
   if (!match.isPractice && realPlayers.length > 0) {
     const client = await pool.connect();
     try {
       await client.query("begin");
 
+      // 1) played + total_score
       for (const u of realPlayers) {
         await client.query(
           `update users
@@ -562,13 +862,25 @@ async function finishMatch(match) {
       }
 
       const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+
+      // 2) wins/losses + optional win_streak
       if (winner && bothReal) {
         const loser = winner === pA ? pB : pA;
+
         await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
         await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
+
+        const hasWinStreak = await hasColumn(client, "users", "win_streak");
+        if (hasWinStreak) {
+          await client.query(
+            `update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`,
+            [winner]
+          );
+          await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
+        }
       }
 
-      // avg_score
+      // 3) avg_score
       await client.query(
         `update users
          set avg_score = case when played > 0 then total_score / played else 0 end
@@ -576,7 +888,7 @@ async function finishMatch(match) {
         [realPlayers]
       );
 
-      // pct (win%) i DB: 100 * wins/(wins+losses), 1 decimal. null om 0 matcher.
+      // 4) pct
       await client.query(
         `update users
          set pct = case
@@ -587,16 +899,23 @@ async function finishMatch(match) {
         [realPlayers]
       );
 
+      // 5) badges + level + delta
+      progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
+
       await client.query("commit");
     } catch (e) {
       await client.query("rollback");
-      throw e;
+      console.error("finishMatch tx error", e);
     } finally {
       client.release();
     }
   }
 
-  io.to(getRoomName(match.id)).emit("match_finished", { totalScores: total, winner });
+  io.to(getRoomName(match.id)).emit("match_finished", {
+    totalScores: total,
+    winner,
+    progressionDelta,
+  });
 }
 
 // =====================
@@ -629,7 +948,6 @@ io.on("connection", (socket) => {
     tryMatchRandom();
   });
 
-  // ✅ ÖVA = practice-solo
   socket.on("start_solo_match", () => {
     if (!currentUser) return;
     const match = createMatch(currentUser, BOT_NAME, { isSolo: true, isPractice: true });
@@ -657,7 +975,6 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  // redo för att STARTA matchen (efter att kartan laddat)
   socket.on("player_start_ready", ({ matchId }) => {
     const match = matches.get(matchId);
     if (!match || match.finished) return;
@@ -665,11 +982,9 @@ io.on("connection", (socket) => {
     if (!match.awaitingStartReady) return;
 
     match.startReady.add(currentUser);
-
     const [pA, pB] = match.players;
     const bothReady = match.startReady.has(pA) && match.startReady.has(pB);
 
-    // SOLO: räcker att du är ready
     if (match.isSolo) {
       if (match.startReady.has(pA) || match.startReady.has(pB)) {
         clearStartReady(match);
@@ -689,12 +1004,10 @@ io.on("connection", (socket) => {
     if (!match || match.finished) return;
     if (!match.players.includes(currentUser)) return;
     if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
-
     if (match.awaitingStartReady) return;
 
     const round = match.rounds[match.currentRound];
     if (!round || round.ended) return;
-
     if (match.awaitingReady) return;
 
     if (!round.clicks[currentUser]) {
@@ -715,7 +1028,6 @@ io.on("connection", (socket) => {
     if (roundIndex !== match.currentRound) return;
 
     match.ready.add(currentUser);
-
     const [pA, pB] = match.players;
     const bothReady = match.ready.has(pA) && match.ready.has(pB);
     if (bothReady) startNextRoundCountdown(match);
