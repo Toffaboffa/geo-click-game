@@ -158,7 +158,10 @@ button:disabled {
 
 /* ---------- Leaderboard ---------- */
 .leaderboard {
-  justify-content: center;
+  margin-left: auto;
+  margin-right: auto;
+  width: auto;
+  max-width: 510px;
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 10px;
@@ -715,4 +718,82 @@ button:disabled {
     color: #e5e7eb;
     background: #0f172a;
   }
+}
+
+/* ===== Resultattabell i finish overlay ===== */
+.finish-card-wide {
+  width: min(980px, calc(100vw - 32px));
+}
+
+.rounds-table-wrap {
+  margin-top: 12px;
+  max-height: 320px;          /* scroll om den blir hög */
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.rounds-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.rounds-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 10px;
+  text-align: left;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(2, 6, 23, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(229, 231, 235, 0.92);
+}
+
+.rounds-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(229, 231, 235, 0.9);
+}
+
+.rounds-table tbody tr:nth-child(odd) {
+  background: rgba(15, 23, 42, 0.28);
+}
+.rounds-table tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.44);
+}
+
+.rt-round {
+  width: 42px;
+  text-align: center;
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.rt-city {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.rt-cell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ✅ svag grön highlight om man vann rundan */
+.rt-win {
+  background: rgba(34, 197, 94, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.16);
+}
+
+/* Total-rad */
+.rt-total td {
+  font-weight: 900;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-bottom: none;
 }

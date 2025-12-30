@@ -12,7 +12,18 @@ function fmtMs(ms) {
   const s = (ms ?? 0) / 1000;
   return s.toFixed(2);
 }
-
+function fmtScore(v) {
+  if (!Number.isFinite(v)) return "—";
+  return String(Math.round(v));
+}
+function fmtKm(v) {
+  if (!Number.isFinite(v)) return "—";
+  return `${Math.round(v)} km`;
+}
+function fmtSecFromMs(v) {
+  if (!Number.isFinite(v)) return "—";
+  return `${((v ?? 0) / 1000).toFixed(2)}s`;
+}
 // Gör en Twemoji (SVG) URL för en flagga baserat på ISO-2 landkod (t.ex. "SE").
 function isoToFlagTwemojiUrl(cc) {
   const code = String(cc || "").trim().toUpperCase();
@@ -24,7 +35,6 @@ function isoToFlagTwemojiUrl(cc) {
   const hex2 = cp2.toString(16);
   return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${hex1}-${hex2}.svg`;
 }
-
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -51,13 +61,12 @@ export default function Game({
   onToggleDebugShowTarget,
 }) {
   const mapRef = useRef(null);
-
   const myName = session.username;
 
+  // Practice = solo/övning
   const isPractice = !!match?.isPractice || !!match?.isSolo;
 
   const opponentName = useMemo(() => {
-    // i practice bryr vi oss inte om motståndare i UI, men behåll fallback för intern logik
     return match.players.find((p) => p !== myName) || "Motståndare";
   }, [match.players, myName]);
 
@@ -71,14 +80,14 @@ export default function Game({
   const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
   const [myDistanceKm, setMyDistanceKm] = useState(null); // number
 
-  // i practice vill vi INTE visa bot/opp-markör
+  // I övning vill vi INTE visa bot/opp-markör
   const [oppClickPx, setOppClickPx] = useState(null); // {x,y}
 
   // --- pointer + lens ---
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
-  // --- UI hover gate: dölj lens/crosshair när musen är på knappar/overlays ---
+  // --- UI hover gate ---
   const [hoveringUi, setHoveringUi] = useState(false);
   const setHoveringUiSafe = useCallback((v) => {
     setHoveringUi(v);
@@ -105,14 +114,14 @@ export default function Game({
   const matchFinished = !!gameState.finalResult;
   const showStartGate = !matchFinished && gameState.currentRound < 0;
 
-  // ✅ FIX: Om overlay “försvinner” utan mouseleave → återställ hoveringUi så linsen kan komma tillbaka
+  // FIX: om hoveringUi fastnar
   useEffect(() => {
     if (!showReadyButton && !showStartGate && !matchFinished && countdown === null) {
       setHoveringUi(false);
     }
   }, [showReadyButton, showStartGate, matchFinished, countdown]);
 
-  // -------- preload map image (CSS var) ----------
+  // -------- preload map image ----------
   useEffect(() => {
     setMapLoaded(false);
     try {
@@ -146,9 +155,11 @@ export default function Game({
     setShowReadyButton(false);
     setIAmReady(false);
     setCountdown(null);
+
     setElapsedMs(0);
     setRoundStartPerf(performance.now());
     setTimerRunning(gameState.currentRound >= 0);
+
     setHoveringUi(false);
   }, [gameState.currentRound]);
 
@@ -234,7 +245,7 @@ export default function Game({
         setOppClickPx(null);
       }
 
-      // ✅ endast multiplayer ska visa “Redo för nästa”
+      // endast multiplayer: visa “Redo för nästa”
       if (!isPractice) {
         setTimeout(() => setShowReadyButton(true), 3500);
       }
@@ -244,8 +255,8 @@ export default function Game({
       setHoveringUi(false);
       setShowReadyButton(false);
       setIAmReady(false);
-      setCountdown(seconds);
 
+      setCountdown(seconds);
       let left = seconds;
       const t = setInterval(() => {
         left -= 1;
@@ -272,11 +283,9 @@ export default function Game({
   const onPointerMove = (e) => {
     if (hoveringUi) return;
     if (!mapRef.current) return;
-
     const rect = mapRef.current.getBoundingClientRect();
     const x = clamp(e.clientX - rect.left, 0, rect.width);
     const y = clamp(e.clientY - rect.top, 0, rect.height);
-
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => setPointer({ x, y, inside: true }));
   };
@@ -306,7 +315,6 @@ export default function Game({
 
     const ll = mapInvert(xPx, yPx);
     if (!ll || !Array.isArray(ll) || ll.length !== 2) return;
-
     const [lon, lat] = ll;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
 
@@ -321,7 +329,6 @@ export default function Game({
     }
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
-
     setHasClickedThisRound(true);
     setMyClickPx({ x: xPx, y: yPx });
     setMyLastClickLL({ lon, lat, timeMs });
@@ -331,14 +338,12 @@ export default function Game({
   const lensStyle = useMemo(() => {
     if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
-
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
     const bgSizeY = rect.height * zoom;
     const bgPosX = -(pointer.x * zoom - 80);
     const bgPosY = -(pointer.y * zoom - 80);
-
     return {
       left: pointer.x,
       top: pointer.y,
@@ -367,6 +372,55 @@ export default function Game({
     setStartReadySent(true);
     socket.emit("player_start_ready", { matchId: match.matchId });
   };
+
+  // -------- Resultattabelldata (för finish overlay) ----------
+  const roundsTable = useMemo(() => {
+    const rows = Array.isArray(gameState.roundResults) ? gameState.roundResults : [];
+
+    const mapped = rows.map((rr, i) => {
+      const city = rr?.city || null;
+      const cityLabel = shortCityName(city?.name || rr?.cityName || `Runda ${i + 1}`);
+
+      const myRes = rr?.results?.[myName] || null;
+      const oppRes = rr?.results?.[opponentName] || null;
+
+      const myScore = Number.isFinite(myRes?.score) ? myRes.score : null;
+      const oppScore = Number.isFinite(oppRes?.score) ? oppRes.score : null;
+
+      // Vem vann rundan? (lägst score vinner)
+      let myWon = false;
+      let oppWon = false;
+      if (!isPractice && Number.isFinite(myScore) && Number.isFinite(oppScore)) {
+        if (myScore < oppScore) myWon = true;
+        else if (oppScore < myScore) oppWon = true;
+      }
+
+      return {
+        key: `${i}-${cityLabel}`,
+        idx: i + 1,
+        cityLabel,
+        my: {
+          score: myScore,
+          distanceKm: Number.isFinite(myRes?.distanceKm) ? myRes.distanceKm : null,
+          timeMs: Number.isFinite(myRes?.timeMs) ? myRes.timeMs : null,
+          won: myWon,
+        },
+        opp: {
+          score: oppScore,
+          distanceKm: Number.isFinite(oppRes?.distanceKm) ? oppRes.distanceKm : null,
+          timeMs: Number.isFinite(oppRes?.timeMs) ? oppRes.timeMs : null,
+          won: oppWon,
+        },
+      };
+    });
+
+    const totals = {
+      myScore: mapped.reduce((a, r) => a + (Number.isFinite(r.my.score) ? r.my.score : 0), 0),
+      oppScore: mapped.reduce((a, r) => a + (Number.isFinite(r.opp.score) ? r.opp.score : 0), 0),
+    };
+
+    return { rows: mapped, totals };
+  }, [gameState.roundResults, myName, opponentName, isPractice]);
 
   return (
     <div className="game-root">
@@ -518,14 +572,14 @@ export default function Game({
           </div>
         )}
 
-        {/* Finish overlay */}
+        {/* Finish overlay + Resultattabell */}
         {matchFinished && (
           <div
             className="finish-overlay"
             onMouseEnter={() => setHoveringUiSafe(true)}
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
-            <div className="finish-card">
+            <div className="finish-card finish-card-wide">
               <div className="finish-title">{isPractice ? "Övning klar" : "Slutresultat"}</div>
 
               <div className="finish-row">
@@ -549,6 +603,73 @@ export default function Game({
                     : "Oavgjort"}
                 </div>
               )}
+
+              {/* ✅ Per-runda tabell */}
+              <div className="rounds-table-wrap">
+                <table className="rounds-table">
+                  <thead>
+                    <tr>
+                      <th>R</th>
+                      <th>Stad</th>
+                      <th>{myName} poäng</th>
+                      <th>{myName} avstånd</th>
+                      <th>{myName} tid</th>
+                      {!isPractice && (
+                        <>
+                          <th>{opponentName} poäng</th>
+                          <th>{opponentName} avstånd</th>
+                          <th>{opponentName} tid</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roundsTable.rows.map((r) => (
+                      <tr key={r.key}>
+                        <td className="rt-round">{r.idx}</td>
+                        <td className="rt-city">{r.cityLabel}</td>
+
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtScore(r.my.score)}
+                        </td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtKm(r.my.distanceKm)}
+                        </td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtSecFromMs(r.my.timeMs)}
+                        </td>
+
+                        {!isPractice && (
+                          <>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtScore(r.opp.score)}
+                            </td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtKm(r.opp.distanceKm)}
+                            </td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtSecFromMs(r.opp.timeMs)}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+
+                    {/* Total */}
+                    <tr className="rt-total">
+                      <td colSpan={2}>Total</td>
+                      <td>{fmtScore(roundsTable.totals.myScore)}</td>
+                      <td colSpan={2} />
+                      {!isPractice && (
+                        <>
+                          <td>{fmtScore(roundsTable.totals.oppScore)}</td>
+                          <td colSpan={2} />
+                        </>
+                      )}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
               <div className="finish-actions">
                 <button className="hud-btn" onClick={stop(onLeaveMatch)}>
