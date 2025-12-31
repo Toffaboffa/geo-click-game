@@ -182,9 +182,9 @@ button:disabled {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* ✅ centrera sifferkolumner (från kolumn 2 och framåt, om du har rank i kolumn 1) */
-.leaderboard th:nth-child(n + 2),
-.leaderboard td:nth-child(n + 2) {
+/* ✅ PATCH: centrera bara sifferkolumner (från kolumn 3 och framåt: efter # + Spelare) */
+.leaderboard th:nth-child(n + 3),
+.leaderboard td:nth-child(n + 3) {
   text-align: center;
 }
 
@@ -314,6 +314,33 @@ button:disabled {
     "Noto Color Emoji",
     system-ui,
     sans-serif;
+}
+
+/* ✅ PATCH: spelarnamn som “text-länk-knapp” (Lobby använder .lb-name-btn) */
+.lb-name-btn {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(229, 231, 235, 0.95);
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.lb-name-btn:hover {
+  text-decoration: underline;
+  opacity: 0.95;
+}
+
+/* ✅ PATCH: små kolumnbreddar för lvl/badges */
+.leaderboard th.lb-lvl,
+.leaderboard td.lb-lvl {
+  width: 70px;
+}
+.leaderboard th.lb-badges,
+.leaderboard td.lb-badges {
+  width: 82px;
 }
 
 /* ✅ NYTT: nertonad/grå badges-kolumn (läsbar men tydligt “disabled”) */
@@ -807,54 +834,163 @@ button:disabled {
 
 /* ---------- Progression / Badges ---------- */
 
+/* ✅ PATCH: kompakt, nertonat, hover-info */
 .progress-summary {
   margin-top: 10px;
   opacity: 0.85;
+  font-size: 13px;
 }
 
+.progress-hint {
+  opacity: 0.65;
+  font-weight: 800;
+}
+
+/* Badge-grupper körs som <details> för snabb överblick */
 .badge-group {
-  margin-top: 12px;
-  margin-bottom: 14px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.badge-group[open] {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.badge-group-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  user-select: none;
+  font-weight: 900;
+}
+
+.badge-group-summary::-webkit-details-marker {
+  display: none;
 }
 
 .badge-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 900;
-  margin-bottom: 6px;
+}
+
+.badge-group-count {
+  opacity: 0.7;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.04em;
 }
 
 .badge-grid {
+  padding: 10px 10px 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
 }
 
+/* Kompakta badge-kort */
 .badge-card {
-  padding: 10px 10px;
+  position: relative;
+  padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(2, 6, 23, 0.42);
+  transition: transform 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
+/* ✅ Ointjänade: tydligt nertonade/gråa */
+.badge-card.is-missing {
+  opacity: 0.55;
+  background: rgba(2, 6, 23, 0.28);
+  border-color: rgba(255, 255, 255, 0.10);
+  filter: grayscale(1) saturate(0.35);
+}
+
+/* ✅ Tjänade: lite “premium” men inte skrikigt */
 .badge-card.is-earned {
-  background: rgba(34, 197, 94, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.12);
+  opacity: 0.95;
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.10);
 }
 
+.badge-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* En rad: emoji + namn + mini-status */
 .badge-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: rgba(229, 231, 235, 0.92);
 }
 
-.badge-desc {
-  margin-top: 4px;
-  font-size: 12px;
-  opacity: 0.9;
+.badge-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.badge-status {
-  margin-top: 6px;
+.badge-mini-status {
+  margin-left: auto;
+  opacity: 0.85;
   font-size: 12px;
-  font-weight: 800;
-  opacity: 0.9;
+}
+
+/* Tooltip på hover (mouse over info) */
+.badge-card[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 8px);
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.badge-card[data-tooltip]:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Emoji-fonts */
+.badge-emoji {
+  font-size: 14px;
+  line-height: 1;
+  font-family:
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Segoe UI Symbol",
+    "Noto Color Emoji",
+    system-ui,
+    sans-serif;
+  font-variant-emoji: emoji;
 }
 
 /* ===== Finish overlay: Progression (level + nya badges) ===== */

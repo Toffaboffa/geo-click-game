@@ -234,6 +234,8 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
   const totalBadges = Array.isArray(badgesCatalog) ? badgesCatalog.length : 0;
 
+  const getBadgeCode = (b) => b?.badge_code || b?.code || b?.key || b?.badgeCode || b?.badge;
+
   // ---------- UI ----------
   return (
     <div className="screen">
@@ -282,19 +284,13 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
             <tr>
               <th className="lb-rank">#</th>
               <th>Spelare</th>
-
-              {/* ✅ NYTT */}
-              <th>Level</th>
-
+              <th className="lb-lvl">Lvl</th>
               <th>SM</th>
               <th>VM</th>
               <th>FM</th>
-
-              {/* ✅ NYTT */}
-              <th>Badges</th>
-
               <th>Pct</th>
               <th>PPM</th>
+              <th className="lb-badges">Badges</th>
             </tr>
           </thead>
           <tbody>
@@ -317,18 +313,13 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                     </button>
                   </td>
 
-                  {/* ✅ NYTT */}
-                  <td>{Number(u.level ?? 0)}</td>
-
+                  <td className="lb-lvl">{Number(u.level ?? 0)}</td>
                   <td>{u.played}</td>
                   <td>{u.wins}</td>
                   <td>{u.losses}</td>
-
-                  {/* ✅ NYTT: nertonad/grå */}
-                  <td className="lb-badges-muted">{Number(u.badges_count ?? 0)}</td>
-
                   <td>{formatPct(u)}</td>
                   <td>{Number(u.avgScore).toFixed(0)}</td>
+                  <td className="lb-badges lb-badges-muted">{Number(u.badgesCount ?? 0)}</td>
                 </tr>
               );
             })}
@@ -351,39 +342,63 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
             {!progressLoading && !progressError && (
               <>
                 <div className="progress-summary">
-                  Badges: {earnedSet.size}/{totalBadges}
+                  Badges: {earnedSet.size}/{totalBadges}{" "}
+                  <span className="progress-hint">• Hovra för info</span>
                 </div>
 
                 <div className="progress-groups">
-                  {groupedBadges.map((g) => (
-                    <div key={g.groupName} className="badge-group">
-                      <div className="badge-group-title">{g.groupName}</div>
+                  {groupedBadges.map((g, gi) => {
+                    const totalInGroup = g.items.length;
+                    const earnedInGroup = g.items.reduce((acc, b) => {
+                      const code = getBadgeCode(b);
+                      return code && earnedSet.has(code) ? acc + 1 : acc;
+                    }, 0);
 
-                      <div className="badge-grid">
-                        {g.items.map((b) => {
-                          const code = b.code || b.key || b.badge_code;
-                          const earned = earnedSet.has(code);
-                          const emoji = b.emoji || "🏷️";
+                    // Överblick först: bara första gruppen är öppen initialt
+                    const defaultOpen = gi === 0;
 
-                          return (
-                            <div
-                              key={code}
-                              className={`badge-card ${earned ? "is-earned" : ""}`}
-                              title={b.description}
-                            >
-                              <div className="badge-title">
-                                {emoji} {b.name}
+                    return (
+                      <details
+                        key={g.groupName}
+                        className="badge-group"
+                        open={defaultOpen}
+                      >
+                        <summary className="badge-group-summary">
+                          <span className="badge-group-title">{g.groupName}</span>
+                          <span className="badge-group-count">
+                            {earnedInGroup}/{totalInGroup}
+                          </span>
+                        </summary>
+
+                        <div className="badge-grid">
+                          {g.items.map((b) => {
+                            const code = getBadgeCode(b);
+                            const earned = code ? earnedSet.has(code) : false;
+                            const emoji = b.emoji || "🏷️";
+
+                            const tooltip = `${b.name}${b.description ? " — " + b.description : ""}`;
+
+                            return (
+                              <div
+                                key={code || `${b.name}-${emoji}`}
+                                className={`badge-card ${earned ? "is-earned" : "is-missing"}`}
+                                title={tooltip}
+                                data-tooltip={tooltip}
+                              >
+                                <div className="badge-title">
+                                  <span className="badge-emoji">{emoji}</span>
+                                  <span className="badge-name">{b.name}</span>
+                                  <span className="badge-mini-status">
+                                    {earned ? "✅" : "⬜"}
+                                  </span>
+                                </div>
                               </div>
-
-                              <div className="badge-desc">{b.description}</div>
-
-                              <div className="badge-status">{earned ? "✅ Fått" : "⬜ Saknas"}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                            );
+                          })}
+                        </div>
+                      </details>
+                    );
+                  })}
                 </div>
               </>
             )}
