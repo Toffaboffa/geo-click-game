@@ -1,9 +1,9 @@
-/* client/src/styles.css */
 :root {
-  --map-image: url("./assets/world.png");
-  --map-debug-image: url("./assets/world_debug.png");
-  --start-bg-image: url("./assets/bg_start.png");
+  --map-image: url("/world.png");
+  --map-debug-image: url("/world_debug.png");
+  --start-bg-image: url("/bg_start.png"); /* om den också ska flyttas annars lämna */
 }
+
 
 html,
 body,
