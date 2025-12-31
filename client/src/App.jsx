@@ -125,7 +125,7 @@ export default function App() {
     setDebugShowTarget((v) => !v);
   }, []);
 
-  // ✅ NYTT: login/loading-state + “Render vaknar”-hint
+  // ✅ login/loading-state + “Render vaknar”-hint
   const [authLoading, setAuthLoading] = useState(false);
   const [authHint, setAuthHint] = useState(null);
   const authSlowTimerRef = useRef(null);
@@ -168,15 +168,45 @@ export default function App() {
     setDebugShowTarget(false);
   }, []);
 
+  // “Hard logout” utan API (bra för forced_logout / auth_error)
+  const hardLogout = useCallback(
+    (s, msg) => {
+      if (msg) alert(msg);
+      try {
+        s?.disconnect();
+      } catch {
+        // ignore
+      }
+      setSocket(null);
+      resetToLobbyState();
+      setSession(null);
+    },
+    [resetToLobbyState]
+  );
+
   useEffect(() => {
     if (!session) return;
+
     const s = io(API_BASE, { transports: ["websocket"], path: "/socket.io" });
 
     s.on("connect", () => s.emit("auth", session.sessionId));
+
     s.on("auth_error", (msg) => {
-      alert(msg);
-      // logga ut helt om session är kass
-      handleLogout();
+      // session är kass: städa lokalt
+      hardLogout(s, msg);
+    });
+
+    s.on("forced_logout", (msg) => {
+      // du loggade in i annan flik: städa lokalt
+      hardLogout(s, msg || "Du blev utloggad.");
+    });
+
+    s.on("match_error", (msg) => {
+      alert(msg || "Matchfel.");
+    });
+
+    s.on("challenge_error", (msg) => {
+      alert(msg || "Utmaningsfel.");
     });
 
     s.on("lobby_state", (state) => setLobbyState(state));
@@ -214,13 +244,14 @@ export default function App() {
       }));
     });
 
-    // ✅ här: ta emot progressionDelta också
-    s.on("match_finished", ({ totalScores, winner, progressionDelta }) => {
+    // ✅ tar även emot finishReason nu
+    s.on("match_finished", ({ totalScores, winner, progressionDelta, finishReason }) => {
       setGameState((prev) => ({
         ...prev,
         finalResult: {
           totalScores,
           winner,
+          finishReason: finishReason || "normal",
           progressionDelta: progressionDelta || {},
         },
       }));
@@ -230,9 +261,15 @@ export default function App() {
     setSocket(s);
     getLeaderboard(session.sessionId).then(setLeaderboard).catch(console.error);
 
-    return () => s.disconnect();
+    return () => {
+      try {
+        s.disconnect();
+      } catch {
+        // ignore
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, hardLogout]);
 
   const handleAuth = async (mode, username, password) => {
     if (authLoading) return;
@@ -248,7 +285,8 @@ export default function App() {
     }, 1200);
 
     try {
-      const data = mode === "login" ? await login(username, password) : await register(username, password);
+      const data =
+        mode === "login" ? await login(username, password) : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
@@ -264,7 +302,11 @@ export default function App() {
     try {
       if (session) await logout(session.sessionId).catch(() => {});
     } finally {
-      if (socket) socket.disconnect();
+      try {
+        socket?.disconnect();
+      } catch {
+        // ignore
+      }
       setSocket(null);
       resetToLobbyState();
       setSession(null);
@@ -272,7 +314,25 @@ export default function App() {
   };
 
   const handleLeaveMatch = () => {
-    // Vi lämnar bara UI:t till lobby (servern får vi fixa “leave match” i index.js sen)
+    if (!match) return;
+
+    // om matchen redan är slut: bara tillbaka till lobby
+    if (gameState?.finalResult) {
+      resetToLobbyState();
+      return;
+    }
+
+    const ok = window.confirm("Lämna matchen? Det räknas som walkover om det är PvP.");
+    if (!ok) return;
+
+    try {
+      // ✅ FIX: servern använder matchId (inte id)
+      socket?.emit("leave_match", { matchId: match.matchId });
+    } catch {
+      // ignore
+    }
+
+    // UI kan gå tillbaka direkt — servern hanterar walkover/finish
     resetToLobbyState();
   };
 

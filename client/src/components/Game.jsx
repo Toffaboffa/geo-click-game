@@ -502,7 +502,7 @@ export default function Game({
         onClick={onMapClick}
         onMouseMove={onPointerMove}
         onMouseLeave={onPointerLeave}
-        title="Klicka där du tror att staden ligger"
+        // title bortplockad: “Klicka på kartan…” behövs inte
       >
         {/* Score */}
         <div className="hud hud-left">
@@ -584,9 +584,9 @@ export default function Game({
               style={{ left: myClickPx.x, top: myClickPx.y }}
               title={
                 myLastClickLL
-                  ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(3)} (${fmtMs(
-                      myLastClickLL.timeMs
-                    )}s)`
+                  ? `Du: lon ${myLastClickLL.lon.toFixed(3)}, lat ${myLastClickLL.lat.toFixed(
+                      3
+                    )} (${fmtMs(myLastClickLL.timeMs)}s)`
                   : "Du"
               }
             />
@@ -600,7 +600,10 @@ export default function Game({
 
         {/* Ingen opp-marker i Öva */}
         {!isPractice && oppClickPx && (
-          <div className="click-marker click-marker-opp" style={{ left: oppClickPx.x, top: oppClickPx.y }} />
+          <div
+            className="click-marker click-marker-opp"
+            style={{ left: oppClickPx.x, top: oppClickPx.y }}
+          />
         )}
 
         {/* Debug target + debug click */}
@@ -631,7 +634,11 @@ export default function Game({
             onMouseEnter={() => setHoveringUiSafe(true)}
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
-            <button className="ready-btn" onClick={stop(onPressStartReady)} disabled={!mapLoaded || startReadySent}>
+            <button
+              className="ready-btn"
+              onClick={stop(onPressStartReady)}
+              disabled={!mapLoaded || startReadySent}
+            >
               {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar..." : "Redo"}
             </button>
           </div>

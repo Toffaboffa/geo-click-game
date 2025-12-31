@@ -2,6 +2,7 @@
 // Badge-evaluator + katalog-cache
 // - Stödjer criteria-typerna i din Supabase-tabell
 // - Trösklar som är null (t.ex. Lightning Mind / Speedrunner) är "disabled" tills du sätter värden.
+// - Normaliserar strängar med diakritik (Malmö ≈ Malmo, São ≈ Sao) för robust city-matchning.
 
 let _cachedCatalog = null;
 let _cachedAt = 0;
@@ -42,9 +43,14 @@ function roundScoreWinnerIsPlayer(playerScore, oppScore) {
 }
 
 function normStr(x) {
+  // Robust sträng-normalisering:
+  // - trim/lowercase
+  // - normalize NFD + ta bort combining marks -> tar bort diakritik (å/ä/ö/é/í/ø/ã...)
   return String(x ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function cityNameEq(a, b) {
@@ -216,6 +222,9 @@ export function evaluateEligibleBadgeCodes({
       const ok = anyRound((r, i) => {
         const rr = r?.city;
         const or = safeOppRounds[i]?.city;
+
+        // Notera: här matchar vi mot antingen din eller motståndarens "city" i rundan.
+        // (Beteendet kan justeras om du vill att det strikt ska vara "staden du själv fick".)
         const cityMatch = cityNameEq(rr?.name, city) || cityNameEq(or?.name, city);
         if (!cityMatch) return false;
 
@@ -270,7 +279,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_min_capitals") {
-      // Kräver city.isCapital i cities.js (just nu false som default)
+      // Kräver city.isCapital i match-analytics (servern måste supply:a detta)
       const minCaps = toInt(c.min_capitals) ?? 0;
       if (minCaps <= 0) continue;
       const caps = countRounds((r) => r?.city?.isCapital === true);

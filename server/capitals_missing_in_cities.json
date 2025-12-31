@@ -1,0 +1,114 @@
+[
+  {
+    "name": "St. John's",
+    "countryCode": "AG"
+  },
+  {
+    "name": "Brasilia",
+    "countryCode": "BR"
+  },
+  {
+    "name": "Yaounde",
+    "countryCode": "CM"
+  },
+  {
+    "name": "Bogota",
+    "countryCode": "CO"
+  },
+  {
+    "name": "San Jose",
+    "countryCode": "CR"
+  },
+  {
+    "name": "El-Aaiun",
+    "countryCode": "EH"
+  },
+  {
+    "name": "Torshavn",
+    "countryCode": "FO"
+  },
+  {
+    "name": "St. George's",
+    "countryCode": "GD"
+  },
+  {
+    "name": "St Peter Port",
+    "countryCode": "GG"
+  },
+  {
+    "name": "Hagatna",
+    "countryCode": "GU"
+  },
+  {
+    "name": "New Delhi",
+    "countryCode": "IN"
+  },
+  {
+    "name": "Diego Garcia",
+    "countryCode": "IO"
+  },
+  {
+    "name": "Reykjavik",
+    "countryCode": "IS"
+  },
+  {
+    "name": "Nur-Sultan",
+    "countryCode": "KZ"
+  },
+  {
+    "name": "Ulaanbaatar",
+    "countryCode": "MN"
+  },
+  {
+    "name": "Macao",
+    "countryCode": "MO"
+  },
+  {
+    "name": "Noumea",
+    "countryCode": "NC"
+  },
+  {
+    "name": "Panama City",
+    "countryCode": "PA"
+  },
+  {
+    "name": "Melekeok",
+    "countryCode": "PW"
+  },
+  {
+    "name": "Asuncion",
+    "countryCode": "PY"
+  },
+  {
+    "name": "Sao Tome",
+    "countryCode": "ST"
+  },
+  {
+    "name": "Port-aux-Francais",
+    "countryCode": "TF"
+  },
+  {
+    "name": "Lome",
+    "countryCode": "TG"
+  },
+  {
+    "name": "Nuku'alofa",
+    "countryCode": "TO"
+  },
+  {
+    "name": "Port Vila",
+    "countryCode": "VU"
+  },
+  {
+    "name": "Mata Utu",
+    "countryCode": "WF"
+  },
+  {
+    "name": "Belgrade",
+    "countryCode": "CS"
+  },
+  {
+    "name": "Willemstad",
+    "countryCode": "AN"
+  }
+]

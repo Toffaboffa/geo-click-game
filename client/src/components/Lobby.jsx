@@ -23,6 +23,9 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
 
+  // About/info modal ( ? )
+  const [aboutOpen, setAboutOpen] = useState(false);
+
   // Hämta sparat läge från servern
   useEffect(() => {
     let cancelled = false;
@@ -51,18 +54,31 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     };
   }, [session?.sessionId]);
 
-  // ESC stänger modal
+  const closeProgress = () => {
+    setProgressOpen(false);
+    setProgressUser(null);
+    setProgressData(null);
+    setProgressError("");
+  };
+
+  const openAbout = () => setAboutOpen(true);
+  const closeAbout = () => setAboutOpen(false);
+
+  // ESC stänger modaler
   useEffect(() => {
-    if (!progressOpen) return;
+    if (!progressOpen && !aboutOpen) return;
 
     const onKeyDown = (e) => {
-      if (e.key === "Escape") closeProgress();
+      if (e.key === "Escape") {
+        if (progressOpen) closeProgress();
+        if (aboutOpen) closeAbout();
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressOpen]);
+  }, [progressOpen, aboutOpen]);
 
   const onToggleShowMe = async () => {
     const next = !showMeOnLeaderboard;
@@ -159,13 +175,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     }
   };
 
-  const closeProgress = () => {
-    setProgressOpen(false);
-    setProgressUser(null);
-    setProgressData(null);
-    setProgressError("");
-  };
-
   const groupedBadges = useMemo(() => {
     const catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
     const map = new Map(); // group_name -> { group_key, items[] }
@@ -242,7 +251,19 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
       <div className="panel">
         <div className="panel-header">
           <h2>Inloggad som: {session.username}</h2>
-          <button onClick={onLogout}>Logga ut</button>
+
+          <div className="panel-header-actions">
+            <button
+              type="button"
+              className="help-btn"
+              onClick={openAbout}
+              title="Vad är GeoSense?"
+              aria-label="Vad är GeoSense?"
+            >
+              ?
+            </button>
+            <button onClick={onLogout}>Logga ut</button>
+          </div>
         </div>
 
         <p>Online just nu: {lobbyState.onlineCount}st.</p>
@@ -327,6 +348,83 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         </table>
       </div>
 
+      {/* About / Info modal */}
+      {aboutOpen && (
+        <div className="finish-overlay" onClick={closeAbout}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">Vad är GeoSense?</div>
+
+            <div className="about-content">
+              <p>
+                GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar din
+                geografiska intuition på riktigt: var ligger staden – exakt? Du får ett stadsnamn,
+                du klickar på världskartan, och spelet mäter både precision (hur många km fel) och
+                tempo (hur snabbt du hinner klicka).
+              </p>
+
+              <p>
+                Det är lika delar “geografi”, “reaktion” och “kallsvettig finalsekund”.
+              </p>
+
+              <h3>Så spelar du</h3>
+              <p>
+                En match består av 10 rundor. Varje runda får ni en ny stad och en timer. Du klickar
+                där du tror att staden ligger – och ju närmare du är och ju snabbare du är, desto
+                bättre. Spelet räknar ut ditt rundresultat och visar efteråt en tydlig resultattabell
+                med alla rundor, tider och avstånd.
+              </p>
+
+              <p>
+                Viktigt: I GeoSense är lägre totalpoäng bättre. Det är mer “golf” än “high score”:
+                minimera felmarginalen och kapa tiden.
+              </p>
+
+              <h3>Spellägen</h3>
+              <p>
+                Du kan spela 1 mot 1 mot slumpvis spelare (eller utmana någon du ser online). Det
+                finns också ett övningsläge där du kan nöta upp muskelminnet utan pressen från en
+                motståndare.
+              </p>
+
+              <h3>Zoom-lins och tydlig feedback</h3>
+              <p>
+                Kartan fyller hela skärmen och du får en förstorings-lins runt muspekaren för att
+                sätta klicket mer exakt. Efter klicket ser du markörer för både din klickpunkt och
+                målets position, plus avståndet mellan dem – så man lär sig snabbt sina “klassiska
+                missar”.
+              </p>
+
+              <h3>Topplista och progression</h3>
+              <p>
+                GeoSense har en Topplista (Top 20) där du kan jämföra statistik som spelade matcher,
+                vinster/förluster, winrate och snittpoäng. Du kan också välja att dölja dig från
+                topplistan.
+              </p>
+
+              <p>
+                Klickar du på ett namn i topplistan öppnas spelarens progression: level + badges.
+                Badges är grupperade för överblick och du kan hovra för att se vad varje badge
+                betyder. Level byggs upp av dina badges – ju mer du spelar (och ju bättre du blir),
+                desto fler saker låser du upp.
+              </p>
+
+              <h3>För vem?</h3>
+              <p>
+                För dig som gillar snabba dueller, gillar att nörda in på kartor, eller bara vill bli
+                löjligt mycket bättre på geografi utan att det känns som plugg. GeoSense är gjort
+                för att vara enkelt att starta och svårt att sluta.
+              </p>
+            </div>
+
+            <div className="finish-actions">
+              <button className="hud-btn" onClick={closeAbout}>
+                Stäng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Progression modal */}
       {progressOpen && (
         <div className="finish-overlay" onClick={closeProgress}>
@@ -358,11 +456,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                     const defaultOpen = gi === 0;
 
                     return (
-                      <details
-                        key={g.groupName}
-                        className="badge-group"
-                        open={defaultOpen}
-                      >
+                      <details key={g.groupName} className="badge-group" open={defaultOpen}>
                         <summary className="badge-group-summary">
                           <span className="badge-group-title">{g.groupName}</span>
                           <span className="badge-group-count">
@@ -387,9 +481,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                                 <div className="badge-title">
                                   <span className="badge-emoji">{emoji}</span>
                                   <span className="badge-name">{b.name}</span>
-                                  <span className="badge-mini-status">
-                                    {earned ? "✅" : "⬜"}
-                                  </span>
+                                  <span className="badge-mini-status">{earned ? "✅" : "⬜"}</span>
                                 </div>
                               </div>
                             );

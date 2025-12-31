@@ -1,0 +1,874 @@
+[
+  {
+    "name": "Andorra la Vella",
+    "countryCode": "AD"
+  },
+  {
+    "name": "Abu Dhabi",
+    "countryCode": "AE"
+  },
+  {
+    "name": "Kabul",
+    "countryCode": "AF"
+  },
+  {
+    "name": "The Valley",
+    "countryCode": "AI"
+  },
+  {
+    "name": "Tirana",
+    "countryCode": "AL"
+  },
+  {
+    "name": "Yerevan",
+    "countryCode": "AM"
+  },
+  {
+    "name": "Luanda",
+    "countryCode": "AO"
+  },
+  {
+    "name": "Buenos Aires",
+    "countryCode": "AR"
+  },
+  {
+    "name": "Pago Pago",
+    "countryCode": "AS"
+  },
+  {
+    "name": "Vienna",
+    "countryCode": "AT"
+  },
+  {
+    "name": "Canberra",
+    "countryCode": "AU"
+  },
+  {
+    "name": "Oranjestad",
+    "countryCode": "AW"
+  },
+  {
+    "name": "Mariehamn",
+    "countryCode": "AX"
+  },
+  {
+    "name": "Baku",
+    "countryCode": "AZ"
+  },
+  {
+    "name": "Sarajevo",
+    "countryCode": "BA"
+  },
+  {
+    "name": "Bridgetown",
+    "countryCode": "BB"
+  },
+  {
+    "name": "Dhaka",
+    "countryCode": "BD"
+  },
+  {
+    "name": "Brussels",
+    "countryCode": "BE"
+  },
+  {
+    "name": "Ouagadougou",
+    "countryCode": "BF"
+  },
+  {
+    "name": "Sofia",
+    "countryCode": "BG"
+  },
+  {
+    "name": "Manama",
+    "countryCode": "BH"
+  },
+  {
+    "name": "Gitega",
+    "countryCode": "BI"
+  },
+  {
+    "name": "Porto-Novo",
+    "countryCode": "BJ"
+  },
+  {
+    "name": "Gustavia",
+    "countryCode": "BL"
+  },
+  {
+    "name": "Hamilton",
+    "countryCode": "BM"
+  },
+  {
+    "name": "Bandar Seri Begawan",
+    "countryCode": "BN"
+  },
+  {
+    "name": "Sucre",
+    "countryCode": "BO"
+  },
+  {
+    "name": "Nassau",
+    "countryCode": "BS"
+  },
+  {
+    "name": "Thimphu",
+    "countryCode": "BT"
+  },
+  {
+    "name": "Gaborone",
+    "countryCode": "BW"
+  },
+  {
+    "name": "Minsk",
+    "countryCode": "BY"
+  },
+  {
+    "name": "Belmopan",
+    "countryCode": "BZ"
+  },
+  {
+    "name": "Ottawa",
+    "countryCode": "CA"
+  },
+  {
+    "name": "West Island",
+    "countryCode": "CC"
+  },
+  {
+    "name": "Kinshasa",
+    "countryCode": "CD"
+  },
+  {
+    "name": "Bangui",
+    "countryCode": "CF"
+  },
+  {
+    "name": "Brazzaville",
+    "countryCode": "CG"
+  },
+  {
+    "name": "Bern",
+    "countryCode": "CH"
+  },
+  {
+    "name": "Yamoussoukro",
+    "countryCode": "CI"
+  },
+  {
+    "name": "Avarua",
+    "countryCode": "CK"
+  },
+  {
+    "name": "Santiago",
+    "countryCode": "CL"
+  },
+  {
+    "name": "Beijing",
+    "countryCode": "CN"
+  },
+  {
+    "name": "Havana",
+    "countryCode": "CU"
+  },
+  {
+    "name": "Praia",
+    "countryCode": "CV"
+  },
+  {
+    "name": "Willemstad",
+    "countryCode": "CW"
+  },
+  {
+    "name": "Flying Fish Cove",
+    "countryCode": "CX"
+  },
+  {
+    "name": "Nicosia",
+    "countryCode": "CY"
+  },
+  {
+    "name": "Prague",
+    "countryCode": "CZ"
+  },
+  {
+    "name": "Berlin",
+    "countryCode": "DE"
+  },
+  {
+    "name": "Djibouti",
+    "countryCode": "DJ"
+  },
+  {
+    "name": "Copenhagen",
+    "countryCode": "DK"
+  },
+  {
+    "name": "Roseau",
+    "countryCode": "DM"
+  },
+  {
+    "name": "Santo Domingo",
+    "countryCode": "DO"
+  },
+  {
+    "name": "Algiers",
+    "countryCode": "DZ"
+  },
+  {
+    "name": "Quito",
+    "countryCode": "EC"
+  },
+  {
+    "name": "Tallinn",
+    "countryCode": "EE"
+  },
+  {
+    "name": "Cairo",
+    "countryCode": "EG"
+  },
+  {
+    "name": "Asmara",
+    "countryCode": "ER"
+  },
+  {
+    "name": "Madrid",
+    "countryCode": "ES"
+  },
+  {
+    "name": "Addis Ababa",
+    "countryCode": "ET"
+  },
+  {
+    "name": "Helsinki",
+    "countryCode": "FI"
+  },
+  {
+    "name": "Suva",
+    "countryCode": "FJ"
+  },
+  {
+    "name": "Stanley",
+    "countryCode": "FK"
+  },
+  {
+    "name": "Palikir",
+    "countryCode": "FM"
+  },
+  {
+    "name": "Paris",
+    "countryCode": "FR"
+  },
+  {
+    "name": "Libreville",
+    "countryCode": "GA"
+  },
+  {
+    "name": "London",
+    "countryCode": "GB"
+  },
+  {
+    "name": "Tbilisi",
+    "countryCode": "GE"
+  },
+  {
+    "name": "Cayenne",
+    "countryCode": "GF"
+  },
+  {
+    "name": "Accra",
+    "countryCode": "GH"
+  },
+  {
+    "name": "Gibraltar",
+    "countryCode": "GI"
+  },
+  {
+    "name": "Nuuk",
+    "countryCode": "GL"
+  },
+  {
+    "name": "Banjul",
+    "countryCode": "GM"
+  },
+  {
+    "name": "Conakry",
+    "countryCode": "GN"
+  },
+  {
+    "name": "Basse-Terre",
+    "countryCode": "GP"
+  },
+  {
+    "name": "Malabo",
+    "countryCode": "GQ"
+  },
+  {
+    "name": "Athens",
+    "countryCode": "GR"
+  },
+  {
+    "name": "Grytviken",
+    "countryCode": "GS"
+  },
+  {
+    "name": "Guatemala City",
+    "countryCode": "GT"
+  },
+  {
+    "name": "Bissau",
+    "countryCode": "GW"
+  },
+  {
+    "name": "Georgetown",
+    "countryCode": "GY"
+  },
+  {
+    "name": "Hong Kong",
+    "countryCode": "HK"
+  },
+  {
+    "name": "Tegucigalpa",
+    "countryCode": "HN"
+  },
+  {
+    "name": "Zagreb",
+    "countryCode": "HR"
+  },
+  {
+    "name": "Port-au-Prince",
+    "countryCode": "HT"
+  },
+  {
+    "name": "Budapest",
+    "countryCode": "HU"
+  },
+  {
+    "name": "Jakarta",
+    "countryCode": "ID"
+  },
+  {
+    "name": "Dublin",
+    "countryCode": "IE"
+  },
+  {
+    "name": "Jerusalem",
+    "countryCode": "IL"
+  },
+  {
+    "name": "Douglas",
+    "countryCode": "IM"
+  },
+  {
+    "name": "Baghdad",
+    "countryCode": "IQ"
+  },
+  {
+    "name": "Tehran",
+    "countryCode": "IR"
+  },
+  {
+    "name": "Rome",
+    "countryCode": "IT"
+  },
+  {
+    "name": "Saint Helier",
+    "countryCode": "JE"
+  },
+  {
+    "name": "Kingston",
+    "countryCode": "JM"
+  },
+  {
+    "name": "Amman",
+    "countryCode": "JO"
+  },
+  {
+    "name": "Tokyo",
+    "countryCode": "JP"
+  },
+  {
+    "name": "Nairobi",
+    "countryCode": "KE"
+  },
+  {
+    "name": "Bishkek",
+    "countryCode": "KG"
+  },
+  {
+    "name": "Phnom Penh",
+    "countryCode": "KH"
+  },
+  {
+    "name": "Tarawa",
+    "countryCode": "KI"
+  },
+  {
+    "name": "Moroni",
+    "countryCode": "KM"
+  },
+  {
+    "name": "Basseterre",
+    "countryCode": "KN"
+  },
+  {
+    "name": "Pyongyang",
+    "countryCode": "KP"
+  },
+  {
+    "name": "Seoul",
+    "countryCode": "KR"
+  },
+  {
+    "name": "Kuwait City",
+    "countryCode": "KW"
+  },
+  {
+    "name": "George Town",
+    "countryCode": "KY"
+  },
+  {
+    "name": "Vientiane",
+    "countryCode": "LA"
+  },
+  {
+    "name": "Beirut",
+    "countryCode": "LB"
+  },
+  {
+    "name": "Castries",
+    "countryCode": "LC"
+  },
+  {
+    "name": "Vaduz",
+    "countryCode": "LI"
+  },
+  {
+    "name": "Colombo",
+    "countryCode": "LK"
+  },
+  {
+    "name": "Monrovia",
+    "countryCode": "LR"
+  },
+  {
+    "name": "Maseru",
+    "countryCode": "LS"
+  },
+  {
+    "name": "Vilnius",
+    "countryCode": "LT"
+  },
+  {
+    "name": "Luxembourg",
+    "countryCode": "LU"
+  },
+  {
+    "name": "Riga",
+    "countryCode": "LV"
+  },
+  {
+    "name": "Tripoli",
+    "countryCode": "LY"
+  },
+  {
+    "name": "Rabat",
+    "countryCode": "MA"
+  },
+  {
+    "name": "Monaco",
+    "countryCode": "MC"
+  },
+  {
+    "name": "Chisinau",
+    "countryCode": "MD"
+  },
+  {
+    "name": "Podgorica",
+    "countryCode": "ME"
+  },
+  {
+    "name": "Marigot",
+    "countryCode": "MF"
+  },
+  {
+    "name": "Antananarivo",
+    "countryCode": "MG"
+  },
+  {
+    "name": "Majuro",
+    "countryCode": "MH"
+  },
+  {
+    "name": "Skopje",
+    "countryCode": "MK"
+  },
+  {
+    "name": "Bamako",
+    "countryCode": "ML"
+  },
+  {
+    "name": "Nay Pyi Taw",
+    "countryCode": "MM"
+  },
+  {
+    "name": "Saipan",
+    "countryCode": "MP"
+  },
+  {
+    "name": "Fort-de-France",
+    "countryCode": "MQ"
+  },
+  {
+    "name": "Nouakchott",
+    "countryCode": "MR"
+  },
+  {
+    "name": "Plymouth",
+    "countryCode": "MS"
+  },
+  {
+    "name": "Valletta",
+    "countryCode": "MT"
+  },
+  {
+    "name": "Port Louis",
+    "countryCode": "MU"
+  },
+  {
+    "name": "Male",
+    "countryCode": "MV"
+  },
+  {
+    "name": "Lilongwe",
+    "countryCode": "MW"
+  },
+  {
+    "name": "Mexico City",
+    "countryCode": "MX"
+  },
+  {
+    "name": "Kuala Lumpur",
+    "countryCode": "MY"
+  },
+  {
+    "name": "Maputo",
+    "countryCode": "MZ"
+  },
+  {
+    "name": "Windhoek",
+    "countryCode": "NA"
+  },
+  {
+    "name": "Niamey",
+    "countryCode": "NE"
+  },
+  {
+    "name": "Kingston",
+    "countryCode": "NF"
+  },
+  {
+    "name": "Abuja",
+    "countryCode": "NG"
+  },
+  {
+    "name": "Managua",
+    "countryCode": "NI"
+  },
+  {
+    "name": "Amsterdam",
+    "countryCode": "NL"
+  },
+  {
+    "name": "Oslo",
+    "countryCode": "NO"
+  },
+  {
+    "name": "Kathmandu",
+    "countryCode": "NP"
+  },
+  {
+    "name": "Yaren",
+    "countryCode": "NR"
+  },
+  {
+    "name": "Alofi",
+    "countryCode": "NU"
+  },
+  {
+    "name": "Wellington",
+    "countryCode": "NZ"
+  },
+  {
+    "name": "Muscat",
+    "countryCode": "OM"
+  },
+  {
+    "name": "Lima",
+    "countryCode": "PE"
+  },
+  {
+    "name": "Papeete",
+    "countryCode": "PF"
+  },
+  {
+    "name": "Port Moresby",
+    "countryCode": "PG"
+  },
+  {
+    "name": "Manila",
+    "countryCode": "PH"
+  },
+  {
+    "name": "Islamabad",
+    "countryCode": "PK"
+  },
+  {
+    "name": "Warsaw",
+    "countryCode": "PL"
+  },
+  {
+    "name": "Saint-Pierre",
+    "countryCode": "PM"
+  },
+  {
+    "name": "Adamstown",
+    "countryCode": "PN"
+  },
+  {
+    "name": "San Juan",
+    "countryCode": "PR"
+  },
+  {
+    "name": "East Jerusalem",
+    "countryCode": "PS"
+  },
+  {
+    "name": "Lisbon",
+    "countryCode": "PT"
+  },
+  {
+    "name": "Doha",
+    "countryCode": "QA"
+  },
+  {
+    "name": "Saint-Denis",
+    "countryCode": "RE"
+  },
+  {
+    "name": "Bucharest",
+    "countryCode": "RO"
+  },
+  {
+    "name": "Belgrade",
+    "countryCode": "RS"
+  },
+  {
+    "name": "Moscow",
+    "countryCode": "RU"
+  },
+  {
+    "name": "Kigali",
+    "countryCode": "RW"
+  },
+  {
+    "name": "Riyadh",
+    "countryCode": "SA"
+  },
+  {
+    "name": "Honiara",
+    "countryCode": "SB"
+  },
+  {
+    "name": "Victoria",
+    "countryCode": "SC"
+  },
+  {
+    "name": "Khartoum",
+    "countryCode": "SD"
+  },
+  {
+    "name": "Stockholm",
+    "countryCode": "SE"
+  },
+  {
+    "name": "Singapore",
+    "countryCode": "SG"
+  },
+  {
+    "name": "Jamestown",
+    "countryCode": "SH"
+  },
+  {
+    "name": "Ljubljana",
+    "countryCode": "SI"
+  },
+  {
+    "name": "Longyearbyen",
+    "countryCode": "SJ"
+  },
+  {
+    "name": "Bratislava",
+    "countryCode": "SK"
+  },
+  {
+    "name": "Freetown",
+    "countryCode": "SL"
+  },
+  {
+    "name": "San Marino",
+    "countryCode": "SM"
+  },
+  {
+    "name": "Dakar",
+    "countryCode": "SN"
+  },
+  {
+    "name": "Mogadishu",
+    "countryCode": "SO"
+  },
+  {
+    "name": "Paramaribo",
+    "countryCode": "SR"
+  },
+  {
+    "name": "Juba",
+    "countryCode": "SS"
+  },
+  {
+    "name": "San Salvador",
+    "countryCode": "SV"
+  },
+  {
+    "name": "Philipsburg",
+    "countryCode": "SX"
+  },
+  {
+    "name": "Damascus",
+    "countryCode": "SY"
+  },
+  {
+    "name": "Mbabane",
+    "countryCode": "SZ"
+  },
+  {
+    "name": "Cockburn Town",
+    "countryCode": "TC"
+  },
+  {
+    "name": "N'Djamena",
+    "countryCode": "TD"
+  },
+  {
+    "name": "Bangkok",
+    "countryCode": "TH"
+  },
+  {
+    "name": "Dushanbe",
+    "countryCode": "TJ"
+  },
+  {
+    "name": "Dili",
+    "countryCode": "TL"
+  },
+  {
+    "name": "Ashgabat",
+    "countryCode": "TM"
+  },
+  {
+    "name": "Tunis",
+    "countryCode": "TN"
+  },
+  {
+    "name": "Ankara",
+    "countryCode": "TR"
+  },
+  {
+    "name": "Port of Spain",
+    "countryCode": "TT"
+  },
+  {
+    "name": "Funafuti",
+    "countryCode": "TV"
+  },
+  {
+    "name": "Taipei",
+    "countryCode": "TW"
+  },
+  {
+    "name": "Dodoma",
+    "countryCode": "TZ"
+  },
+  {
+    "name": "Kyiv",
+    "countryCode": "UA"
+  },
+  {
+    "name": "Kampala",
+    "countryCode": "UG"
+  },
+  {
+    "name": "Washington",
+    "countryCode": "US"
+  },
+  {
+    "name": "Montevideo",
+    "countryCode": "UY"
+  },
+  {
+    "name": "Tashkent",
+    "countryCode": "UZ"
+  },
+  {
+    "name": "Vatican City",
+    "countryCode": "VA"
+  },
+  {
+    "name": "Kingstown",
+    "countryCode": "VC"
+  },
+  {
+    "name": "Caracas",
+    "countryCode": "VE"
+  },
+  {
+    "name": "Road Town",
+    "countryCode": "VG"
+  },
+  {
+    "name": "Charlotte Amalie",
+    "countryCode": "VI"
+  },
+  {
+    "name": "Hanoi",
+    "countryCode": "VN"
+  },
+  {
+    "name": "Apia",
+    "countryCode": "WS"
+  },
+  {
+    "name": "Pristina",
+    "countryCode": "XK"
+  },
+  {
+    "name": "Sanaa",
+    "countryCode": "YE"
+  },
+  {
+    "name": "Mamoudzou",
+    "countryCode": "YT"
+  },
+  {
+    "name": "Pretoria",
+    "countryCode": "ZA"
+  },
+  {
+    "name": "Lusaka",
+    "countryCode": "ZM"
+  },
+  {
+    "name": "Harare",
+    "countryCode": "ZW"
+  }
+]

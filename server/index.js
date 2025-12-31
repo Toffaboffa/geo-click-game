@@ -1,4 +1,7 @@
 // server/index.js
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { pool } from "./db.js";
 import express from "express";
 import http from "http";
@@ -33,6 +36,16 @@ const PENALTY_TIME_MS = 20_000; // om man inte klickar: timeMs som max
 // Score normalization
 const SCORER_MAX_TIME_MS = 20_000; // normalisera tid i score över 20s
 const SCORER_MAX_DISTANCE_KM = 20_000;
+
+// Walkover policy (Variant X)
+const WALKOVER_LOSER_SCORE = 15_000; // totalpoäng för 10 rundor ~ max 20k
+const DISCONNECT_GRACE_MS = 10_000;
+
+// Sweep policy (1B)
+const MATCH_SWEEP_INTERVAL_MS = 60_000;
+const MATCH_FINISHED_TTL_MS = 2 * 60_000; // behåll färdiga matcher 2 min
+const MATCH_MAX_AGE_MS = 30 * 60_000; // failsafe: 30 min
+const CHALLENGE_TTL_MS = 45_000;
 
 // =====================
 // Helpers (auth/sessions)
@@ -395,8 +408,31 @@ const lobby = {
 const socketsByUser = new Map(); // username -> socket.id
 const matches = new Map(); // matchId -> match
 
+// NEW (11A, 3A, 5A)
+const activeMatchByUser = new Map(); // username -> matchId
+const disconnectGrace = new Map(); // username -> timeoutId
+const pendingChallenges = new Map(); // key: `${from}->${to}` -> { from, to, expiresAt }
+
 function getRoomName(matchId) {
   return `match_${matchId}`;
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+function broadcastLobby() {
+  io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size });
+}
+
+function isUserInActiveMatch(username) {
+  return activeMatchByUser.has(username);
+}
+
+function clearDisconnectGrace(username) {
+  const t = disconnectGrace.get(username);
+  if (t) clearTimeout(t);
+  disconnectGrace.delete(username);
 }
 
 function createMatch(playerA, playerB, opts = {}) {
@@ -404,6 +440,9 @@ function createMatch(playerA, playerB, opts = {}) {
   const scorer = createRoundScorer(SCORER_MAX_DISTANCE_KM, SCORER_MAX_TIME_MS);
   const match = {
     id: matchId,
+    createdAt: nowMs(),
+    finishedAt: null,
+    finishReason: null, // "normal" | "leave" | "disconnect" | ...
     players: [playerA, playerB],
     currentRound: 0,
     totalRounds: 10,
@@ -426,15 +465,30 @@ function createMatch(playerA, playerB, opts = {}) {
   return match;
 }
 
-function broadcastLobby() {
-  io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size });
-}
-
 function tryMatchRandom() {
+  // Vi tar 2 och matchar – men respekterar activeMatch-lås
   if (lobby.randomQueue.size < 2) return;
-  const [a, b] = Array.from(lobby.randomQueue).slice(0, 2);
+  const queue = Array.from(lobby.randomQueue);
+  let a = null;
+  let b = null;
+
+  for (const u of queue) {
+    if (isUserInActiveMatch(u)) {
+      lobby.randomQueue.delete(u);
+      continue;
+    }
+    if (!a) a = u;
+    else if (!b) {
+      b = u;
+      break;
+    }
+  }
+
+  if (!a || !b) return;
+
   lobby.randomQueue.delete(a);
   lobby.randomQueue.delete(b);
+
   const match = createMatch(a, b);
   startMatch(match);
 }
@@ -459,12 +513,32 @@ function beginStartReady(match) {
   }, match.isSolo ? 10_000 : 30_000);
 }
 
+function setActiveMatchForPlayers(match) {
+  for (const p of match.players) {
+    if (p && p !== BOT_NAME) activeMatchByUser.set(p, match.id);
+  }
+}
+
+function clearActiveMatchForPlayers(match) {
+  for (const p of match.players) {
+    if (!p || p === BOT_NAME) continue;
+    if (activeMatchByUser.get(p) === match.id) activeMatchByUser.delete(p);
+  }
+}
+
 function startMatch(match) {
   const roomName = getRoomName(match.id);
   const [pA, pB] = match.players;
   const sA = socketsByUser.get(pA);
   const sB = socketsByUser.get(pB);
   if (!sA || !sB) return;
+
+  // (11A) mark active
+  setActiveMatchForPlayers(match);
+
+  // Om någon låg kvar i queue – ta bort (safety)
+  lobby.randomQueue.delete(pA);
+  lobby.randomQueue.delete(pB);
 
   io.sockets.sockets.get(sA)?.join(roomName);
   io.sockets.sockets.get(sB)?.join(roomName);
@@ -482,6 +556,12 @@ function startMatch(match) {
 
 function startSoloMatch(match, playerSocket) {
   const roomName = getRoomName(match.id);
+
+  // (11A) mark active
+  setActiveMatchForPlayers(match);
+
+  lobby.randomQueue.delete(match.players[0]);
+
   playerSocket.join(roomName);
 
   io.to(roomName).emit("match_started", {
@@ -494,6 +574,85 @@ function startSoloMatch(match, playerSocket) {
 
   beginStartReady(match);
 }
+
+// =====================
+// Capitals merge (capitals.json i /server/) + diakritik-normalisering
+// =====================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function normStr(x) {
+  return String(x ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normNameForKey(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    // ta bort diakritiska tecken (Reykjavík -> reykjavik)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    // standardisera apostrofvarianter
+    .replace(/[’‘`´]/g, "'")
+    // ta bort punkter (St. -> St)
+    .replace(/\./g, "")
+    // standardisera bindestreck till mellanslag
+    .replace(/[-–—]/g, " ")
+    // komprimera whitespace
+    .replace(/\s+/g, " ");
+}
+
+function capKey(name, countryCode) {
+  return `${normNameForKey(name)}|${String(countryCode || "").trim().toUpperCase()}`;
+}
+
+function applyCapitalsToCities(citiesArr) {
+  const capitalsPath = path.join(__dirname, "capitals.json");
+
+  try {
+    if (!fs.existsSync(capitalsPath)) {
+      console.log("[capitals] capitals.json saknas – kör utan capital-flaggor.");
+      return;
+    }
+
+    const raw = fs.readFileSync(capitalsPath, "utf-8");
+    const list = JSON.parse(raw);
+
+    if (!Array.isArray(list)) {
+      console.log("[capitals] capitals.json är inte en array – ignorerar.");
+      return;
+    }
+
+    const set = new Set(
+      list
+        .map((x) => capKey(x?.name, x?.countryCode))
+        .filter((k) => {
+          // kräver både name och countryCode
+          const [n, cc] = String(k).split("|");
+          return !!(n && cc);
+        })
+    );
+
+    let marked = 0;
+    for (const c of citiesArr) {
+      const isCap = set.has(capKey(c?.name, c?.countryCode));
+      if (isCap) marked += 1;
+      c.isCapital = isCap;
+    }
+
+    console.log(`[capitals] Marked ${marked} cities as capitals.`);
+  } catch (e) {
+    console.log("[capitals] Kunde inte läsa/parse capitals.json – kör utan capital-flaggor.");
+    console.error(e);
+  }
+}
+
+// Kör direkt vid boot
+applyCapitalsToCities(cities);
 
 function pickCityMeta(city) {
   const continent = city?.continent ?? city?.region ?? null;
@@ -537,6 +696,12 @@ function clearIntermissionTimers(match) {
 function clearRoundTimeout(match) {
   if (match.roundTimeout) clearTimeout(match.roundTimeout);
   match.roundTimeout = null;
+}
+
+function clearAllMatchTimers(match) {
+  clearIntermissionTimers(match);
+  clearStartReady(match);
+  clearRoundTimeout(match);
 }
 
 function beginIntermission(match) {
@@ -666,9 +831,10 @@ function buildMatchAnalytics(match, totalScores) {
   };
 
   for (const r of match.rounds) {
+    if (!r) continue; // IMPORTANT: match kan avbrytas mitt i
     const city = normalizeCityForBadge(r.city);
     for (const p of match.players) {
-      const c = r.clicks[p] || {};
+      const c = r.clicks?.[p] || {};
       per[p].rounds.push({
         distanceKm: c.distanceKm ?? null,
         timeMs: c.timeMs ?? null,
@@ -772,7 +938,7 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
     );
     const newBadgesCount = cntRows[0]?.c ?? user.badges_count ?? 0;
 
-    // Level = badges_count (enkelt & tydligt i början)
+    // Level = badges_count
     const newLevel = newBadgesCount;
 
     // Uppdatera users om kolumnerna finns
@@ -821,22 +987,46 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   return progressionDelta;
 }
 
-async function finishMatch(match) {
-  match.finished = true;
-  clearIntermissionTimers(match);
-  clearStartReady(match);
-  clearRoundTimeout(match);
-
+function computeTotalsFromRounds(match) {
   const [pA, pB] = match.players;
   const total = { [pA]: 0, [pB]: 0 };
 
-  match.rounds.forEach((r) => {
-    total[pA] += r.clicks[pA]?.score ?? 0;
-    total[pB] += r.clicks[pB]?.score ?? 0;
-  });
+  for (const r of match.rounds) {
+    if (!r) continue;
+    total[pA] += r.clicks?.[pA]?.score ?? 0;
+    total[pB] += r.clicks?.[pB]?.score ?? 0;
+  }
+
+  return total;
+}
+
+async function finishMatch(match, opts = {}) {
+  if (!match || match.finished) return;
+
+  match.finished = true;
+  match.finishedAt = nowMs();
+  match.finishReason = opts.reason ?? "normal";
+
+  // stoppa timers
+  clearAllMatchTimers(match);
+
+  // (11A) släpp active-match lås direkt så spelare inte fastnar
+  clearActiveMatchForPlayers(match);
+
+  // (3A) rensa ev disconnect grace timers kopplade till spelarna
+  for (const p of match.players) {
+    if (p && p !== BOT_NAME) clearDisconnectGrace(p);
+  }
+
+  const [pA, pB] = match.players;
+
+  // totals + winner
+  let total = opts.totalOverride ?? computeTotalsFromRounds(match);
 
   let winner = null;
-  if (!match.isPractice) {
+  if (opts.winnerOverride) {
+    winner = opts.winnerOverride;
+  } else if (!match.isPractice) {
     if (total[pA] < total[pB]) winner = pA;
     else if (total[pB] < total[pA]) winner = pB;
   }
@@ -850,57 +1040,152 @@ async function finishMatch(match) {
     try {
       await client.query("begin");
 
-      // 1) played + total_score
-      for (const u of realPlayers) {
+      const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+
+      // Walkover: Variant X
+      // - loser får score 15000 (och påverkar snitt)
+      // - winner får "matchscore" ~ deras gamla snitt för att snitt ska vara oförändrat
+      const isWalkover = !!opts.walkover;
+      const walkoverLoser = opts.walkoverLoser ?? null;
+      const walkoverWinner = opts.walkoverWinner ?? null;
+
+      if (isWalkover && bothReal && walkoverLoser && walkoverWinner) {
+        // Lås båda raderna (för determinism)
+        const { rows: rowsA } = await client.query(
+          `select username, played, total_score, avg_score
+           from users where username = $1 for update`,
+          [walkoverWinner]
+        );
+        const { rows: rowsB } = await client.query(
+          `select username, played, total_score, avg_score
+           from users where username = $1 for update`,
+          [walkoverLoser]
+        );
+
+        const w = rowsA[0];
+        const l = rowsB[0];
+
+        // Winner matchscore för att hålla avg ~ konstant.
+        // Om played=0: vi kan inte bevara snitt, så 0 (”gratis”) är ok.
+        let winnerMatchScore = 0;
+        if (w && Number(w.played) > 0) {
+          const ts = Number(w.total_score ?? 0);
+          const pl = Number(w.played ?? 0);
+          winnerMatchScore = pl > 0 ? Math.round(ts / pl) : 0;
+        }
+
+        const loserMatchScore = WALKOVER_LOSER_SCORE;
+
+        // totalOverride för eventet (så UI visar något vettigt)
+        total = {
+          [walkoverWinner]: winnerMatchScore,
+          [walkoverLoser]: loserMatchScore,
+        };
+        winner = walkoverWinner;
+
+        // played + total_score (winner påverkas minimalt, loser straffas hårt)
         await client.query(
           `update users
            set played = played + 1,
                total_score = total_score + $2
            where username = $1`,
-          [u, total[u] ?? 0]
+          [walkoverWinner, winnerMatchScore]
         );
-      }
+        await client.query(
+          `update users
+           set played = played + 1,
+               total_score = total_score + $2
+           where username = $1`,
+          [walkoverLoser, loserMatchScore]
+        );
 
-      const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+        // wins/losses
+        await client.query(`update users set wins = wins + 1 where username=$1`, [walkoverWinner]);
+        await client.query(`update users set losses = losses + 1 where username=$1`, [walkoverLoser]);
 
-      // 2) wins/losses + optional win_streak
-      if (winner && bothReal) {
-        const loser = winner === pA ? pB : pA;
-
-        await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
-        await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
-
+        // win_streak (om finns)
         const hasWinStreak = await hasColumn(client, "users", "win_streak");
         if (hasWinStreak) {
           await client.query(
             `update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`,
-            [winner]
+            [walkoverWinner]
           );
-          await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
+          await client.query(`update users set win_streak = 0 where username=$1`, [walkoverLoser]);
         }
+
+        // avg_score
+        await client.query(
+          `update users
+           set avg_score = case when played > 0 then total_score / played else 0 end
+           where username = any($1::text[])`,
+          [[walkoverWinner, walkoverLoser]]
+        );
+
+        // pct
+        await client.query(
+          `update users
+           set pct = case
+             when (wins + losses) > 0 then round(100.0 * wins / (wins + losses), 1)
+             else null
+           end
+           where username = any($1::text[])`,
+          [[walkoverWinner, walkoverLoser]]
+        );
+
+        // Badges: vi skippar på walkover (för att undvika abuse + ofullständiga rundor)
+        progressionDelta = {};
+      } else {
+        // Normal match (din gamla logik)
+        // 1) played + total_score
+        for (const u of realPlayers) {
+          await client.query(
+            `update users
+             set played = played + 1,
+                 total_score = total_score + $2
+             where username = $1`,
+            [u, total[u] ?? 0]
+          );
+        }
+
+        // 2) wins/losses + optional win_streak
+        if (winner && bothReal) {
+          const loser = winner === pA ? pB : pA;
+
+          await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
+          await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
+
+          const hasWinStreak = await hasColumn(client, "users", "win_streak");
+          if (hasWinStreak) {
+            await client.query(
+              `update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`,
+              [winner]
+            );
+            await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
+          }
+        }
+
+        // 3) avg_score
+        await client.query(
+          `update users
+           set avg_score = case when played > 0 then total_score / played else 0 end
+           where username = any($1::text[])`,
+          [realPlayers]
+        );
+
+        // 4) pct
+        await client.query(
+          `update users
+           set pct = case
+             when (wins + losses) > 0 then round(100.0 * wins / (wins + losses), 1)
+             else null
+           end
+           where username = any($1::text[])`,
+          [realPlayers]
+        );
+
+        // 5) badges + level + delta
+        progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
       }
-
-      // 3) avg_score
-      await client.query(
-        `update users
-         set avg_score = case when played > 0 then total_score / played else 0 end
-         where username = any($1::text[])`,
-        [realPlayers]
-      );
-
-      // 4) pct
-      await client.query(
-        `update users
-         set pct = case
-           when (wins + losses) > 0 then round(100.0 * wins / (wins + losses), 1)
-           else null
-         end
-         where username = any($1::text[])`,
-        [realPlayers]
-      );
-
-      // 5) badges + level + delta
-      progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
 
       await client.query("commit");
     } catch (e) {
@@ -915,8 +1200,78 @@ async function finishMatch(match) {
     totalScores: total,
     winner,
     progressionDelta,
+    finishReason: match.finishReason,
   });
 }
+
+// Walkover helper (leave/disconnect)
+async function finishMatchAsWalkover(match, winner, loser, reason) {
+  if (!match || match.finished) return;
+  await finishMatch(match, {
+    walkover: true,
+    walkoverWinner: winner,
+    walkoverLoser: loser,
+    winnerOverride: winner,
+    reason,
+  });
+}
+
+// =====================
+// Challenge helpers (5A)
+// =====================
+function makeChallengeKey(from, to) {
+  return `${from}->${to}`;
+}
+function setPendingChallenge(from, to) {
+  const key = makeChallengeKey(from, to);
+  pendingChallenges.set(key, { from, to, expiresAt: nowMs() + CHALLENGE_TTL_MS });
+  return key;
+}
+function hasValidPendingChallenge(from, to) {
+  const key = makeChallengeKey(from, to);
+  const entry = pendingChallenges.get(key);
+  if (!entry) return false;
+  if (entry.expiresAt <= nowMs()) {
+    pendingChallenges.delete(key);
+    return false;
+  }
+  return true;
+}
+function clearPendingChallenge(from, to) {
+  pendingChallenges.delete(makeChallengeKey(from, to));
+}
+
+// =====================
+// Sweep (1B): städa pending challenges + match map
+// =====================
+setInterval(() => {
+  const now = nowMs();
+
+  // challenges
+  for (const [key, entry] of pendingChallenges.entries()) {
+    if (!entry || entry.expiresAt <= now) pendingChallenges.delete(key);
+  }
+
+  // matches
+  for (const [id, match] of matches.entries()) {
+    if (!match) {
+      matches.delete(id);
+      continue;
+    }
+
+    const age = now - (match.createdAt ?? now);
+    const finishedAge = match.finished ? now - (match.finishedAt ?? now) : 0;
+
+    const shouldDelete =
+      (match.finished && finishedAge > MATCH_FINISHED_TTL_MS) || age > MATCH_MAX_AGE_MS;
+
+    if (shouldDelete) {
+      // säker städning av timers
+      clearAllMatchTimers(match);
+      matches.delete(id);
+    }
+  }
+}, MATCH_SWEEP_INTERVAL_MS).unref?.();
 
 // =====================
 // Socket handlers
@@ -931,8 +1286,24 @@ io.on("connection", (socket) => {
         socket.emit("auth_error", "Ogiltig session, logga in igen.");
         return;
       }
+
+      // (4D) Kicka gammal socket om user redan online
+      const oldSocketId = socketsByUser.get(username);
+      if (oldSocketId && oldSocketId !== socket.id) {
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        if (oldSocket) {
+          oldSocket.emit("forced_logout", "Du blev utloggad eftersom du loggade in i en annan flik.");
+          // true = close underlying connection
+          oldSocket.disconnect(true);
+        }
+      }
+
       currentUser = username;
       socketsByUser.set(username, socket.id);
+
+      // (3A) om reconnect inom grace: stoppa walkover-timer
+      clearDisconnectGrace(username);
+
       lobby.onlineUsers.add(username);
       broadcastLobby();
     } catch (e) {
@@ -943,6 +1314,13 @@ io.on("connection", (socket) => {
 
   socket.on("start_random_match", () => {
     if (!currentUser) return;
+
+    // (11A) lås om redan i match
+    if (isUserInActiveMatch(currentUser)) {
+      socket.emit("match_error", "Du är redan i en match.");
+      return;
+    }
+
     lobby.randomQueue.add(currentUser);
     broadcastLobby();
     tryMatchRandom();
@@ -950,29 +1328,105 @@ io.on("connection", (socket) => {
 
   socket.on("start_solo_match", () => {
     if (!currentUser) return;
+
+    // (11A)
+    if (isUserInActiveMatch(currentUser)) {
+      socket.emit("match_error", "Du är redan i en match.");
+      return;
+    }
+
     const match = createMatch(currentUser, BOT_NAME, { isSolo: true, isPractice: true });
     startSoloMatch(match, socket);
   });
 
   socket.on("challenge_player", (targetUsername) => {
     if (!currentUser) return;
-    const targetSocketId = socketsByUser.get(targetUsername);
+
+    // (11A)
+    if (isUserInActiveMatch(currentUser)) {
+      socket.emit("challenge_error", "Du är redan i en match.");
+      return;
+    }
+
+    const target = String(targetUsername || "").trim();
+    if (!target) return;
+
+    if (isUserInActiveMatch(target)) {
+      socket.emit("challenge_error", "Spelaren är upptagen i en match");
+      return;
+    }
+
+    const targetSocketId = socketsByUser.get(target);
     if (!targetSocketId) {
       socket.emit("challenge_error", "Spelaren är inte online");
       return;
     }
+
+    // (5A) skapa pending
+    setPendingChallenge(currentUser, target);
+
     io.to(targetSocketId).emit("challenge_received", { from: currentUser });
   });
 
   socket.on("accept_challenge", (fromUsername) => {
     if (!currentUser) return;
-    const fromSocketId = socketsByUser.get(fromUsername);
-    if (!fromSocketId) {
-      socket.emit("challenge_error", "Utmanaren är inte längre online");
+
+    // (11A)
+    if (isUserInActiveMatch(currentUser)) {
+      socket.emit("challenge_error", "Du är redan i en match.");
       return;
     }
-    const match = createMatch(fromUsername, currentUser);
+
+    const from = String(fromUsername || "").trim();
+    if (!from) return;
+
+    // (5A) validera pending
+    if (!hasValidPendingChallenge(from, currentUser)) {
+      socket.emit("challenge_error", "Utmaningen är ogiltig eller har gått ut.");
+      return;
+    }
+
+    const fromSocketId = socketsByUser.get(from);
+    if (!fromSocketId) {
+      socket.emit("challenge_error", "Utmanaren är inte längre online");
+      clearPendingChallenge(from, currentUser);
+      return;
+    }
+
+    if (isUserInActiveMatch(from)) {
+      socket.emit("challenge_error", "Utmanaren är upptagen i en match");
+      clearPendingChallenge(from, currentUser);
+      return;
+    }
+
+    clearPendingChallenge(from, currentUser);
+
+    const match = createMatch(from, currentUser);
     startMatch(match);
+  });
+
+  // (2A) leave_match
+  socket.on("leave_match", async ({ matchId }) => {
+    try {
+      if (!currentUser) return;
+      const match = matches.get(matchId);
+      if (!match || match.finished) return;
+      if (!match.players.includes(currentUser)) return;
+
+      const [pA, pB] = match.players;
+      if (pA === BOT_NAME || pB === BOT_NAME) {
+        // solo/practice: bara avsluta utan DB-effekt (practice ändå)
+        await finishMatch(match, { reason: "leave" });
+        return;
+      }
+
+      const loser = currentUser;
+      const winner = loser === pA ? pB : pA;
+
+      await finishMatchAsWalkover(match, winner, loser, "leave");
+    } catch (e) {
+      console.error("leave_match error", e);
+    }
   });
 
   socket.on("player_start_ready", ({ matchId }) => {
@@ -1034,12 +1488,56 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    if (currentUser) {
-      lobby.onlineUsers.delete(currentUser);
-      lobby.randomQueue.delete(currentUser);
-      socketsByUser.delete(currentUser);
-      broadcastLobby();
-    }
+    if (!currentUser) return;
+
+    lobby.onlineUsers.delete(currentUser);
+    lobby.randomQueue.delete(currentUser);
+
+    // Ta bara bort mapping om den pekar på just denna socket (safety)
+    const mapped = socketsByUser.get(currentUser);
+    if (mapped === socket.id) socketsByUser.delete(currentUser);
+
+    broadcastLobby();
+
+    // (3A) Disconnect grace om user är i aktiv match (PVP)
+    const matchId = activeMatchByUser.get(currentUser);
+    if (!matchId) return;
+
+    const match = matches.get(matchId);
+    if (!match || match.finished) return;
+
+    const [pA, pB] = match.players;
+    if (pA === BOT_NAME || pB === BOT_NAME) return; // solo/practice
+
+    // start grace timer (om inte redan)
+    if (disconnectGrace.has(currentUser)) return;
+
+    const t = setTimeout(async () => {
+      try {
+        // Om användaren kom tillbaka: avbryt
+        if (socketsByUser.has(currentUser) && lobby.onlineUsers.has(currentUser)) {
+          clearDisconnectGrace(currentUser);
+          return;
+        }
+
+        const m = matches.get(matchId);
+        if (!m || m.finished) {
+          clearDisconnectGrace(currentUser);
+          return;
+        }
+
+        const loser = currentUser;
+        const winner = loser === pA ? pB : pA;
+
+        await finishMatchAsWalkover(m, winner, loser, "disconnect");
+      } catch (e) {
+        console.error("disconnect grace walkover error", e);
+      } finally {
+        clearDisconnectGrace(currentUser);
+      }
+    }, DISCONNECT_GRACE_MS);
+
+    disconnectGrace.set(currentUser, t);
   });
 });
 
