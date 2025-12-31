@@ -382,7 +382,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                               <div
                                 key={code || `${b.name}-${emoji}`}
                                 className={`badge-card ${earned ? "is-earned" : "is-missing"}`}
-                                title={tooltip}
                                 data-tooltip={tooltip}
                               >
                                 <div className="badge-title">
