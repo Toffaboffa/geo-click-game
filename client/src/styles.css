@@ -1,9 +1,9 @@
+/* client/src/styles.css */
 :root {
   --map-image: url("/world.png");
   --map-debug-image: url("/world_debug.png");
   --start-bg-image: url("./assets/bg_start.png");
 }
-
 
 html,
 body,
@@ -905,20 +905,28 @@ button:disabled {
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(2, 6, 23, 0.42);
-  transition: transform 120ms ease, border-color 120ms ease, opacity 120ms ease;
+  transition: transform 120ms ease, border-color 120ms ease;
 }
 
-/* ✅ Ointjänade: tydligt nertonade/gråa */
+/* ✅ Ointjänade: nertonade/gråa utan opacity på hela kortet (så tooltip ej påverkas) */
 .badge-card.is-missing {
-  opacity: 0.55;
-  background: rgba(2, 6, 23, 0.28);
+  background: rgba(2, 6, 23, 0.22);
   border-color: rgba(255, 255, 255, 0.10);
   filter: grayscale(1) saturate(0.35);
+  box-shadow: none;
+}
+
+/* Nertona innehållet istället för hela kortet */
+.badge-card.is-missing .badge-title,
+.badge-card.is-missing .badge-emoji,
+.badge-card.is-missing .badge-name,
+.badge-card.is-missing .badge-mini-status {
+  color: rgba(229, 231, 235, 0.62);
+  opacity: 0.9;
 }
 
 /* ✅ Tjänade: lite “premium” men inte skrikigt */
 .badge-card.is-earned {
-  opacity: 0.95;
   background: rgba(34, 197, 94, 0.10);
   border-color: rgba(34, 197, 94, 0.22);
   box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.10);
@@ -932,7 +940,7 @@ button:disabled {
 /* En rad: emoji + namn + mini-status */
 .badge-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-weight: 900;
   font-size: 12px;
@@ -940,10 +948,15 @@ button:disabled {
   color: rgba(229, 231, 235, 0.92);
 }
 
+/* ✅ Badge-namn ska aldrig ellipsa: bryt till max 2 rader */
 .badge-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;              /* max 2 rader */
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
 }
 
 .badge-mini-status {
@@ -961,22 +974,43 @@ button:disabled {
   bottom: calc(100% + 8px);
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
+  background: #0b1220;               /* opak */
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.96);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.25;
   opacity: 0;
   transform: translateY(4px);
   pointer-events: none;
-  z-index: 50;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  z-index: 9999;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
 }
 
 .badge-card[data-tooltip]:hover::after {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* liten “pil” */
+.badge-card[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: 22px;
+  bottom: calc(100% + 2px);
+  width: 10px;
+  height: 10px;
+  background: #0b1220;
+  transform: rotate(45deg);
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  opacity: 0;
+  z-index: 9998;
+  pointer-events: none;
+}
+
+.badge-card[data-tooltip]:hover::before {
+  opacity: 1;
 }
 
 /* Emoji-fonts */
@@ -1073,76 +1107,4 @@ button:disabled {
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(6px);
   max-width: 100%; /* ✅ safety */
-}
-
-.badge-emoji {
-  font-size: 14px;
-  line-height: 1;
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-  font-variant-emoji: emoji;
-}
-
-.badge-name {
-  white-space: nowrap;
-}
-
-/* ===== PATCH: Badge name utan "..." + tydligare tooltip ===== */
-
-/* 1) Badge-namn ska aldrig ellipsa */
-.badge-name {
-  white-space: normal !important;     /* låt text brytas */
-  overflow: visible !important;
-  text-overflow: clip !important;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;              /* max 2 rader (kompakt) */
-  -webkit-box-orient: vertical;
-  line-clamp: 2;
-}
-
-/* Se till att titeln kan växa på höjden */
-.badge-title {
-  align-items: flex-start !important;
-  gap: 8px;
-}
-
-/* 2) Tooltip: gör den opak, tydlig och ovanpå overlay */
-.badge-card[data-tooltip]::after {
-  background: #0b1220 !important;     /* opak */
-  color: rgba(255, 255, 255, 0.96) !important;
-  border: 1px solid rgba(255, 255, 255, 0.22) !important;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75) !important;
-  opacity: 0 !important;
-  z-index: 9999 !important;
-}
-
-/* Visa tooltip */
-.badge-card[data-tooltip]:hover::after {
-  opacity: 1 !important;
-}
-
-/* (Bonus) lite “pil” under tooltip för att öka läsbarhet/tydlighet */
-.badge-card[data-tooltip]::before {
-  content: "";
-  position: absolute;
-  left: 22px;
-  bottom: calc(100% + 2px);
-  width: 10px;
-  height: 10px;
-  background: #0b1220;
-  transform: rotate(45deg);
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  opacity: 0;
-  z-index: 9998;
-  pointer-events: none;
-}
-
-.badge-card[data-tooltip]:hover::before {
-  opacity: 1;
 }
