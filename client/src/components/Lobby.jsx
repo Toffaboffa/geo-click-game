@@ -287,7 +287,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
             >
               ?
             </button>
-            <button onClick={onLogout}>Logga ut</button>
+            <button className="logout-btn" onClick={onLogout}>Logga ut</button>
           </div>
         </div>
 
