@@ -406,6 +406,48 @@ button:disabled {
   font-weight: 700;
 }
 
+.hud-score-line {
+  margin-top: 2px;
+}
+
+.hud-score-label {
+  font-size: 10px;
+  opacity: 0.65;
+  letter-spacing: 0.15px;
+}
+
+.hud-rounds {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+  max-width: 240px;
+}
+
+.hud-round {
+  display: grid;
+  grid-template-columns: 18px 64px 64px 54px;
+  column-gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.88;
+}
+
+.hud-right .hud-round {
+  justify-items: end;
+}
+
+.hud-round + .hud-round {
+  margin-top: 4px;
+}
+
+.hud-round-idx {
+  opacity: 0.65;
+}
+
 /* ---------- Actions ---------- */
 .hud-actions {
   position: absolute;

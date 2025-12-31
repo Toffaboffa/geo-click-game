@@ -20,6 +20,10 @@ function fmtKm(v) {
   if (!Number.isFinite(v)) return "—";
   return `${Math.round(v)} km`;
 }
+function fmtKmCompact(v) {
+  if (!Number.isFinite(v)) return "—";
+  return `${Math.round(v)}km`;
+}
 function fmtSecFromMs(v) {
   if (!Number.isFinite(v)) return "—";
   return `${((v ?? 0) / 1000).toFixed(2)}s`;
@@ -246,6 +250,50 @@ export default function Game({
     }
     return total;
   }, [gameState.roundResults, opponentName]);
+// -------- HUD: rundrader ----------
+const hudRoundsFor = useCallback(
+  (username, revealValues = true) => {
+    const rows = Array.isArray(gameState.roundResults) ? gameState.roundResults : [];
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const rr = rows[i];
+      const res = rr?.results?.[username] || null;
+
+      // Om vi inte ska avslöja (t.ex. motståndare innan matchslut): visa bara radrubriken
+      if (!revealValues) {
+        out.push({
+          idx: i + 1,
+          distance: "—",
+          time: "—",
+          score: "—",
+        });
+        continue;
+      }
+
+      if (!res) continue;
+
+      const distanceKm = Number.isFinite(res.distanceKm) ? res.distanceKm : null;
+      const timeMs = Number.isFinite(res.timeMs) ? res.timeMs : null;
+      const score = Number.isFinite(res.score) ? res.score : null;
+
+      out.push({
+        idx: i + 1,
+        distance: fmtKmCompact(distanceKm),
+        time: fmtSecFromMs(timeMs),
+        score: fmtScore(score),
+      });
+    }
+
+    // Om vi redan filtrerat bort null-res, vill vi fortfarande numrera konsekvent (1..N),
+    // så vi behåller idx från runda i+1.
+    return out;
+  },
+  [gameState.roundResults]
+);
+
+const myHudRounds = useMemo(() => hudRoundsFor(myName, true), [hudRoundsFor, myName]);
+const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsFor, opponentName]);
+
 
   // -------- target px ----------
   const targetPx = useMemo(() => {
@@ -504,17 +552,49 @@ export default function Game({
         onMouseLeave={onPointerLeave}
         // title bortplockad: “Klicka på kartan…” behövs inte
       >
-        {/* Score */}
+        {/* Score + rundrader */}
         <div className="hud hud-left">
           <div className="hud-name">{isPractice ? `${myName} (Öva)` : myName}</div>
-          <div className="hud-score">{Math.round(myScoreSoFar)}</div>
+          <div className="hud-score-line">
+            <div className="hud-score-label">Aktuell totalpoäng</div>
+            <div className="hud-score">{Math.round(myScoreSoFar)}</div>
+          </div>
+
+          {myHudRounds.length > 0 && (
+            <div className="hud-rounds">
+              {myHudRounds.map((r) => (
+                <div key={`me-${r.idx}`} className="hud-round">
+                  <span className="hud-round-idx">{r.idx}</span>
+                  <span className="hud-round-dist">{r.distance}</span>
+                  <span className="hud-round-time">{r.time}</span>
+                  <span className="hud-round-score">{r.score}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Inget motståndar-HUD i Öva */}
         {!isPractice && (
           <div className="hud hud-right">
             <div className="hud-name">{opponentName}</div>
-            <div className="hud-score">{matchFinished ? Math.round(oppScoreSoFar) : "—"}</div>
+            <div className="hud-score-line">
+              <div className="hud-score-label">Aktuell totalpoäng</div>
+              <div className="hud-score">{Math.round(oppScoreSoFar)}</div>
+            </div>
+
+            {oppHudRounds.length > 0 && (
+              <div className="hud-rounds">
+                {oppHudRounds.map((r) => (
+                  <div key={`opp-${r.idx}`} className="hud-round">
+                    <span className="hud-round-idx">{r.idx}</span>
+                    <span className="hud-round-dist">{r.distance}</span>
+                    <span className="hud-round-time">{r.time}</span>
+                    <span className="hud-round-score">{r.score}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
