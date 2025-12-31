@@ -1,7 +1,7 @@
 :root {
   --map-image: url("/world.png");
   --map-debug-image: url("/world_debug.png");
-  --start-bg-image: url("/bg_start.png"); /* om den också ska flyttas annars lämna */
+  --start-bg-image: url("./assets/bg_start.png");
 }
 
 
