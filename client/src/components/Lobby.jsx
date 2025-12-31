@@ -8,6 +8,17 @@ import {
   getMyProgress,
 } from "../api";
 
+function fmtIntOrDash(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return String(Math.round(n));
+}
+function fmtPctOrDash(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(1);
+}
+
 export default function Lobby({ session, socket, lobbyState, leaderboard, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
 
@@ -114,9 +125,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
   // Men om du togglar lokalt innan leaderboard hinner refetcha: spegla det i UI.
   const leaderboardRows = useMemo(() => {
     const rows = Array.isArray(leaderboard) ? leaderboard : [];
-    const filtered = showMeOnLeaderboard
-      ? rows
-      : rows.filter((u) => u.username !== session.username);
+    const filtered = showMeOnLeaderboard ? rows : rows.filter((u) => u.username !== session.username);
     return filtered.slice(0, 20);
   }, [leaderboard, showMeOnLeaderboard, session.username]);
 
@@ -181,10 +190,11 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
     for (const b of catalog) {
       const groupName =
-        b.group_name || b.group_name === ""
-          ? b.group_name
-          : b.group || "Övrigt";
-      const groupKey = b.group_key || null;
+        b.groupName ??
+        b.group_name ??
+        b.group ??
+        "Övrigt";
+      const groupKey = b.groupKey ?? b.group_key ?? null;
 
       if (!map.has(groupName)) map.set(groupName, { groupKey, items: [] });
       map.get(groupName).items.push(b);
@@ -192,8 +202,8 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
     const groups = Array.from(map.entries()).map(([groupName, { groupKey, items }]) => {
       const sorted = [...items].sort((a, b) => {
-        const ak = Number(a.sort_in_group ?? a.order_index ?? 0);
-        const bk = Number(b.sort_in_group ?? b.order_index ?? 0);
+        const ak = Number(a.sortInGroup ?? a.sort_in_group ?? a.order_index ?? 0);
+        const bk = Number(b.sortInGroup ?? b.sort_in_group ?? b.order_index ?? 0);
         return ak - bk;
       });
       return { groupName, groupKey, items: sorted };
@@ -244,6 +254,21 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
   const totalBadges = Array.isArray(badgesCatalog) ? badgesCatalog.length : 0;
 
   const getBadgeCode = (b) => b?.badge_code || b?.code || b?.key || b?.badgeCode || b?.badge;
+
+  // Stats i progression (inkl records)
+  const progStats = useMemo(() => {
+    const s = progressData?.stats || {};
+    return {
+      played: s.played ?? progressData?.played ?? 0,
+      wins: s.wins ?? progressData?.wins ?? 0,
+      losses: s.losses ?? progressData?.losses ?? 0,
+      avgScore: s.avgScore ?? progressData?.avgScore ?? progressData?.avg_score ?? null,
+      pct: s.pct ?? progressData?.pct ?? null,
+
+      bestMatchScore: s.bestMatchScore ?? progressData?.bestMatchScore ?? progressData?.best_match_score ?? null,
+      bestWinMargin: s.bestWinMargin ?? progressData?.bestWinMargin ?? progressData?.best_win_margin ?? null,
+    };
+  }, [progressData]);
 
   // ---------- UI ----------
   return (
@@ -362,9 +387,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                 tempo (hur snabbt du hinner klicka).
               </p>
 
-              <p>
-                Det är lika delar “geografi”, “reaktion” och “kallsvettig finalsekund”.
-              </p>
+              <p>Det är lika delar “geografi”, “reaktion” och “kallsvettig finalsekund”.</p>
 
               <h3>Så spelar du</h3>
               <p>
@@ -439,9 +462,49 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
             {!progressLoading && !progressError && (
               <>
+                {/* ✅ Stats + personliga rekord */}
                 <div className="progress-summary">
-                  Badges: {earnedSet.size}/{totalBadges}{" "}
-                  <span className="progress-hint">• Hovra för info</span>
+                  <div className="progress-summary-row">
+                    <span>
+                      Badges: {earnedSet.size}/{totalBadges} <span className="progress-hint">• Hovra för info</span>
+                    </span>
+                  </div>
+
+                  <div className="progress-stats-grid">
+                    <div className="ps-item">
+                      <div className="ps-label">Spelade</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.played)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">Vinster</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.wins)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">Förluster</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.losses)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">Winrate</div>
+                      <div className="ps-value">{fmtPctOrDash(progStats.pct)}%</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">Snittpoäng</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.avgScore)}</div>
+                    </div>
+
+                    <div className="ps-item">
+                      <div className="ps-label">Bästa match</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.bestMatchScore)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">Största vinst</div>
+                      <div className="ps-value">
+                        {Number.isFinite(Number(progStats.bestWinMargin))
+                          ? `${fmtIntOrDash(progStats.bestWinMargin)}`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="progress-groups">
@@ -469,7 +532,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                             const code = getBadgeCode(b);
                             const earned = code ? earnedSet.has(code) : false;
                             const emoji = b.emoji || "🏷️";
-
                             const tooltip = b.description || "";
 
                             return (

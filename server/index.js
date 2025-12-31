@@ -116,6 +116,18 @@ async function hasColumn(db, table, column) {
   return ok;
 }
 
+// Cache för “users”-kolumner som styr extra stats (records)
+let _usersCapsPromise = null;
+async function getUsersCaps() {
+  if (_usersCapsPromise) return _usersCapsPromise;
+  _usersCapsPromise = (async () => {
+    const hasBestMatchScore = await hasColumn(pool, "users", "best_match_score");
+    const hasBestWinMargin = await hasColumn(pool, "users", "best_win_margin");
+    return { hasBestMatchScore, hasBestWinMargin };
+  })();
+  return _usersCapsPromise;
+}
+
 // =====================
 // Helpers (badges/progression)
 // =====================
@@ -141,6 +153,14 @@ function normalizeBadgeRow(r) {
 }
 
 async function getPublicUserRow(username) {
+  const caps = await getUsersCaps();
+
+  const extraSelects = [];
+  if (caps.hasBestMatchScore) extraSelects.push(`best_match_score as "bestMatchScore"`);
+  if (caps.hasBestWinMargin) extraSelects.push(`best_win_margin as "bestWinMargin"`);
+
+  const extraSql = extraSelects.length ? `,\n       ${extraSelects.join(",\n       ")}` : "";
+
   const { rows } = await pool.query(
     `select
        username,
@@ -151,6 +171,7 @@ async function getPublicUserRow(username) {
        pct,
        coalesce(level, 0) as level,
        coalesce(badges_count, 0) as "badgesCount"
+       ${extraSql}
      from users
      where username = $1`,
     [username]
@@ -194,6 +215,9 @@ async function buildProgressPayload(username) {
       losses: user.losses,
       avgScore: user.avgScore,
       pct: user.pct,
+      // ✅ nya “rekord” (om kolumnerna finns – annars undefined)
+      bestMatchScore: user.bestMatchScore ?? undefined,
+      bestWinMargin: user.bestWinMargin ?? undefined,
     },
     earnedBadges,
   };
@@ -544,7 +568,9 @@ function startMatch(match) {
   io.sockets.sockets.get(sB)?.join(roomName);
 
   io.to(roomName).emit("match_started", {
+    // ✅ för att matcha både gamla och nya klienter:
     matchId: match.id,
+    id: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: false,
@@ -566,6 +592,7 @@ function startSoloMatch(match, playerSocket) {
 
   io.to(roomName).emit("match_started", {
     matchId: match.id,
+    id: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: true,
@@ -580,14 +607,6 @@ function startSoloMatch(match, playerSocket) {
 // =====================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-function normStr(x) {
-  return String(x ?? "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
 
 function normNameForKey(name) {
   return String(name || "")
@@ -631,7 +650,6 @@ function applyCapitalsToCities(citiesArr) {
       list
         .map((x) => capKey(x?.name, x?.countryCode))
         .filter((k) => {
-          // kräver både name och countryCode
           const [n, cc] = String(k).split("|");
           return !!(n && cc);
         })
@@ -1000,6 +1018,59 @@ function computeTotalsFromRounds(match) {
   return total;
 }
 
+// ✅ NEW: uppdatera personliga rekord (om kolumner finns)
+async function updatePersonalRecordsTx(dbClient, match, total, winner, opts = {}) {
+  const [pA, pB] = match.players;
+  const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
+
+  if (match.isPractice) return;
+  if (!realPlayers.length) return;
+
+  const isWalkover = !!opts.walkover;
+  if (isWalkover) return; // undvik “konstiga” rekord på WO
+
+  const hasBestMatchScore = await hasColumn(dbClient, "users", "best_match_score");
+  const hasBestWinMargin = await hasColumn(dbClient, "users", "best_win_margin");
+  if (!hasBestMatchScore && !hasBestWinMargin) return;
+
+  // 1) Best (lägsta) matchscore för alla som spelade
+  if (hasBestMatchScore) {
+    for (const u of realPlayers) {
+      const s = Number(total?.[u]);
+      if (!Number.isFinite(s)) continue;
+      await dbClient.query(
+        `update users
+         set best_match_score =
+           case
+             when best_match_score is null then $2
+             when $2 < best_match_score then $2
+             else best_match_score
+           end
+         where username = $1`,
+        [u, Math.round(s)]
+      );
+    }
+  }
+
+  // 2) Största vinstmarginal (oppTotal - myTotal) för vinnaren
+  // (lägre total är bättre, så marginal = loserScore - winnerScore)
+  const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+  if (hasBestWinMargin && bothReal && winner) {
+    const loser = winner === pA ? pB : pA;
+    const wScore = Number(total?.[winner]);
+    const lScore = Number(total?.[loser]);
+    if (Number.isFinite(wScore) && Number.isFinite(lScore) && lScore > wScore) {
+      const margin = Math.round(lScore - wScore);
+      await dbClient.query(
+        `update users
+         set best_win_margin = greatest(coalesce(best_win_margin, 0), $2)
+         where username = $1`,
+        [winner, margin]
+      );
+    }
+  }
+}
+
 async function finishMatch(match, opts = {}) {
   if (!match || match.finished) return;
 
@@ -1043,8 +1114,6 @@ async function finishMatch(match, opts = {}) {
       const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
 
       // Walkover: Variant X
-      // - loser får score 15000 (och påverkar snitt)
-      // - winner får "matchscore" ~ deras gamla snitt för att snitt ska vara oförändrat
       const isWalkover = !!opts.walkover;
       const walkoverLoser = opts.walkoverLoser ?? null;
       const walkoverWinner = opts.walkoverWinner ?? null;
@@ -1063,10 +1132,8 @@ async function finishMatch(match, opts = {}) {
         );
 
         const w = rowsA[0];
-        const l = rowsB[0];
 
         // Winner matchscore för att hålla avg ~ konstant.
-        // Om played=0: vi kan inte bevara snitt, så 0 (”gratis”) är ok.
         let winnerMatchScore = 0;
         if (w && Number(w.played) > 0) {
           const ts = Number(w.total_score ?? 0);
@@ -1076,14 +1143,12 @@ async function finishMatch(match, opts = {}) {
 
         const loserMatchScore = WALKOVER_LOSER_SCORE;
 
-        // totalOverride för eventet (så UI visar något vettigt)
         total = {
           [walkoverWinner]: winnerMatchScore,
           [walkoverLoser]: loserMatchScore,
         };
         winner = walkoverWinner;
 
-        // played + total_score (winner påverkas minimalt, loser straffas hårt)
         await client.query(
           `update users
            set played = played + 1,
@@ -1099,11 +1164,9 @@ async function finishMatch(match, opts = {}) {
           [walkoverLoser, loserMatchScore]
         );
 
-        // wins/losses
         await client.query(`update users set wins = wins + 1 where username=$1`, [walkoverWinner]);
         await client.query(`update users set losses = losses + 1 where username=$1`, [walkoverLoser]);
 
-        // win_streak (om finns)
         const hasWinStreak = await hasColumn(client, "users", "win_streak");
         if (hasWinStreak) {
           await client.query(
@@ -1113,7 +1176,6 @@ async function finishMatch(match, opts = {}) {
           await client.query(`update users set win_streak = 0 where username=$1`, [walkoverLoser]);
         }
 
-        // avg_score
         await client.query(
           `update users
            set avg_score = case when played > 0 then total_score / played else 0 end
@@ -1121,7 +1183,6 @@ async function finishMatch(match, opts = {}) {
           [[walkoverWinner, walkoverLoser]]
         );
 
-        // pct
         await client.query(
           `update users
            set pct = case
@@ -1132,11 +1193,10 @@ async function finishMatch(match, opts = {}) {
           [[walkoverWinner, walkoverLoser]]
         );
 
-        // Badges: vi skippar på walkover (för att undvika abuse + ofullständiga rundor)
+        // Badges: skip på walkover
         progressionDelta = {};
       } else {
-        // Normal match (din gamla logik)
-        // 1) played + total_score
+        // Normal match
         for (const u of realPlayers) {
           await client.query(
             `update users
@@ -1147,7 +1207,6 @@ async function finishMatch(match, opts = {}) {
           );
         }
 
-        // 2) wins/losses + optional win_streak
         if (winner && bothReal) {
           const loser = winner === pA ? pB : pA;
 
@@ -1164,7 +1223,6 @@ async function finishMatch(match, opts = {}) {
           }
         }
 
-        // 3) avg_score
         await client.query(
           `update users
            set avg_score = case when played > 0 then total_score / played else 0 end
@@ -1172,7 +1230,6 @@ async function finishMatch(match, opts = {}) {
           [realPlayers]
         );
 
-        // 4) pct
         await client.query(
           `update users
            set pct = case
@@ -1183,7 +1240,10 @@ async function finishMatch(match, opts = {}) {
           [realPlayers]
         );
 
-        // 5) badges + level + delta
+        // ✅ NEW: personliga rekord
+        await updatePersonalRecordsTx(client, match, total, winner, { walkover: false });
+
+        // badges + level + delta
         progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
       }
 
@@ -1266,7 +1326,6 @@ setInterval(() => {
       (match.finished && finishedAge > MATCH_FINISHED_TTL_MS) || age > MATCH_MAX_AGE_MS;
 
     if (shouldDelete) {
-      // säker städning av timers
       clearAllMatchTimers(match);
       matches.delete(id);
     }
@@ -1293,7 +1352,6 @@ io.on("connection", (socket) => {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
         if (oldSocket) {
           oldSocket.emit("forced_logout", "Du blev utloggad eftersom du loggade in i en annan flik.");
-          // true = close underlying connection
           oldSocket.disconnect(true);
         }
       }
@@ -1315,7 +1373,6 @@ io.on("connection", (socket) => {
   socket.on("start_random_match", () => {
     if (!currentUser) return;
 
-    // (11A) lås om redan i match
     if (isUserInActiveMatch(currentUser)) {
       socket.emit("match_error", "Du är redan i en match.");
       return;
@@ -1329,7 +1386,6 @@ io.on("connection", (socket) => {
   socket.on("start_solo_match", () => {
     if (!currentUser) return;
 
-    // (11A)
     if (isUserInActiveMatch(currentUser)) {
       socket.emit("match_error", "Du är redan i en match.");
       return;
@@ -1342,7 +1398,6 @@ io.on("connection", (socket) => {
   socket.on("challenge_player", (targetUsername) => {
     if (!currentUser) return;
 
-    // (11A)
     if (isUserInActiveMatch(currentUser)) {
       socket.emit("challenge_error", "Du är redan i en match.");
       return;
@@ -1362,7 +1417,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // (5A) skapa pending
     setPendingChallenge(currentUser, target);
 
     io.to(targetSocketId).emit("challenge_received", { from: currentUser });
@@ -1371,7 +1425,6 @@ io.on("connection", (socket) => {
   socket.on("accept_challenge", (fromUsername) => {
     if (!currentUser) return;
 
-    // (11A)
     if (isUserInActiveMatch(currentUser)) {
       socket.emit("challenge_error", "Du är redan i en match.");
       return;
@@ -1380,7 +1433,6 @@ io.on("connection", (socket) => {
     const from = String(fromUsername || "").trim();
     if (!from) return;
 
-    // (5A) validera pending
     if (!hasValidPendingChallenge(from, currentUser)) {
       socket.emit("challenge_error", "Utmaningen är ogiltig eller har gått ut.");
       return;
@@ -1405,7 +1457,7 @@ io.on("connection", (socket) => {
     startMatch(match);
   });
 
-  // (2A) leave_match
+  // leave_match
   socket.on("leave_match", async ({ matchId }) => {
     try {
       if (!currentUser) return;
@@ -1415,7 +1467,6 @@ io.on("connection", (socket) => {
 
       const [pA, pB] = match.players;
       if (pA === BOT_NAME || pB === BOT_NAME) {
-        // solo/practice: bara avsluta utan DB-effekt (practice ändå)
         await finishMatch(match, { reason: "leave" });
         return;
       }
@@ -1493,13 +1544,11 @@ io.on("connection", (socket) => {
     lobby.onlineUsers.delete(currentUser);
     lobby.randomQueue.delete(currentUser);
 
-    // Ta bara bort mapping om den pekar på just denna socket (safety)
     const mapped = socketsByUser.get(currentUser);
     if (mapped === socket.id) socketsByUser.delete(currentUser);
 
     broadcastLobby();
 
-    // (3A) Disconnect grace om user är i aktiv match (PVP)
     const matchId = activeMatchByUser.get(currentUser);
     if (!matchId) return;
 
@@ -1509,12 +1558,10 @@ io.on("connection", (socket) => {
     const [pA, pB] = match.players;
     if (pA === BOT_NAME || pB === BOT_NAME) return; // solo/practice
 
-    // start grace timer (om inte redan)
     if (disconnectGrace.has(currentUser)) return;
 
     const t = setTimeout(async () => {
       try {
-        // Om användaren kom tillbaka: avbryt
         if (socketsByUser.has(currentUser) && lobby.onlineUsers.has(currentUser)) {
           clearDisconnectGrace(currentUser);
           return;

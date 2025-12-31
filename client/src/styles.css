@@ -846,6 +846,51 @@ button:disabled {
   font-weight: 800;
 }
 
+/* ✅ NYTT: liten stat-grid (spelade/vinster/... + rekord) */
+.progress-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.progress-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (min-width: 860px) {
+  .progress-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ps-item {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 8px 10px;
+}
+
+.ps-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.ps-value {
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.93);
+}
+
 /* Badge-grupper körs som <details> för snabb överblick */
 .badge-group {
   margin-top: 10px;
