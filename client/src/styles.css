@@ -853,7 +853,7 @@ button:disabled {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .badge-group[open] {
@@ -936,6 +936,8 @@ button:disabled {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.18);
 }
+.badge-card { position: relative; }
+.badge-card:hover { z-index: 10000; }
 
 /* En rad: emoji + namn + mini-status */
 .badge-title {
