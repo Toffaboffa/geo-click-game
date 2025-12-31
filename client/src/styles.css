@@ -418,20 +418,20 @@ button:disabled {
 
 .hud-rounds {
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(6px);
-  max-width: 240px;
+  max-width: 1700px;
 }
 
 .hud-round {
   display: grid;
-  grid-template-columns: 18px 64px 64px 54px;
-  column-gap: 8px;
+  grid-template-columns: 14px 46px 46px 38px;
+  column-gap: 6px;
   align-items: center;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.35;
   opacity: 0.88;
 }
