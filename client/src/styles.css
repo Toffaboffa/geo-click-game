@@ -316,6 +316,13 @@ button:disabled {
     sans-serif;
 }
 
+/* ✅ NYTT: nertonad/grå badges-kolumn (läsbar men tydligt “disabled”) */
+.leaderboard td.lb-badges-muted {
+  color: rgba(229, 231, 235, 0.60);
+  font-weight: 800;
+  filter: grayscale(1);
+}
+
 /* ---------- GAME ---------- */
 .game-root {
   width: 100vw;

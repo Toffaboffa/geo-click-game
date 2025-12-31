@@ -282,9 +282,17 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
             <tr>
               <th className="lb-rank">#</th>
               <th>Spelare</th>
+
+              {/* ✅ NYTT */}
+              <th>Level</th>
+
               <th>SM</th>
               <th>VM</th>
               <th>FM</th>
+
+              {/* ✅ NYTT */}
+              <th>Badges</th>
+
               <th>Pct</th>
               <th>PPM</th>
             </tr>
@@ -309,9 +317,16 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                     </button>
                   </td>
 
+                  {/* ✅ NYTT */}
+                  <td>{Number(u.level ?? 0)}</td>
+
                   <td>{u.played}</td>
                   <td>{u.wins}</td>
                   <td>{u.losses}</td>
+
+                  {/* ✅ NYTT: nertonad/grå */}
+                  <td className="lb-badges-muted">{Number(u.badges_count ?? 0)}</td>
+
                   <td>{formatPct(u)}</td>
                   <td>{Number(u.avgScore).toFixed(0)}</td>
                 </tr>
