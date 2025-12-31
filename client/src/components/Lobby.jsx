@@ -376,7 +376,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
                             const earned = code ? earnedSet.has(code) : false;
                             const emoji = b.emoji || "🏷️";
 
-                            const tooltip = `${b.name}${b.description ? " — " + b.description : ""}`;
+                            const tooltip = b.description || "";
 
                             return (
                               <div
