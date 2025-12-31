@@ -1027,6 +1027,19 @@ button:disabled {
   font-variant-emoji: emoji;
 }
 
+/* Badges ska alltid kännas klick/hoverbara */
+.badge-card,
+.badge-card * {
+  cursor: pointer;
+}
+
+/* Stoppa textmarkering när man drar över badge */
+.badge-card,
+.badge-card * {
+  user-select: none;
+}
+
+
 /* ===== Finish overlay: Progression (level + nya badges) ===== */
 
 .finish-progression {
