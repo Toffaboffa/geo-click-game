@@ -271,8 +271,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 		  limit: 50,
 		});
 
-        if (!r.ok) throw new Error(j?.error || "Kunde inte ladda leaderboard.");
-
         const rows = Array.isArray(j?.rows) ? j.rows : [];
         if (cancelled) return;
 

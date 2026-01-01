@@ -4,41 +4,52 @@
 // Exempel prod: VITE_API_BASE_URL="https://geo-click-game.onrender.com"
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
+// ---------- Helpers ----------
 function looksLikeHtml(s) {
   const t = String(s || "").trim().toLowerCase();
   return t.startsWith("<!doctype") || t.startsWith("<html") || t.includes("<head");
 }
 
+function safeJsonParse(raw) {
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 async function parseJson(res) {
-  // Vissa endpoints kan i framtiden svara 204 No Content
+  // 204 No Content
   if (res.status === 204) return {};
 
   const ct = (res.headers.get("content-type") || "").toLowerCase();
 
   // Läs som text först => kan hantera både JSON och HTML-felsidor
   const raw = await res.text().catch(() => "");
-  let data = {};
+  const trimmed = raw.trim();
 
-  // Försök JSON om det verkar rimligt
-  if (ct.includes("application/json") || (!looksLikeHtml(raw) && raw.trim().startsWith("{"))) {
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = {};
-    }
+  // Försök JSON om:
+  // - servern säger JSON, eller
+  // - svaret ser ut som JSON och inte ser ut som HTML
+  let data = {};
+  const seemsJson =
+    ct.includes("application/json") ||
+    (!looksLikeHtml(trimmed) && (trimmed.startsWith("{") || trimmed.startsWith("[")));
+
+  if (seemsJson) {
+    data = safeJsonParse(trimmed);
   } else {
-    // HTML eller annat => behåll som tomt objekt, men vi kan ge bättre fel
     data = {};
   }
 
   if (!res.ok) {
-    // Snyggare fel om man råkar prata med fel host (HTML)
-    if (looksLikeHtml(raw)) {
+    // Snyggare fel om man råkar prata med fel host/proxy (HTML)
+    if (looksLikeHtml(trimmed)) {
       throw new Error(
-        "API-svarade med HTML (fel host/proxy). Kontrollera VITE_API_BASE_URL eller att /api proxas till backend."
+        "API svarade med HTML (fel host/proxy). Kontrollera VITE_API_BASE_URL eller att /api går till backend."
       );
     }
-    throw new Error(data.error || `Request misslyckades (${res.status})`);
+    throw new Error(data?.error || `Request misslyckades (${res.status})`);
   }
 
   return data;
@@ -54,8 +65,27 @@ function authHeaders(sessionId, extra = {}) {
 async function apiFetch(path, opts = {}) {
   // path ska börja med /api/...
   const url = `${API_BASE}${path}`;
-  const res = await fetch(url, opts);
-  return parseJson(res);
+
+  // Timeout-säkring (så fetch inte kan hänga “för evigt”)
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 15000;
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      ...opts,
+      signal: controller.signal,
+    });
+    return await parseJson(res);
+  } catch (e) {
+    // Nätverksfel / CORS / timeout
+    if (e?.name === "AbortError") {
+      throw new Error("Request timeout (API tog för lång tid).");
+    }
+    throw new Error(e?.message || "Nätverksfel mot API.");
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 // ---------- Auth ----------
@@ -89,10 +119,10 @@ export async function getLeaderboard(sessionId) {
   });
 }
 
-// ✅ NEW: Wide leaderboard
+// ✅ Wide leaderboard
 // server: GET /api/leaderboard-wide?mode=total|easy|medium|hard&sort=ppm|pct|sp|vm|fm&dir=asc|desc&limit=...
 export async function getLeaderboardWide({
-  sessionId, // (valfri) – endpointen kräver inte auth, men skadar inte om du vill skicka
+  sessionId, // valfri
   mode = "total",
   sort = "ppm",
   dir = "",
@@ -106,9 +136,7 @@ export async function getLeaderboardWide({
 
   const headers = sessionId ? authHeaders(sessionId) : undefined;
 
-  return apiFetch(`/api/leaderboard-wide?${params.toString()}`, {
-    headers,
-  });
+  return apiFetch(`/api/leaderboard-wide?${params.toString()}`, { headers });
 }
 
 // ---------- Me / visibility ----------
@@ -161,7 +189,7 @@ export async function getBadgesCatalog(sessionId) {
 }
 
 // Progress för valfri spelare (leaderboard-klick)
-// ✅ matchar server: GET /api/users/:username/progression
+// server: GET /api/users/:username/progression
 export async function getUserProgress(sessionId, username) {
   return apiFetch(`/api/users/${encodeURIComponent(username)}/progression`, {
     headers: authHeaders(sessionId),
@@ -169,7 +197,7 @@ export async function getUserProgress(sessionId, username) {
 }
 
 // Min progress (t.ex. “Progress”-knapp i Lobby)
-// ✅ matchar server: GET /api/me/progression
+// server: GET /api/me/progression
 export async function getMyProgress(sessionId) {
   return apiFetch("/api/me/progression", {
     headers: authHeaders(sessionId),
