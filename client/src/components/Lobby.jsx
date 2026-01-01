@@ -102,6 +102,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
 
+  // Leaderboard modal
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+
   // --- Hämta sparat leaderboard-visibility från servern ---
   useEffect(() => {
     let cancelled = false;
@@ -177,33 +180,42 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const openAbout = () => setAboutOpen(true);
   const closeAbout = () => setAboutOpen(false);
 
+  const openLeaderboard = () => setLeaderboardOpen(true);
+  const closeLeaderboard = () => setLeaderboardOpen(false);
+
   // ESC stänger modaler
   useEffect(() => {
-    if (!progressOpen && !aboutOpen) return;
+    if (!progressOpen && !aboutOpen && !leaderboardOpen) return;
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
         if (progressOpen) closeProgress();
         if (aboutOpen) closeAbout();
+        if (leaderboardOpen) closeLeaderboard();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressOpen, aboutOpen]);
+  }, [progressOpen, aboutOpen, leaderboardOpen]);
 
-  const onToggleShowMe = async () => {
-    const next = !showMeOnLeaderboard;
-    setShowMeOnLeaderboard(next);
+  const setShowMe = async (next) => {
+    const val = !!next;
+    const prev = showMeOnLeaderboard;
+    setShowMeOnLeaderboard(val);
     setSavingVis(true);
     try {
-      await setLeaderboardVisibility(session.sessionId, next);
+      await setLeaderboardVisibility(session.sessionId, val);
     } catch {
-      setShowMeOnLeaderboard(!next);
+      setShowMeOnLeaderboard(prev);
     } finally {
       setSavingVis(false);
     }
+  };
+
+  const onToggleShowMe = async () => {
+    await setShowMe(!showMeOnLeaderboard);
   };
 
   // Queue start/stop
@@ -456,6 +468,20 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </div>
         </div>
 
+        <div className="panel-sub-actions">
+          <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
+            🏆 Topplista
+          </button>
+          <button
+            type="button"
+            className="sub-action-btn"
+            onClick={() => openProgressFor(session.username)}
+            disabled={!session?.sessionId}
+          >
+            ⭐ Min progression
+          </button>
+        </div>
+
         <p>Online just nu: {onlineCount}st.</p>
 
         {/* Queue status cards */}
@@ -504,12 +530,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 </button>
               )}
             </div>
-
-            {queueState.queued && (
-              <div className="queue-me-hint">
-                Du står i kö: <strong>{DIFFS.find((d) => d.key === queueState.difficulty)?.label || "—"}</strong>
-              </div>
-            )}
           </div>
 
           <div className="lobby-action-block">
@@ -530,7 +550,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 Starta övning
               </button>
             </div>
-            <div className="queue-me-hint">Övning startar direkt (ingen kö).</div>
           </div>
         </div>
 
@@ -555,215 +574,228 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </button>
         </form>
 
-        {/* leaderboard privacy-toggle + progression */}
-        <div className="lobby-actions lobby-actions-compact">
-          <button onClick={onToggleShowMe} disabled={savingVis}>
-            {showMeOnLeaderboard ? "✅ Visas i topplistan" : "🙈 Dold i topplistan"}
-          </button>
-          <button onClick={() => openProgressFor(session.username)} disabled={!session?.sessionId}>
-            ⭐ Min progression
-          </button>
-        </div>
+              </div>
 
-        {/* Leaderboard controls */}
-        <div className="lb-header">
-          <h3>Topplista</h3>
+      {/* Topplista modal */}
+      {leaderboardOpen && (
+        <div className="finish-overlay" onClick={closeLeaderboard}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="lb-modal-head">
+              <div className="finish-title">Topplista</div>
 
-          <div className="lb-controls">
-            <div className="lb-tabs">
-              {LB_VIEWS.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  className={`lb-tab ${lbView === v.key ? "is-active" : ""}`}
-                  onClick={() => setLbView(v.key)}
-                >
-                  {v.label}
+              <div className="lb-modal-actions">
+                <label className="lb-visibility">
+                  <input
+                    type="checkbox"
+                    checked={showMeOnLeaderboard}
+                    onChange={(e) => setShowMe(e.target.checked)}
+                    disabled={savingVis}
+                  />
+                  <span>{showMeOnLeaderboard ? "Visas i topplistan" : "Dold i topplistan"}</span>
+                </label>
+
+                <button className="hud-btn" onClick={closeLeaderboard} type="button">
+                  Stäng
                 </button>
-              ))}
+              </div>
             </div>
 
-            <div className="lb-sort-row">
-              {lbView === "all" && (
-                <select value={lbAllSortMode} onChange={(e) => setLbAllSortMode(safeLbMode(e.target.value))}>
-                  <option value="easy">Sort: Easy</option>
-                  <option value="medium">Sort: Medel</option>
-                  <option value="hard">Sort: Svår</option>
-                  <option value="total">Sort: Total</option>
-                </select>
-              )}
-
-              <select value={lbSort} onChange={(e) => setLbSort(String(e.target.value || "ppm"))}>
-                {SORT_KEYS.map((k) => (
-                  <option key={k.key} value={k.key}>
-                    {k.label}
-                  </option>
+            <div className="lb-controls lb-controls-modal">
+              <div className="lb-tabs">
+                {LB_VIEWS.map((v) => (
+                  <button
+                    key={v.key}
+                    type="button"
+                    className={`lb-tab ${lbView === v.key ? "is-active" : ""}`}
+                    onClick={() => setLbView(v.key)}
+                  >
+                    {v.label}
+                  </button>
                 ))}
-              </select>
+              </div>
 
-              <select value={lbDir} onChange={(e) => setLbDir(String(e.target.value || ""))}>
-                <option value="">Auto</option>
-                <option value="asc">Asc</option>
-                <option value="desc">Desc</option>
-              </select>
+              <div className="lb-sort-row">
+                {lbView === "all" && (
+                  <select value={lbAllSortMode} onChange={(e) => setLbAllSortMode(safeLbMode(e.target.value))}>
+                    <option value="easy">Sort: Easy</option>
+                    <option value="medium">Sort: Medel</option>
+                    <option value="hard">Sort: Svår</option>
+                    <option value="total">Sort: Total</option>
+                  </select>
+                )}
+
+                <select value={lbSort} onChange={(e) => setLbSort(String(e.target.value || "ppm"))}>
+                  {SORT_KEYS.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select value={lbDir} onChange={(e) => setLbDir(String(e.target.value || ""))}>
+                  <option value="">Auto</option>
+                  <option value="asc">Asc</option>
+                  <option value="desc">Desc</option>
+                </select>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* ✅ Wide leaderboard output states */}
-        {lbLoading ? (
-          <div className="lb-loading">Laddar topplista...</div>
-        ) : lbError ? (
-          <div className="lb-error">{lbError}</div>
-        ) : wideRows.length === 0 ? (
-          <div className="lb-empty">Inga matcher spelade ännu.</div>
-        ) : (
-          <div className="lb-wide-wrap">
-            <table className="leaderboard leaderboard-wide">
-              <thead>
-                <tr>
-                  <th className="lb-rank">#</th>
-                  <th className="lb-name">Spelare</th>
-                  <th className="lb-lvl">LVL</th>
+            {/* ✅ Wide leaderboard output states */}
+            {lbLoading ? (
+              <div className="lb-loading">Laddar topplista...</div>
+            ) : lbError ? (
+              <div className="lb-error">{lbError}</div>
+            ) : wideRows.length === 0 ? (
+              <div className="lb-empty">Inga matcher spelade ännu.</div>
+            ) : (
+              <div className="lb-wide-wrap">
+                <table className="leaderboard leaderboard-wide">
+                  <thead>
+                    <tr>
+                      <th className="lb-rank">#</th>
+                      <th className="lb-name">Spelare</th>
+                      <th className="lb-lvl">LVL</th>
 
-                  {groupsToShow.includes("easy") && (
-                    <th className="lb-group" colSpan={5}>
-                      EASY
-                    </th>
-                  )}
-                  {groupsToShow.includes("medium") && (
-                    <th className="lb-group" colSpan={5}>
-                      MEDEL
-                    </th>
-                  )}
-                  {groupsToShow.includes("hard") && (
-                    <th className="lb-group" colSpan={5}>
-                      SVÅR
-                    </th>
-                  )}
-                  {groupsToShow.includes("total") && (
-                    <th className="lb-group" colSpan={5}>
-                      TOTAL
-                    </th>
-                  )}
-                </tr>
+                      {groupsToShow.includes("easy") && (
+                        <th className="lb-group" colSpan={5}>
+                          EASY
+                        </th>
+                      )}
+                      {groupsToShow.includes("medium") && (
+                        <th className="lb-group" colSpan={5}>
+                          MEDEL
+                        </th>
+                      )}
+                      {groupsToShow.includes("hard") && (
+                        <th className="lb-group" colSpan={5}>
+                          SVÅR
+                        </th>
+                      )}
+                      {groupsToShow.includes("total") && (
+                        <th className="lb-group" colSpan={5}>
+                          TOTAL
+                        </th>
+                      )}
+                    </tr>
 
-                <tr>
-                  <th className="lb-rank" />
-                  <th />
-                  <th className="lb-lvl" />
-
-                  {groupsToShow.includes("easy") && (
-                    <>
-                      <th>VM</th>
-                      <th>FM</th>
-                      <th>SP</th>
-                      <th>PCT</th>
-                      <th>PPM</th>
-                    </>
-                  )}
-                  {groupsToShow.includes("medium") && (
-                    <>
-                      <th>VM</th>
-                      <th>FM</th>
-                      <th>SP</th>
-                      <th>PCT</th>
-                      <th>PPM</th>
-                    </>
-                  )}
-                  {groupsToShow.includes("hard") && (
-                    <>
-                      <th>VM</th>
-                      <th>FM</th>
-                      <th>SP</th>
-                      <th>PCT</th>
-                      <th>PPM</th>
-                    </>
-                  )}
-                  {groupsToShow.includes("total") && (
-                    <>
-                      <th>VM</th>
-                      <th>FM</th>
-                      <th>SP</th>
-                      <th>PCT</th>
-                      <th>PPM</th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-
-              <tbody>
-                {wideRows.slice(0, 50).map((u, idx) => {
-                  const rank = idx + 1;
-                  const name = u?.namn || "—";
-                  const lvl = Number(u?.lvl ?? 0);
-
-                  return (
-                    <tr key={`${name}-${idx}`} className={getRowClass(rank, name)}>
-                      <td className="lb-rank">
-                        <span>{rank}</span>
-                      </td>
-
-                      <td className="lb-name-cell" style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
-                        <button
-                          className="lb-name-btn"
-                          onClick={() => openProgressFor(name)}
-                          title="Visa progression"
-                          type="button"
-                        >
-                          {name}
-                        </button>
-                      </td>
-
-                      <td className="lb-lvl">{lvl}</td>
+                    <tr>
+                      <th className="lb-rank" />
+                      <th />
+                      <th className="lb-lvl" />
 
                       {groupsToShow.includes("easy") && (
                         <>
-                          <td>{getCell(u, "e_", "vm")}</td>
-                          <td>{getCell(u, "e_", "fm")}</td>
-                          <td>{getCell(u, "e_", "sp")}</td>
-                          <td>{getCell(u, "e_", "pct")}</td>
-                          <td>{getCell(u, "e_", "ppm")}</td>
+                          <th>VM</th>
+                          <th>FM</th>
+                          <th>SP</th>
+                          <th>PCT</th>
+                          <th>PPM</th>
                         </>
                       )}
-
                       {groupsToShow.includes("medium") && (
                         <>
-                          <td>{getCell(u, "m_", "vm")}</td>
-                          <td>{getCell(u, "m_", "fm")}</td>
-                          <td>{getCell(u, "m_", "sp")}</td>
-                          <td>{getCell(u, "m_", "pct")}</td>
-                          <td>{getCell(u, "m_", "ppm")}</td>
+                          <th>VM</th>
+                          <th>FM</th>
+                          <th>SP</th>
+                          <th>PCT</th>
+                          <th>PPM</th>
                         </>
                       )}
-
                       {groupsToShow.includes("hard") && (
                         <>
-                          <td>{getCell(u, "s_", "vm")}</td>
-                          <td>{getCell(u, "s_", "fm")}</td>
-                          <td>{getCell(u, "s_", "sp")}</td>
-                          <td>{getCell(u, "s_", "pct")}</td>
-                          <td>{getCell(u, "s_", "ppm")}</td>
+                          <th>VM</th>
+                          <th>FM</th>
+                          <th>SP</th>
+                          <th>PCT</th>
+                          <th>PPM</th>
                         </>
                       )}
-
                       {groupsToShow.includes("total") && (
                         <>
-                          <td>{getCell(u, "t_", "vm")}</td>
-                          <td>{getCell(u, "t_", "fm")}</td>
-                          <td>{getCell(u, "t_", "sp")}</td>
-                          <td>{getCell(u, "t_", "pct")}</td>
-                          <td>{getCell(u, "t_", "ppm")}</td>
+                          <th>VM</th>
+                          <th>FM</th>
+                          <th>SP</th>
+                          <th>PCT</th>
+                          <th>PPM</th>
                         </>
                       )}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+
+                  <tbody>
+                    {wideRows.slice(0, 50).map((u, idx) => {
+                      const rank = idx + 1;
+                      const name = u?.namn || "—";
+                      const lvl = Number(u?.lvl ?? 0);
+
+                      return (
+                        <tr key={`${name}-${idx}`} className={getRowClass(rank, name)}>
+                          <td className="lb-rank">
+                            <span>{rank}</span>
+                          </td>
+
+                          <td className="lb-name-cell" style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
+                            <button
+                              className="lb-name-btn"
+                              onClick={() => openProgressFor(name)}
+                              title="Visa progression"
+                              type="button"
+                            >
+                              {name}
+                            </button>
+                          </td>
+
+                          <td className="lb-lvl">{lvl}</td>
+
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <td>{getCell(u, "e_", "vm")}</td>
+                              <td>{getCell(u, "e_", "fm")}</td>
+                              <td>{getCell(u, "e_", "sp")}</td>
+                              <td>{getCell(u, "e_", "pct")}</td>
+                              <td>{getCell(u, "e_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <td>{getCell(u, "m_", "vm")}</td>
+                              <td>{getCell(u, "m_", "fm")}</td>
+                              <td>{getCell(u, "m_", "sp")}</td>
+                              <td>{getCell(u, "m_", "pct")}</td>
+                              <td>{getCell(u, "m_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <td>{getCell(u, "s_", "vm")}</td>
+                              <td>{getCell(u, "s_", "fm")}</td>
+                              <td>{getCell(u, "s_", "sp")}</td>
+                              <td>{getCell(u, "s_", "pct")}</td>
+                              <td>{getCell(u, "s_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <td>{getCell(u, "t_", "vm")}</td>
+                              <td>{getCell(u, "t_", "fm")}</td>
+                              <td>{getCell(u, "t_", "sp")}</td>
+                              <td>{getCell(u, "t_", "pct")}</td>
+                              <td>{getCell(u, "t_", "ppm")}</td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* About / Info modal */}
       {aboutOpen && (

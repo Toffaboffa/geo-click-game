@@ -1284,6 +1284,67 @@ button:disabled {
 
 .logout-btn { margin-top: 0; }
 
+/* Under header: Topplista + Min progression (ligger under Logga ut) */
+.panel-sub-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 8px;
+}
+.panel-sub-actions .sub-action-btn {
+  margin-top: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 800;
+}
+.panel-sub-actions .sub-action-btn:hover {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Topplista-modal header */
+.lb-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.lb-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lb-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.lb-visibility input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+.lb-controls-modal {
+  margin-top: 6px;
+}
+
 /* ================================
    LOBBY v2: Queue + Wide Leaderboard
    Lägg längst ner i styles.css
@@ -1305,16 +1366,26 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* Challenge-form: align input + select + button snyggt */
+/* Challenge-form: centrerad, inte för bred */
 .challenge-form {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 .challenge-form input {
-  width: 100%;
+  width: 320px;          /* ✅ fast storlek (inte fullbredd) */
+  max-width: 100%;
   margin: 0;
+}
+.challenge-form select {
+  margin: 0;
+}
+.challenge-form button {
+  margin-top: 0;         /* viktigt pga global button { margin-top: 8px } */
 }
 
 /* Lobby action blocks (matchmaking + öva) */
