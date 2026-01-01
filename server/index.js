@@ -170,15 +170,7 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   const client = await pool.connect();
   try {
     // Basfält (bör finnas)
-    const baseCols = [
-      "username",
-      "played",
-      "wins",
-      "losses",
-      "total_score",
-      "avg_score",
-      "pct",
-    ];
+    const baseCols = ["username", "played", "wins", "losses", "total_score", "avg_score", "pct"];
 
     // Optional/nya fält
     const optionalCols = [
@@ -229,7 +221,10 @@ app.post("/api/register", async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: "Saknar användarnamn/lösen" });
 
     const password_hash = hashPassword(password);
-    await pool.query("insert into users (username, password_hash) values ($1, $2)", [username, password_hash]);
+    await pool.query("insert into users (username, password_hash) values ($1, $2)", [
+      username,
+      password_hash,
+    ]);
 
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
@@ -356,10 +351,9 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
       ...pickExistingCols(exists, optional),
     ];
 
-    const { rows } = await client.query(
-      `select ${selectCols.join(", ")} from users where username = $1`,
-      [username]
-    );
+    const { rows } = await client.query(`select ${selectCols.join(", ")} from users where username = $1`, [
+      username,
+    ]);
     if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
 
     const u = rows[0];
@@ -417,10 +411,9 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
       ...pickExistingCols(exists, optional),
     ];
 
-    const { rows } = await client.query(
-      `select ${selectCols.join(", ")} from users where username = $1`,
-      [username]
-    );
+    const { rows } = await client.query(`select ${selectCols.join(", ")} from users where username = $1`, [
+      username,
+    ]);
     if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
 
     const u = rows[0];
@@ -500,10 +493,26 @@ app.get("/api/leaderboard-wide", async (req, res) => {
     const playedCol = `${prefix}sp`;
 
     const allowedCols = new Set([
-      "e_ppm", "e_pct", "e_sp", "e_vm", "e_fm",
-      "m_ppm", "m_pct", "m_sp", "m_vm", "m_fm",
-      "s_ppm", "s_pct", "s_sp", "s_vm", "s_fm",
-      "t_ppm", "t_pct", "t_sp", "t_vm", "t_fm",
+      "e_ppm",
+      "e_pct",
+      "e_sp",
+      "e_vm",
+      "e_fm",
+      "m_ppm",
+      "m_pct",
+      "m_sp",
+      "m_vm",
+      "m_fm",
+      "s_ppm",
+      "s_pct",
+      "s_sp",
+      "s_vm",
+      "s_fm",
+      "t_ppm",
+      "t_pct",
+      "t_sp",
+      "t_vm",
+      "t_fm",
     ]);
     if (!allowedCols.has(col) || !allowedCols.has(playedCol)) {
       return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
@@ -883,8 +892,15 @@ applyCapitalsToCities(cities);
 // =====================
 // City pools per difficulty
 // =====================
+// ✅ FIX: population kan vara strängar med mellanslag/komma/punkt (ex "25 000 000").
+// Detta gjorde att safePop() tidigare gav NaN -> 0 och då blev easy/medium identiska.
 function safePop(v) {
-  const n = typeof v === "number" ? v : Number(v);
+  if (v == null) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+
+  // "25 000 000" / "1,234,567" / "1.234.567" / "9 700 000" -> "25000000"
+  const s = String(v).trim().replace(/[^\d-]/g, "");
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -981,10 +997,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
   const hasLevel = await hasColumn(dbClient, "users", "level");
 
-  const { rows: users } = await dbClient.query(
-    `select username, badges_count, level from users where username = any($1::text[])`,
-    [realPlayers]
-  );
+  const { rows: users } = await dbClient.query(`select username, badges_count, level from users where username = any($1::text[])`, [
+    realPlayers,
+  ]);
   const userByName = new Map(users.map((u) => [u.username, u]));
 
   for (const u of realPlayers) {
@@ -1036,10 +1051,7 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       newlyInsertedCodes = ins.map((r) => r.badge_code).filter(Boolean);
     }
 
-    const { rows: cntRows } = await dbClient.query(
-      `select count(*)::int as c from public.user_badges where username = $1`,
-      [u]
-    );
+    const { rows: cntRows } = await dbClient.query(`select count(*)::int as c from public.user_badges where username = $1`, [u]);
     const newBadgesCount = cntRows[0]?.c ?? user.badges_count ?? 0;
 
     const newLevel = newBadgesCount;
@@ -1236,14 +1248,12 @@ async function finishMatch(match, opts = {}) {
           [walkoverLoser, loserMatchScore]
         );
 
-        await client.query(
-          `update users set wins = wins + 1, ${dc.wins} = ${dc.wins} + 1 where username=$1`,
-          [walkoverWinner]
-        );
-        await client.query(
-          `update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`,
-          [walkoverLoser]
-        );
+        await client.query(`update users set wins = wins + 1, ${dc.wins} = ${dc.wins} + 1 where username=$1`, [
+          walkoverWinner,
+        ]);
+        await client.query(`update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`, [
+          walkoverLoser,
+        ]);
 
         const hasWinStreak = await hasColumn(client, "users", "win_streak");
         if (hasWinStreak) {
@@ -1290,16 +1300,13 @@ async function finishMatch(match, opts = {}) {
           await client.query(`update users set wins = wins + 1, ${dc.wins} = ${dc.wins} + 1 where username=$1`, [
             winner,
           ]);
-          await client.query(
-            `update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`,
-            [loser]
-          );
+          await client.query(`update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`, [
+            loser,
+          ]);
 
           const hasWinStreak = await hasColumn(client, "users", "win_streak");
           if (hasWinStreak) {
-            await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [
-              winner,
-            ]);
+            await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [winner]);
             await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
           }
         }
