@@ -53,6 +53,17 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// ---------- Local scoring (must match server) ----------
+// Server: SCORER_MAX_DISTANCE_KM = 20_000, SCORER_MAX_TIME_MS = 20_000
+const SCORER_MAX_TIME_MS = 20_000;
+const SCORER_MAX_DISTANCE_KM = 20_000;
+
+function scoreLocal(distanceKm, timeMs) {
+  const distPenalty = Math.min(distanceKm / SCORER_MAX_DISTANCE_KM, 1);
+  const timePenalty = Math.min(timeMs / SCORER_MAX_TIME_MS, 1);
+  return distPenalty * 1000 + timePenalty * 1000;
+}
+
 // ---------- Progression UI helpers ----------
 function safeObj(v) {
   return v && typeof v === "object" ? v : {};
@@ -120,6 +131,10 @@ export default function Game({
   const [myClickPx, setMyClickPx] = useState(null); // {x,y}
   const [myLastClickLL, setMyLastClickLL] = useState(null); // {lon,lat,timeMs}
   const [myDistanceKm, setMyDistanceKm] = useState(null); // number
+
+  // ✅ Visa min poäng direkt efter klick (innan round_result kommer)
+  const [myPendingScore, setMyPendingScore] = useState(null); // number
+  const [myPendingRoundIndex, setMyPendingRoundIndex] = useState(null); // number
 
   // I övning vill vi INTE visa bot/opp-markör
   const [oppClickPx, setOppClickPx] = useState(null); // {x,y}
@@ -194,6 +209,10 @@ export default function Game({
     setMyLastClickLL(null);
     setMyDistanceKm(null);
 
+    // ✅ reset live-score
+    setMyPendingScore(null);
+    setMyPendingRoundIndex(null);
+
     // practice: se till att vi aldrig visar bot/opp-spår
     setOppClickPx(null);
 
@@ -258,6 +277,29 @@ export default function Game({
     return total;
   }, [gameState.roundResults, opponentName]);
 
+  // ✅ Undvik dubbelräkning om serverresultatet redan finns för aktuell runda
+  const hasOfficialResultThisRound = useMemo(() => {
+    return (gameState.roundResults || []).some((r) => {
+      if (r?.roundIndex !== gameState.currentRound) return false;
+      const res = r?.results?.[myName];
+      return !!(res && Number.isFinite(res.score));
+    });
+  }, [gameState.roundResults, gameState.currentRound, myName]);
+
+  const myScoreLive = useMemo(() => {
+    const pendingOk =
+      !hasOfficialResultThisRound &&
+      myPendingRoundIndex === gameState.currentRound &&
+      Number.isFinite(myPendingScore);
+    return myScoreSoFar + (pendingOk ? myPendingScore : 0);
+  }, [
+    myScoreSoFar,
+    myPendingScore,
+    myPendingRoundIndex,
+    hasOfficialResultThisRound,
+    gameState.currentRound,
+  ]);
+
   // -------- HUD: rundrader ----------
   const hudRoundsFor = useCallback(
     (username, revealValues = true) => {
@@ -300,7 +342,10 @@ export default function Game({
   );
 
   const myHudRounds = useMemo(() => hudRoundsFor(myName, true), [hudRoundsFor, myName]);
-  const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsFor, opponentName]);
+  const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [
+    hudRoundsFor,
+    opponentName,
+  ]);
 
   // -------- target px ----------
   const targetPx = useMemo(() => {
@@ -323,6 +368,10 @@ export default function Game({
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
+
+      // ✅ Vi har fått serverns resultat för rundan – släpp preliminär score
+      setMyPendingScore(null);
+      setMyPendingRoundIndex(null);
 
       // practice: ignorera motståndarens klick helt
       if (!isPractice) {
@@ -425,10 +474,21 @@ export default function Game({
     const timeMs = elapsedMs;
 
     const c = gameState.city;
+
+    // ✅ Räkna min dist + preliminär score direkt (snabb HUD-feedback)
+    let dKm = null;
     if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
-      setMyDistanceKm(haversineKm(lat, lon, c.lat, c.lon));
+      dKm = haversineKm(lat, lon, c.lat, c.lon);
+    }
+    setMyDistanceKm(Number.isFinite(dKm) ? dKm : null);
+
+    // ⚠️ Detta är bara UI-feedback. Servern är fortfarande “source of truth”.
+    if (Number.isFinite(dKm)) {
+      setMyPendingScore(scoreLocal(dKm, timeMs));
+      setMyPendingRoundIndex(gameState.currentRound);
     } else {
-      setMyDistanceKm(null);
+      setMyPendingScore(null);
+      setMyPendingRoundIndex(null);
     }
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
@@ -583,7 +643,7 @@ export default function Game({
           <div className="hud-name">{isPractice ? `${myName} (Öva)` : myName}</div>
           <div className="hud-score-line">
             <div className="hud-score-label">Aktuell totalpoäng</div>
-            <div className="hud-score">{Math.round(myScoreSoFar)}</div>
+            <div className="hud-score">{Math.round(myScoreLive)}</div>
           </div>
 
           {myHudRounds.length > 0 && (
@@ -872,15 +932,27 @@ export default function Game({
                         <td className="rt-round">{r.idx}</td>
                         <td className="rt-city">{r.cityLabel}</td>
 
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtScore(r.my.score)}</td>
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtKm(r.my.distanceKm)}</td>
-                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>{fmtSecFromMs(r.my.timeMs)}</td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtScore(r.my.score)}
+                        </td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtKm(r.my.distanceKm)}
+                        </td>
+                        <td className={`rt-cell ${r.my.won ? "rt-win" : ""}`}>
+                          {fmtSecFromMs(r.my.timeMs)}
+                        </td>
 
                         {!isPractice && (
                           <>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtScore(r.opp.score)}</td>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtKm(r.opp.distanceKm)}</td>
-                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>{fmtSecFromMs(r.opp.timeMs)}</td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtScore(r.opp.score)}
+                            </td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtKm(r.opp.distanceKm)}
+                            </td>
+                            <td className={`rt-cell ${r.opp.won ? "rt-win" : ""}`}>
+                              {fmtSecFromMs(r.opp.timeMs)}
+                            </td>
                           </>
                         )}
                       </tr>

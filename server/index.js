@@ -831,20 +831,19 @@ function startNextRoundCountdown(match) {
     if (match.currentRound >= match.totalRounds) {
       finishMatch(match).catch(() => {});
     } else {
-      match.awaitingStartReady = true;
-      match.startReady.clear();
-
+      // ✅ Viktigt för flow:
+      // Mellan rundor ska vi INTE återinföra "start-ready"-gaten.
+      // Klienten visar bara start-ready UI i matchstart (currentRound < 0),
+      // så om vi sätter awaitingStartReady här blir det ett extra stopp
+      // (spelaren kan inte trycka "Redo" och rundstart väntar på auto-start).
       clearTimeout(match.startReadyPromptTimeout);
       clearTimeout(match.startReadyTimeout);
+      match.startReadyPromptTimeout = null;
+      match.startReadyTimeout = null;
+      match.awaitingStartReady = false;
+      match.startReady.clear();
 
-      match.startReadyPromptTimeout = setTimeout(() => {
-        io.to(room).emit("start_ready_prompt");
-      }, START_READY_PROMPT_DELAY_MS);
-
-      match.startReadyTimeout = setTimeout(() => {
-        clearStartReady(match);
-        startRound(match);
-      }, 10_000);
+      startRound(match);
     }
   }, seconds * 1000);
 }
