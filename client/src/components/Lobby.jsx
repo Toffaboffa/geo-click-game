@@ -1,5 +1,4 @@
 // client/src/components/Lobby.jsx
-import { getLeaderboardWide } from "../api";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   getMe,
@@ -7,6 +6,7 @@ import {
   getBadgesCatalog,
   getUserProgress,
   getMyProgress,
+  getLeaderboardWide,
 } from "../api";
 
 function fmtIntOrDash(v) {
@@ -47,44 +47,42 @@ function safeDiff(d) {
   if (v === "easy" || v === "medium" || v === "hard") return v;
   return "medium";
 }
+
 function safeLbMode(m) {
   const v = String(m || "").trim().toLowerCase();
   if (v === "easy" || v === "medium" || v === "hard" || v === "total" || v === "all") return v;
   return "total";
 }
 
-function prefixForMode(mode) {
-  // server-view: e_, m_, s_, t_
-  if (mode === "easy") return "e_";
-  if (mode === "medium") return "m_";
-  if (mode === "hard") return "s_";
-  return "t_";
-}
-
 function getCell(row, prefix, key) {
   const v = row?.[`${prefix}${key}`];
   if (key === "pct") return Number.isFinite(Number(v)) ? `${Number(v).toFixed(1)}` : "—";
   if (key === "ppm") return Number.isFinite(Number(v)) ? `${Math.round(Number(v))}` : "—";
-  if (key === "sp" || key === "vm" || key === "fm") return fmtIntOrDash(v);
   return fmtIntOrDash(v);
 }
 
-export default function Lobby({ session, socket, lobbyState, leaderboard, onLogout }) {
+// ✅ “0 matcher syns inte”: dölj om ALLA sp (spelade) är 0
+function hasAnyMatches(row) {
+  const keys = ["e_sp", "m_sp", "s_sp", "t_sp"];
+  return keys.some((k) => Number(row?.[k] ?? 0) > 0);
+}
+
+export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
 
-  // ✅ difficulty val
+  // difficulty val
   const [queueDifficulty, setQueueDifficulty] = useState("medium");
   const [challengeDifficulty, setChallengeDifficulty] = useState("medium");
   const [practiceDifficulty, setPracticeDifficulty] = useState("hard");
 
-  // ✅ queue state från servern
+  // queue state från servern
   const [queueState, setQueueState] = useState({ queued: false, difficulty: null });
 
   // Toggle i UI (true = syns i leaderboard)
   const [showMeOnLeaderboard, setShowMeOnLeaderboard] = useState(true);
   const [savingVis, setSavingVis] = useState(false);
 
-  // ✅ leaderboard wide (fetchas här)
+  // leaderboard wide
   const [lbView, setLbView] = useState("total"); // easy|medium|hard|total|all
   const [lbSort, setLbSort] = useState("ppm"); // ppm|pct|sp|vm|fm
   const [lbDir, setLbDir] = useState(""); // "" => server default
@@ -113,7 +111,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         const me = await getMe(session.sessionId);
         if (cancelled) return;
 
-        // Stödjer både showOnLeaderboard och hidden (server kan returnera olika)
         if (typeof me?.showOnLeaderboard === "boolean") {
           setShowMeOnLeaderboard(me.showOnLeaderboard);
           return;
@@ -152,7 +149,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     if (!socket) return;
 
     const onForcedLogout = (msg) => {
-      // Ingen fancy toast här – hellre robust.
       window.alert(msg || "Du blev utloggad eftersom du loggade in i en annan flik.");
       onLogout?.();
     };
@@ -204,14 +200,13 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     try {
       await setLeaderboardVisibility(session.sessionId, next);
     } catch {
-      // om det failar, rulla tillbaka lokalt (så UI inte ljuger)
       setShowMeOnLeaderboard(!next);
     } finally {
       setSavingVis(false);
     }
   };
 
-  // ✅ Queue start/stop
+  // Queue start/stop
   const startQueue = () => {
     if (!socket) return;
     const d = safeDiff(queueDifficulty);
@@ -222,13 +217,13 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     socket.emit("leave_queue");
   };
 
-  // ✅ Övning (payload används om servern stödjer; annars ignoreras och det är ok)
+  // Övning
   const startSolo = () => {
     if (!socket) return;
     socket.emit("start_solo_match", { difficulty: safeDiff(practiceDifficulty) });
   };
 
-  // ✅ Challenge med difficulty
+  // Challenge med difficulty
   const challenge = (e) => {
     e.preventDefault();
     if (!socket || !challengeName) return;
@@ -252,34 +247,32 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
       try {
         const view = safeLbMode(lbView);
 
-        // När view=all: sortering styrs av lbAllSortMode (server sortar på prefix)
         const modeForQuery = view === "all" ? safeLbMode(lbAllSortMode) : view;
         const mode = modeForQuery === "all" ? "total" : modeForQuery;
 
-        const params = new URLSearchParams();
-        params.set("mode", mode);
-        params.set("sort", String(lbSort || "ppm"));
-        if (lbDir === "asc" || lbDir === "desc") params.set("dir", lbDir);
-        params.set("limit", "50");
-
-		const j = await getLeaderboardWide({
-		  // sessionId är valfri här, men kan vara bra för framtida rate-limit/logik
-		  sessionId: session.sessionId,
-		  mode,
-		  sort: String(lbSort || "ppm"),
-		  dir: lbDir,
-		  limit: 50,
-		});
+        const j = await getLeaderboardWide({
+          sessionId: session.sessionId,
+          mode,
+          sort: String(lbSort || "ppm"),
+          dir: lbDir,
+          limit: 50,
+        });
 
         const rows = Array.isArray(j?.rows) ? j.rows : [];
         if (cancelled) return;
 
+        // ✅ dölj “0 matcher”
+        const nonZero = rows.filter(hasAnyMatches);
+
         // privacy-toggle (lokal filtrering)
-        const filtered = showMeOnLeaderboard ? rows : rows.filter((u) => u.namn !== session.username);
+        const filtered = showMeOnLeaderboard
+          ? nonZero
+          : nonZero.filter((u) => u.namn !== session.username);
+
         setLbRows(filtered);
       } catch (e) {
         if (!cancelled) setLbError(e?.message || "Kunde inte ladda leaderboard.");
-        if (!cancelled) setLbRows([]); // säkerställ fallback
+        if (!cancelled) setLbRows([]);
       } finally {
         if (!cancelled) setLbLoading(false);
       }
@@ -290,14 +283,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     return () => {
       cancelled = true;
     };
-  }, [lbView, lbSort, lbDir, lbAllSortMode, showMeOnLeaderboard, session.username]);
-
-  // (Bakåtkompat) om din App fortfarande skickar legacy leaderboard kan vi visa den som fallback om wide failar.
-  const legacyRows = useMemo(() => {
-    const rows = Array.isArray(leaderboard) ? leaderboard : [];
-    const filtered = showMeOnLeaderboard ? rows : rows.filter((u) => u.username !== session.username);
-    return filtered.slice(0, 20);
-  }, [leaderboard, showMeOnLeaderboard, session.username]);
+  }, [lbView, lbSort, lbDir, lbAllSortMode, showMeOnLeaderboard, session.sessionId, session.username]);
 
   // UI helper för top3 highlight
   const getRowClass = (rank, usernameOrNamn) => {
@@ -310,7 +296,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     return classes.join(" ");
   };
 
-  // ---------- Progression helpers ----------
+  // Progression helpers
   const ensureCatalogLoaded = async () => {
     let catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
     if (catalog.length > 0) return catalog;
@@ -346,7 +332,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
   const groupedBadges = useMemo(() => {
     const catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
-    const map = new Map(); // group_name -> { group_key, items[] }
+    const map = new Map();
 
     for (const b of catalog) {
       const groupName = b.groupName ?? b.group_name ?? b.group ?? "Övrigt";
@@ -424,9 +410,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     };
   }, [progressData]);
 
-  // -----------------------
   // Derived: queue counts
-  // -----------------------
   const queueCounts = useMemo(() => {
     const qc = lobbyState?.queueCounts || {};
     return {
@@ -438,9 +422,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
   const onlineCount = Number(lobbyState?.onlineCount ?? 0) || 0;
 
-  // -----------------------
   // Leaderboard columns config
-  // -----------------------
   const viewMode = safeLbMode(lbView);
   const showAllGroups = viewMode === "all";
 
@@ -449,9 +431,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
     return [viewMode];
   }, [showAllGroups, viewMode]);
 
-  const wideRows = useMemo(() => {
-    return lbRows.length > 0 ? lbRows : [];
-  }, [lbRows]);
+  const wideRows = useMemo(() => lbRows, [lbRows]);
 
   // ---------- UI ----------
   return (
@@ -478,7 +458,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
         <p>Online just nu: {onlineCount}st.</p>
 
-        {/* ✅ Queue status cards */}
+        {/* Queue status cards */}
         <div className="queue-cards">
           <div className={`queue-card ${queueState.queued && queueState.difficulty === "easy" ? "is-me" : ""}`}>
             <div className="queue-card-title">Enkel</div>
@@ -497,7 +477,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </div>
         </div>
 
-        {/* ✅ Matchmaking */}
+        {/* Matchmaking */}
         <div className="lobby-actions">
           <div className="lobby-action-block">
             <div className="lobby-action-title">Match mot slumpvis</div>
@@ -554,7 +534,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </div>
         </div>
 
-        {/* ✅ Challenge med difficulty */}
+        {/* Challenge */}
         <form onSubmit={challenge} className="challenge-form">
           <input
             placeholder="Utmana användare..."
@@ -585,7 +565,7 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </button>
         </div>
 
-        {/* ✅ Leaderboard controls */}
+        {/* Leaderboard controls */}
         <div className="lb-header">
           <h3>Topplista</h3>
 
@@ -630,11 +610,14 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
           </div>
         </div>
 
-        {lbLoading && <div className="lb-loading">Laddar topplista...</div>}
-        {lbError && <div className="lb-error">{lbError}</div>}
-
-        {/* ✅ Wide leaderboard table */}
-        {wideRows.length > 0 ? (
+        {/* ✅ Wide leaderboard output states */}
+        {lbLoading ? (
+          <div className="lb-loading">Laddar topplista...</div>
+        ) : lbError ? (
+          <div className="lb-error">{lbError}</div>
+        ) : wideRows.length === 0 ? (
+          <div className="lb-empty">Inga matcher spelade ännu.</div>
+        ) : (
           <div className="lb-wide-wrap">
             <table className="leaderboard leaderboard-wide">
               <thead>
@@ -779,61 +762,6 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
               </tbody>
             </table>
           </div>
-        ) : (
-          // Fallback: legacy table (om wide inte laddar alls)
-          <div style={{ opacity: lbLoading ? 0.6 : 1 }}>
-            <h3 style={{ marginTop: 18 }}>Topplista (fallback)</h3>
-            <table className="leaderboard">
-              <thead>
-                <tr>
-                  <th className="lb-rank">#</th>
-                  <th>Spelare</th>
-                  <th className="lb-lvl">Lvl</th>
-                  <th>SM</th>
-                  <th>VM</th>
-                  <th>FM</th>
-                  <th>Pct</th>
-                  <th>PPM</th>
-                </tr>
-              </thead>
-              <tbody>
-                {legacyRows.map((u, idx) => {
-                  const rank = idx + 1;
-                  const w = Number(u?.wins ?? 0);
-                  const l = Number(u?.losses ?? 0);
-                  const denom = w + l;
-                  const pct = denom > 0 ? ((100 * w) / denom).toFixed(1) : "—";
-                  const ppm = Number.isFinite(Number(u?.avgScore)) ? String(Math.round(Number(u.avgScore))) : "—";
-
-                  return (
-                    <tr key={u.username} className={getRowClass(rank, u.username)}>
-                      <td className="lb-rank">
-                        <span>{rank}</span>
-                      </td>
-
-                      <td style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
-                        <button
-                          className="lb-name-btn"
-                          onClick={() => openProgressFor(u.username)}
-                          title="Visa progression"
-                          type="button"
-                        >
-                          {u.username}
-                        </button>
-                      </td>
-
-                      <td className="lb-lvl">{Number(u.level ?? 0)}</td>
-                      <td>{u.played}</td>
-                      <td>{u.wins}</td>
-                      <td>{u.losses}</td>
-                      <td>{pct}</td>
-                      <td>{ppm}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
 
@@ -911,12 +839,10 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
 
             {!progressLoading && !progressError && (
               <>
-                {/* ✅ Stats + personliga rekord */}
                 <div className="progress-summary">
                   <div className="progress-summary-row">
                     <span>
-                      Badges: {earnedSet.size}/{totalBadges}{" "}
-                      <span className="progress-hint">• Hovra för info</span>
+                      Badges: {earnedSet.size}/{totalBadges} <span className="progress-hint">• Hovra för info</span>
                     </span>
                   </div>
 
