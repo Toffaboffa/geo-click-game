@@ -128,6 +128,10 @@ export default function Game({
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
+  // ✅ Lens gate (Punkt 3)
+  // Efter att du klickat: göm linsen tills 1s kvar på countdown, sedan får den synas igen.
+  const [lensUnlocked, setLensUnlocked] = useState(false);
+
   // --- UI hover gate ---
   const [hoveringUi, setHoveringUi] = useState(false);
   const setHoveringUiSafe = useCallback((v) => {
@@ -202,6 +206,9 @@ export default function Game({
     setTimerRunning(gameState.currentRound >= 0);
 
     setHoveringUi(false);
+
+    // ✅ Ny runda: linsen ska vara normal igen
+    setLensUnlocked(false);
   }, [gameState.currentRound]);
 
   // -------- rapportera kartans storlek ----------
@@ -250,50 +257,50 @@ export default function Game({
     }
     return total;
   }, [gameState.roundResults, opponentName]);
-// -------- HUD: rundrader ----------
-const hudRoundsFor = useCallback(
-  (username, revealValues = true) => {
-    const rows = Array.isArray(gameState.roundResults) ? gameState.roundResults : [];
-    const out = [];
-    for (let i = 0; i < rows.length; i++) {
-      const rr = rows[i];
-      const res = rr?.results?.[username] || null;
 
-      // Om vi inte ska avslöja (t.ex. motståndare innan matchslut): visa bara radrubriken
-      if (!revealValues) {
+  // -------- HUD: rundrader ----------
+  const hudRoundsFor = useCallback(
+    (username, revealValues = true) => {
+      const rows = Array.isArray(gameState.roundResults) ? gameState.roundResults : [];
+      const out = [];
+      for (let i = 0; i < rows.length; i++) {
+        const rr = rows[i];
+        const res = rr?.results?.[username] || null;
+
+        // Om vi inte ska avslöja (t.ex. motståndare innan matchslut): visa bara radrubriken
+        if (!revealValues) {
+          out.push({
+            idx: i + 1,
+            distance: "—",
+            time: "—",
+            score: "—",
+          });
+          continue;
+        }
+
+        if (!res) continue;
+
+        const distanceKm = Number.isFinite(res.distanceKm) ? res.distanceKm : null;
+        const timeMs = Number.isFinite(res.timeMs) ? res.timeMs : null;
+        const score = Number.isFinite(res.score) ? res.score : null;
+
         out.push({
           idx: i + 1,
-          distance: "—",
-          time: "—",
-          score: "—",
+          distance: fmtKmCompact(distanceKm),
+          time: fmtSecFromMs(timeMs),
+          score: fmtScore(score),
         });
-        continue;
       }
 
-      if (!res) continue;
+      // Om vi redan filtrerat bort null-res, vill vi fortfarande numrera konsekvent (1..N),
+      // så vi behåller idx från runda i+1.
+      return out;
+    },
+    [gameState.roundResults]
+  );
 
-      const distanceKm = Number.isFinite(res.distanceKm) ? res.distanceKm : null;
-      const timeMs = Number.isFinite(res.timeMs) ? res.timeMs : null;
-      const score = Number.isFinite(res.score) ? res.score : null;
-
-      out.push({
-        idx: i + 1,
-        distance: fmtKmCompact(distanceKm),
-        time: fmtSecFromMs(timeMs),
-        score: fmtScore(score),
-      });
-    }
-
-    // Om vi redan filtrerat bort null-res, vill vi fortfarande numrera konsekvent (1..N),
-    // så vi behåller idx från runda i+1.
-    return out;
-  },
-  [gameState.roundResults]
-);
-
-const myHudRounds = useMemo(() => hudRoundsFor(myName, true), [hudRoundsFor, myName]);
-const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsFor, opponentName]);
-
+  const myHudRounds = useMemo(() => hudRoundsFor(myName, true), [hudRoundsFor, myName]);
+  const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsFor, opponentName]);
 
   // -------- target px ----------
   const targetPx = useMemo(() => {
@@ -341,12 +348,23 @@ const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsF
       setShowReadyButton(false);
       setIAmReady(false);
 
+      // ✅ Ny nedräkning: lås linsen igen (den låses upp när 1s kvar)
+      setLensUnlocked(false);
+
       setCountdown(seconds);
       let left = seconds;
       const t = setInterval(() => {
         left -= 1;
         setCountdown(left);
+
+        // ✅ Lås upp när det är 1 sekund kvar (och behåll upplåst fram till ny runda)
+        if (left <= 1 && left > 0) {
+          setLensUnlocked(true);
+        }
         if (left <= 0) {
+          // När nästa runda precis ska börja: låt den gärna fortsätta vara upplåst.
+          setLensUnlocked(true);
+
           clearInterval(t);
           setCountdown(null);
         }
@@ -415,6 +433,10 @@ const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsF
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
     setHasClickedThisRound(true);
+
+    // ✅ Direkt efter klick: göm linsen tills sista sekunden innan nästa stad
+    setLensUnlocked(false);
+
     setMyClickPx({ x: xPx, y: yPx });
     setMyLastClickLL({ lon, lat, timeMs });
   };
@@ -423,6 +445,10 @@ const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsF
   const lensStyle = useMemo(() => {
     if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
+
+    // ✅ Punkt 3: efter klick -> ingen lins förrän vi låst upp (1s kvar på countdown)
+    if (hasClickedThisRound && !lensUnlocked) return null;
+
     const rect = mapRef.current.getBoundingClientRect();
     const zoom = 3;
     const bgSizeX = rect.width * zoom;
@@ -435,7 +461,7 @@ const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsF
       backgroundSize: `${bgSizeX}px ${bgSizeY}px`,
       backgroundPosition: `${bgPosX}px ${bgPosY}px`,
     };
-  }, [pointer, hoveringUi]);
+  }, [pointer, hoveringUi, hasClickedThisRound, lensUnlocked]);
 
   // -------- button helpers ----------
   const stop = (fn) => (e) => {
@@ -688,10 +714,16 @@ const oppHudRounds = useMemo(() => hudRoundsFor(opponentName, true), [hudRoundsF
 
         {/* Debug target + debug click */}
         {debugShowTarget && targetPx && (
-          <div className="debug-dot debug-dot-target" style={{ left: targetPx.x, top: targetPx.y }} />
+          <div
+            className="debug-dot debug-dot-target"
+            style={{ left: targetPx.x, top: targetPx.y }}
+          />
         )}
         {debugShowTarget && myClickPx && (
-          <div className="debug-dot debug-dot-click" style={{ left: myClickPx.x, top: myClickPx.y }} />
+          <div
+            className="debug-dot debug-dot-click"
+            style={{ left: myClickPx.x, top: myClickPx.y }}
+          />
         )}
 
         {/* Ready overlay (endast multiplayer) */}

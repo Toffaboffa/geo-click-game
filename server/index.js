@@ -29,6 +29,46 @@ app.use(express.json());
 const BOT_NAME = "__BOT__";
 const LEADERBOARD_LIMIT = 20;
 
+const DIFFICULTIES = ["easy", "medium", "hard"];
+const DEFAULT_DIFFICULTY = "medium";
+
+// City pool rules
+const EASY_POP_MIN = 1_000_000; // Easy: capitals + >= 1M
+const MEDIUM_POP_MIN = 200_000; // Medium: Easy + >= 200k
+
+function normalizeDifficulty(d) {
+  const v = String(d || "").trim().toLowerCase();
+  if (DIFFICULTIES.includes(v)) return v;
+  return DEFAULT_DIFFICULTY;
+}
+
+function diffCols(difficulty) {
+  const d = normalizeDifficulty(difficulty);
+  if (d === "easy") {
+    return {
+      played: "easy_played",
+      wins: "easy_wins",
+      losses: "easy_losses",
+      totalScore: "easy_total_score",
+    };
+  }
+  if (d === "hard") {
+    return {
+      played: "hard_played",
+      wins: "hard_wins",
+      losses: "hard_losses",
+      totalScore: "hard_total_score",
+    };
+  }
+  // medium default
+  return {
+    played: "medium_played",
+    wins: "medium_wins",
+    losses: "medium_losses",
+    totalScore: "medium_total_score",
+  };
+}
+
 // Match/round timing
 const ROUND_TIMEOUT_MS = 20_000; // efter 20s: auto-result + vidare
 const PENALTY_TIME_MS = 20_000; // om man inte klickar: timeMs som max
@@ -36,6 +76,10 @@ const PENALTY_TIME_MS = 20_000; // om man inte klickar: timeMs som max
 // Score normalization
 const SCORER_MAX_TIME_MS = 20_000; // normalisera tid i score över 20s
 const SCORER_MAX_DISTANCE_KM = 20_000;
+
+// Start-ready gate timers
+const START_READY_PROMPT_DELAY_MS = 200;
+const START_READY_AUTO_START_MS = 12_000;
 
 // Walkover policy (Variant X)
 const WALKOVER_LOSER_SCORE = 15_000; // totalpoäng för 10 rundor ~ max 20k
@@ -96,18 +140,17 @@ async function authMiddleware(req, res, next) {
 }
 
 // =====================
-// Helpers (schema-capabilities)
+// DB helpers: kolumn-existens (för kompat)
 // =====================
-const _colCache = new Map(); // key: `${table}.${col}` -> boolean
-async function hasColumn(db, table, column) {
+const _colCache = new Map(); // "table.column" -> boolean
+async function hasColumn(dbClient, table, column) {
   const key = `${table}.${column}`;
   if (_colCache.has(key)) return _colCache.get(key);
-  const { rows } = await db.query(
+
+  const { rows } = await dbClient.query(
     `select 1
      from information_schema.columns
-     where table_schema='public'
-       and table_name=$1
-       and column_name=$2
+     where table_schema='public' and table_name=$1 and column_name=$2
      limit 1`,
     [table, column]
   );
@@ -116,132 +159,83 @@ async function hasColumn(db, table, column) {
   return ok;
 }
 
-// Cache för “users”-kolumner som styr extra stats (records)
-let _usersCapsPromise = null;
-async function getUsersCaps() {
-  if (_usersCapsPromise) return _usersCapsPromise;
-  _usersCapsPromise = (async () => {
-    const hasBestMatchScore = await hasColumn(pool, "users", "best_match_score");
-    const hasBestWinMargin = await hasColumn(pool, "users", "best_win_margin");
-    return { hasBestMatchScore, hasBestWinMargin };
-  })();
-  return _usersCapsPromise;
+function pickExistingCols(existingMap, cols) {
+  return cols.filter((c) => existingMap.get(c) === true);
 }
 
 // =====================
-// Helpers (badges/progression)
+// Basic routes
 // =====================
-function normalizeBadgeRow(r) {
-  return {
-    ...r,
+app.get("/api/me", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    // Basfält (bör finnas)
+    const baseCols = [
+      "username",
+      "played",
+      "wins",
+      "losses",
+      "total_score",
+      "avg_score",
+      "pct",
+    ];
 
-    code: r.code,
-    groupKey: r.groupKey ?? r.group_key ?? null,
-    groupName: r.groupName ?? r.group_name ?? null,
-    sortInGroup: r.sortInGroup ?? r.sort_in_group ?? null,
-    iconUrl: r.iconUrl ?? r.icon_url ?? null,
-    earnedAt: r.earnedAt ?? r.earned_at ?? null,
+    // Optional/nya fält
+    const optionalCols = [
+      "level",
+      "badges_count",
+      "win_streak",
+      "best_win_streak",
+      "best_match_score",
+      "best_win_margin",
+      "hidden",
+    ];
 
-    group_key: r.groupKey ?? r.group_key ?? null,
-    group_name: r.groupName ?? r.group_name ?? null,
-    sort_in_group: r.sortInGroup ?? r.sort_in_group ?? null,
-    icon_url: r.iconUrl ?? r.icon_url ?? null,
-    earned_at: r.earnedAt ?? r.earned_at ?? null,
+    const exists = new Map();
+    for (const c of optionalCols) {
+      // username etc behöver vi inte checka
+      exists.set(c, await hasColumn(client, "users", c));
+    }
 
-    badge_code: r.code ?? r.badge_code ?? null,
-  };
-}
+    const selectedOptional = pickExistingCols(exists, optionalCols);
+    const selectCols = [...baseCols, ...selectedOptional];
 
-async function getPublicUserRow(username) {
-  const caps = await getUsersCaps();
+    const { rows } = await client.query(
+      `select ${selectCols.join(", ")}
+       from users
+       where username = $1`,
+      [req.username]
+    );
 
-  const extraSelects = [];
-  if (caps.hasBestMatchScore) extraSelects.push(`best_match_score as "bestMatchScore"`);
-  if (caps.hasBestWinMargin) extraSelects.push(`best_win_margin as "bestWinMargin"`);
+    const me = rows[0] || null;
+    if (me && Object.prototype.hasOwnProperty.call(me, "hidden")) {
+      const hidden = !!me.hidden;
+      me.showOnLeaderboard = !hidden;
+    }
 
-  const extraSql = extraSelects.length ? `,\n       ${extraSelects.join(",\n       ")}` : "";
+    res.json(me);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
 
-  const { rows } = await pool.query(
-    `select
-       username,
-       played,
-       wins,
-       losses,
-       avg_score as "avgScore",
-       pct,
-       coalesce(level, 0) as level,
-       coalesce(badges_count, 0) as "badgesCount"
-       ${extraSql}
-     from users
-     where username = $1`,
-    [username]
-  );
-  return rows[0] ?? null;
-}
-
-async function getUserEarnedBadges(username) {
-  const { rows } = await pool.query(
-    `select
-       ub.badge_code as code,
-       ub.earned_at as "earnedAt",
-       b.group_key as "groupKey",
-       b.group_name as "groupName",
-       b.sort_in_group as "sortInGroup",
-       b.name,
-       b.description,
-       b.emoji,
-       b.icon_url as "iconUrl"
-     from public.user_badges ub
-     join public.badges b on b.code = ub.badge_code
-     where ub.username = $1
-     order by b.group_key asc, b.sort_in_group asc, ub.earned_at asc`,
-    [username]
-  );
-  return rows.map(normalizeBadgeRow);
-}
-
-async function buildProgressPayload(username) {
-  const user = await getPublicUserRow(username);
-  if (!user) return null;
-  const earnedBadges = await getUserEarnedBadges(username);
-
-  return {
-    username: user.username,
-    level: user.level,
-    badgesCount: user.badgesCount,
-    stats: {
-      played: user.played,
-      wins: user.wins,
-      losses: user.losses,
-      avgScore: user.avgScore,
-      pct: user.pct,
-      // ✅ nya “rekord” (om kolumnerna finns – annars undefined)
-      bestMatchScore: user.bestMatchScore ?? undefined,
-      bestWinMargin: user.bestWinMargin ?? undefined,
-    },
-    earnedBadges,
-  };
-}
-
-// =====================
-// Auth endpoints (DB)
-// =====================
 app.post("/api/register", async (req, res) => {
   try {
-    const { username, password } = req.body || {};
-    if (!username || !password) {
-      return res.status(400).json({ error: "Användarnamn och lösenord krävs" });
-    }
-    const passwordHash = hashPassword(password);
-    await pool.query("insert into users (username, password_hash) values ($1, $2)", [
-      username,
-      passwordHash,
-    ]);
+    const username = String(req.body.username || "").trim();
+    const password = String(req.body.password || "");
+    if (!username || !password) return res.status(400).json({ error: "Saknar användarnamn/lösen" });
+
+    const password_hash = hashPassword(password);
+    await pool.query("insert into users (username, password_hash) values ($1, $2)", [username, password_hash]);
+
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
-    if (String(e?.code) === "23505") {
-      return res.status(400).json({ error: "Användarnamn är upptaget" });
+    if (String(e?.message || "").includes("duplicate key")) {
+      return res.status(409).json({ error: "Användarnamn finns redan" });
     }
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
@@ -250,17 +244,18 @@ app.post("/api/register", async (req, res) => {
 
 app.post("/api/login", async (req, res) => {
   try {
-    const { username, password } = req.body || {};
-    if (!username || !password) {
-      return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
-    }
-    const { rows } = await pool.query("select password_hash from users where username=$1", [
+    const username = String(req.body.username || "").trim();
+    const password = String(req.body.password || "");
+    if (!username || !password) return res.status(400).json({ error: "Saknar användarnamn/lösen" });
+
+    const pwHash = hashPassword(password);
+    const { rows } = await pool.query("select username from users where username=$1 and password_hash=$2", [
       username,
+      pwHash,
     ]);
-    const row = rows[0];
-    if (!row || row.password_hash !== hashPassword(password)) {
-      return res.status(400).json({ error: "Felaktiga inloggningsuppgifter" });
-    }
+    const user = rows[0];
+    if (!user) return res.status(401).json({ error: "Fel användarnamn eller lösenord" });
+
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
   } catch (e) {
@@ -279,142 +274,256 @@ app.post("/api/logout", authMiddleware, async (req, res) => {
   }
 });
 
-// =====================
-// User visibility (hidden)
-// =====================
-app.get("/api/me", authMiddleware, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `select username, coalesce(hidden,false) as hidden
-       from users
-       where username = $1`,
-      [req.username]
-    );
-    const me = rows[0];
-    if (!me) return res.status(404).json({ error: "Hittar inte användare" });
-    const hidden = !!me.hidden;
-    res.json({
-      username: me.username,
-      hidden,
-      showOnLeaderboard: !hidden,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Serverfel" });
-  }
-});
-
+// ✅ Sätt visibility: ny route som klienten använder
 app.patch("/api/me/leaderboard-visibility", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { showOnLeaderboard } = req.body || {};
-    if (typeof showOnLeaderboard !== "boolean") {
-      return res.status(400).json({ error: "showOnLeaderboard måste vara boolean" });
-    }
+    const okHidden = await hasColumn(client, "users", "hidden");
+    if (!okHidden) return res.status(400).json({ error: "Kolumnen 'hidden' saknas i users" });
+
+    const showOnLeaderboard = !!req.body?.showOnLeaderboard;
     const hidden = !showOnLeaderboard;
-    await pool.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
+
+    await client.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
+
     res.json({ ok: true, showOnLeaderboard, hidden });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
   }
 });
 
-// BACKWARD COMPAT:
+// ✅ Legacy/fallback (om du råkar ha gamla klienter)
 app.post("/api/me/visibility", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { hidden } = req.body || {};
-    if (typeof hidden !== "boolean") {
-      return res.status(400).json({ error: "hidden måste vara boolean" });
-    }
-    await pool.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
+    const okHidden = await hasColumn(client, "users", "hidden");
+    if (!okHidden) return res.status(400).json({ error: "Kolumnen 'hidden' saknas i users" });
+
+    const hidden = !!req.body?.hidden;
+    await client.query(`update users set hidden = $2 where username = $1`, [req.username, hidden]);
     res.json({ ok: true, hidden, showOnLeaderboard: !hidden });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
   }
 });
 
-// =====================
-// Badges API
-// =====================
-app.get("/api/badges", async (_req, res) => {
+// ✅ Badges catalog (klienten använder den)
+app.get("/api/badges", authMiddleware, async (_req, res) => {
   try {
-    const { rows } = await pool.query(
-      `select
-         code,
-         group_key as "groupKey",
-         group_name as "groupName",
-         sort_in_group as "sortInGroup",
-         name,
-         description,
-         emoji,
-         icon_url as "iconUrl"
-       from public.badges
-       order by group_key asc, sort_in_group asc, id asc`
+    const badges = await getBadgesCatalogWithCriteria(pool);
+    // Vi skickar “rena” badge-defs till klienten
+    res.json(
+      (Array.isArray(badges) ? badges : []).map((b) => ({
+        code: b.code,
+        name: b.name,
+        description: b.description,
+        emoji: b.emoji,
+        groupKey: b.groupKey,
+        groupName: b.groupName,
+        sortInGroup: b.sortInGroup,
+        iconUrl: b.iconUrl,
+      }))
     );
-    res.json(rows.map(normalizeBadgeRow));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
   }
 });
 
-// ===== Progression endpoints =====
-async function handleMeProgress(req, res) {
+// ✅ Progression: “jag”
+app.get("/api/me/progression", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const payload = await buildProgressPayload(req.username);
-    if (!payload) return res.status(404).json({ error: "Hittar inte användare" });
-    res.json(payload);
+    const username = req.username;
+
+    const optional = ["level", "badges_count", "best_match_score", "best_win_margin"];
+    const exists = new Map();
+    for (const c of optional) exists.set(c, await hasColumn(client, "users", c));
+
+    const selectCols = [
+      "username",
+      "played",
+      "wins",
+      "losses",
+      "avg_score",
+      "pct",
+      ...pickExistingCols(exists, optional),
+    ];
+
+    const { rows } = await client.query(
+      `select ${selectCols.join(", ")} from users where username = $1`,
+      [username]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
+
+    const u = rows[0];
+
+    const { rows: earned } = await client.query(
+      `select badge_code, earned_at, match_id, meta
+       from public.user_badges
+       where username = $1
+       order by earned_at asc`,
+      [username]
+    );
+
+    res.json({
+      username,
+      level: typeof u.level === "number" ? u.level : null,
+      badges_count: typeof u.badges_count === "number" ? u.badges_count : null,
+      badgesCount: typeof u.badges_count === "number" ? u.badges_count : null, // extra kompat
+      earnedBadges: earned,
+      stats: {
+        played: u.played ?? 0,
+        wins: u.wins ?? 0,
+        losses: u.losses ?? 0,
+        avgScore: u.avg_score ?? null,
+        pct: u.pct ?? null,
+        bestMatchScore: Object.prototype.hasOwnProperty.call(u, "best_match_score") ? u.best_match_score : null,
+        bestWinMargin: Object.prototype.hasOwnProperty.call(u, "best_win_margin") ? u.best_win_margin : null,
+      },
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
   }
-}
-app.get("/api/me/progress", authMiddleware, handleMeProgress);
-app.get("/api/me/progression", authMiddleware, handleMeProgress);
+});
 
-async function handleUserProgress(req, res) {
+// ✅ Progression: annan användare
+app.get("/api/users/:username/progression", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
     const username = String(req.params.username || "").trim();
-    if (!username) return res.status(400).json({ error: "username saknas" });
-    const payload = await buildProgressPayload(username);
-    if (!payload) return res.status(404).json({ error: "Hittar inte användare" });
-    res.json(payload);
+    if (!username) return res.status(400).json({ error: "Saknar username" });
+
+    const optional = ["level", "badges_count", "best_match_score", "best_win_margin"];
+    const exists = new Map();
+    for (const c of optional) exists.set(c, await hasColumn(client, "users", c));
+
+    const selectCols = [
+      "username",
+      "played",
+      "wins",
+      "losses",
+      "avg_score",
+      "pct",
+      ...pickExistingCols(exists, optional),
+    ];
+
+    const { rows } = await client.query(
+      `select ${selectCols.join(", ")} from users where username = $1`,
+      [username]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
+
+    const u = rows[0];
+
+    const { rows: earned } = await client.query(
+      `select badge_code, earned_at, match_id, meta
+       from public.user_badges
+       where username = $1
+       order by earned_at asc`,
+      [username]
+    );
+
+    res.json({
+      username,
+      level: typeof u.level === "number" ? u.level : null,
+      badges_count: typeof u.badges_count === "number" ? u.badges_count : null,
+      badgesCount: typeof u.badges_count === "number" ? u.badges_count : null,
+      earnedBadges: earned,
+      stats: {
+        played: u.played ?? 0,
+        wins: u.wins ?? 0,
+        losses: u.losses ?? 0,
+        avgScore: u.avg_score ?? null,
+        pct: u.pct ?? null,
+        bestMatchScore: Object.prototype.hasOwnProperty.call(u, "best_match_score") ? u.best_match_score : null,
+        bestWinMargin: Object.prototype.hasOwnProperty.call(u, "best_win_margin") ? u.best_win_margin : null,
+      },
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
   }
-}
-app.get("/api/users/:username/progress", handleUserProgress);
-app.get("/api/users/:username/progression", handleUserProgress);
+});
 
-// =====================
-// Leaderboard (DB)
-// =====================
+// Legacy leaderboard (behåll för bakåtkompat)
 app.get("/api/leaderboard", async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `select
-         username,
-         played,
-         wins,
-         losses,
-         avg_score as "avgScore",
-         pct,
-         coalesce(level, 0) as level,
-         coalesce(badges_count, 0) as "badgesCount"
+      `select username, played, wins, losses, total_score, avg_score, pct, level, badges_count, win_streak, best_win_streak
        from users
-       where coalesce(hidden, false) = false
-         and played > 0
-       order by
-         avg_score asc nulls last,
-         pct desc nulls last,
-         played desc,
-         username asc
+       where hidden = false
+       order by avg_score asc nulls last, played desc
        limit $1`,
       [LEADERBOARD_LIMIT]
     );
     res.json(rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// ✅ NEW: Wide leaderboard (easy/medium/hard/total) från public.leaderboard_wide
+app.get("/api/leaderboard-wide", async (req, res) => {
+  try {
+    const mode = normalizeDifficulty(req.query.mode || "total");
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50) || 50));
+
+    // total är inte en difficulty i normalizeDifficulty, så special-case:
+    const modeKey = String(req.query.mode || "total").trim().toLowerCase() === "total" ? "total" : mode;
+
+    const prefix = modeKey === "easy" ? "e_" : modeKey === "medium" ? "m_" : modeKey === "hard" ? "s_" : "t_";
+
+    const sortRaw = String(req.query.sort || "ppm").trim().toLowerCase();
+    const dirRaw = String(req.query.dir || "").trim().toLowerCase();
+
+    const allowedSort = new Set(["ppm", "pct", "sp", "vm", "fm"]);
+    const sort = allowedSort.has(sortRaw) ? sortRaw : "ppm";
+
+    // Default direction per sort
+    const defaultDir = sort === "pct" || sort === "vm" ? "desc" : "asc";
+    const dir = dirRaw === "asc" || dirRaw === "desc" ? dirRaw : defaultDir;
+
+    const col = `${prefix}${sort}`;
+    const playedCol = `${prefix}sp`;
+
+    const allowedCols = new Set([
+      "e_ppm", "e_pct", "e_sp", "e_vm", "e_fm",
+      "m_ppm", "m_pct", "m_sp", "m_vm", "m_fm",
+      "s_ppm", "s_pct", "s_sp", "s_vm", "s_fm",
+      "t_ppm", "t_pct", "t_sp", "t_vm", "t_fm",
+    ]);
+    if (!allowedCols.has(col) || !allowedCols.has(playedCol)) {
+      return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
+    }
+
+    const { rows } = await pool.query(
+      `select *
+       from public.leaderboard_wide
+       where coalesce(hidden,false) = false
+         and ${playedCol} > 0
+       order by
+         ${col} ${dir} nulls last,
+         ${prefix}pct desc nulls last,
+         ${playedCol} desc,
+         namn asc
+       limit $1`,
+      [limit]
+    );
+
+    res.json({ mode: modeKey, sort, dir, rows });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
@@ -426,16 +535,20 @@ app.get("/api/leaderboard", async (_req, res) => {
 // =====================
 const lobby = {
   onlineUsers: new Set(),
-  randomQueue: new Set(),
+  queues: {
+    easy: new Set(),
+    medium: new Set(),
+    hard: new Set(),
+  },
 };
 
 const socketsByUser = new Map(); // username -> socket.id
 const matches = new Map(); // matchId -> match
 
-// NEW (11A, 3A, 5A)
 const activeMatchByUser = new Map(); // username -> matchId
 const disconnectGrace = new Map(); // username -> timeoutId
-const pendingChallenges = new Map(); // key: `${from}->${to}` -> { from, to, expiresAt }
+const pendingChallengesById = new Map(); // challengeId -> { id, from, to, difficulty, expiresAt }
+const pendingChallengeByPair = new Map(); // `${from}->${to}` -> challengeId
 
 function getRoomName(matchId) {
   return `match_${matchId}`;
@@ -445,8 +558,20 @@ function nowMs() {
   return Date.now();
 }
 
+function getQueueCounts() {
+  return {
+    easy: lobby.queues.easy.size,
+    medium: lobby.queues.medium.size,
+    hard: lobby.queues.hard.size,
+  };
+}
+
+function removeUserFromAllQueues(username) {
+  for (const d of DIFFICULTIES) lobby.queues[d].delete(username);
+}
+
 function broadcastLobby() {
-  io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size });
+  io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() });
 }
 
 function isUserInActiveMatch(username) {
@@ -466,7 +591,7 @@ function createMatch(playerA, playerB, opts = {}) {
     id: matchId,
     createdAt: nowMs(),
     finishedAt: null,
-    finishReason: null, // "normal" | "leave" | "disconnect" | ...
+    finishReason: null,
     players: [playerA, playerB],
     currentRound: 0,
     totalRounds: 10,
@@ -475,13 +600,20 @@ function createMatch(playerA, playerB, opts = {}) {
     scorer,
     isSolo: !!opts.isSolo,
     isPractice: !!opts.isPractice,
+    difficulty: normalizeDifficulty(opts.difficulty),
+
+    // start-ready gate
     awaitingStartReady: true,
     startReady: new Set(),
+    startReadyPromptTimeout: null,
     startReadyTimeout: null,
+
+    // between-round gate
     awaitingReady: false,
     ready: new Set(),
     readyPromptTimeout: null,
     readyTimeout: null,
+
     countdownTimeout: null,
     roundTimeout: null,
   };
@@ -489,433 +621,389 @@ function createMatch(playerA, playerB, opts = {}) {
   return match;
 }
 
-function tryMatchRandom() {
-  // Vi tar 2 och matchar – men respekterar activeMatch-lås
-  if (lobby.randomQueue.size < 2) return;
-  const queue = Array.from(lobby.randomQueue);
-  let a = null;
-  let b = null;
+function tryMatchQueue(difficulty) {
+  const d = normalizeDifficulty(difficulty);
+  const q = lobby.queues[d];
+  if (!q || q.size < 2) return;
 
-  for (const u of queue) {
-    if (isUserInActiveMatch(u)) {
-      lobby.randomQueue.delete(u);
-      continue;
+  while (q.size >= 2) {
+    const queue = Array.from(q);
+    let a = null;
+    let b = null;
+
+    for (const u of queue) {
+      if (!lobby.onlineUsers.has(u)) {
+        q.delete(u);
+        continue;
+      }
+      if (isUserInActiveMatch(u)) {
+        q.delete(u);
+        continue;
+      }
+      if (!a) a = u;
+      else if (!b) {
+        b = u;
+        break;
+      }
     }
-    if (!a) a = u;
-    else if (!b) {
-      b = u;
-      break;
-    }
+
+    if (!a || !b) return;
+
+    q.delete(a);
+    q.delete(b);
+
+    const match = createMatch(a, b, { difficulty: d });
+    startMatch(match);
   }
+}
 
-  if (!a || !b) return;
-
-  lobby.randomQueue.delete(a);
-  lobby.randomQueue.delete(b);
-
-  const match = createMatch(a, b);
-  startMatch(match);
+function tryMatchAllQueues() {
+  tryMatchQueue("easy");
+  tryMatchQueue("medium");
+  tryMatchQueue("hard");
 }
 
 function clearStartReady(match) {
-  if (match.startReadyTimeout) clearTimeout(match.startReadyTimeout);
-  match.startReadyTimeout = null;
   match.awaitingStartReady = false;
-  match.startReady = new Set();
-}
-
-function beginStartReady(match) {
-  match.awaitingStartReady = true;
-  match.startReady = new Set();
-  const room = getRoomName(match.id);
-  io.to(room).emit("start_ready_prompt", { matchId: match.id });
-
-  match.startReadyTimeout = setTimeout(() => {
-    if (match.finished) return;
-    clearStartReady(match);
-    startRound(match);
-  }, match.isSolo ? 10_000 : 30_000);
+  clearTimeout(match.startReadyPromptTimeout);
+  clearTimeout(match.startReadyTimeout);
+  match.startReadyPromptTimeout = null;
+  match.startReadyTimeout = null;
+  match.startReady.clear();
 }
 
 function setActiveMatchForPlayers(match) {
-  for (const p of match.players) {
-    if (p && p !== BOT_NAME) activeMatchByUser.set(p, match.id);
-  }
+  const [pA, pB] = match.players;
+  if (pA !== BOT_NAME) activeMatchByUser.set(pA, match.id);
+  if (pB !== BOT_NAME) activeMatchByUser.set(pB, match.id);
+}
+function clearActiveMatchForPlayers(match) {
+  const [pA, pB] = match.players;
+  if (pA !== BOT_NAME) activeMatchByUser.delete(pA);
+  if (pB !== BOT_NAME) activeMatchByUser.delete(pB);
 }
 
-function clearActiveMatchForPlayers(match) {
-  for (const p of match.players) {
-    if (!p || p === BOT_NAME) continue;
-    if (activeMatchByUser.get(p) === match.id) activeMatchByUser.delete(p);
-  }
+function clearAllMatchTimers(match) {
+  if (!match) return;
+  clearTimeout(match.startReadyPromptTimeout);
+  clearTimeout(match.startReadyTimeout);
+  clearTimeout(match.readyPromptTimeout);
+  clearTimeout(match.readyTimeout);
+  clearTimeout(match.countdownTimeout);
+  clearTimeout(match.roundTimeout);
+  match.startReadyPromptTimeout = null;
+  match.startReadyTimeout = null;
+  match.readyPromptTimeout = null;
+  match.readyTimeout = null;
+  match.countdownTimeout = null;
+  match.roundTimeout = null;
 }
 
 function startMatch(match) {
-  const roomName = getRoomName(match.id);
   const [pA, pB] = match.players;
-  const sA = socketsByUser.get(pA);
-  const sB = socketsByUser.get(pB);
-  if (!sA || !sB) return;
 
-  // (11A) mark active
+  removeUserFromAllQueues(pA);
+  removeUserFromAllQueues(pB);
+  broadcastLobby();
+
   setActiveMatchForPlayers(match);
 
-  // Om någon låg kvar i queue – ta bort (safety)
-  lobby.randomQueue.delete(pA);
-  lobby.randomQueue.delete(pB);
+  const room = getRoomName(match.id);
 
-  io.sockets.sockets.get(sA)?.join(roomName);
-  io.sockets.sockets.get(sB)?.join(roomName);
+  const sA = socketsByUser.get(pA);
+  const sB = socketsByUser.get(pB);
+  if (sA) io.sockets.sockets.get(sA)?.join(room);
+  if (sB) io.sockets.sockets.get(sB)?.join(room);
 
-  io.to(roomName).emit("match_started", {
-    // ✅ för att matcha både gamla och nya klienter:
+  io.to(room).emit("match_started", {
     matchId: match.id,
-    id: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: false,
     isPractice: false,
+    difficulty: match.difficulty,
   });
 
-  beginStartReady(match);
+  match.awaitingStartReady = true;
+  match.startReady.clear();
+
+  match.startReadyPromptTimeout = setTimeout(() => {
+    io.to(room).emit("start_ready_prompt");
+  }, START_READY_PROMPT_DELAY_MS);
+
+  match.startReadyTimeout = setTimeout(() => {
+    clearStartReady(match);
+    startRound(match);
+  }, START_READY_AUTO_START_MS);
 }
 
-function startSoloMatch(match, playerSocket) {
-  const roomName = getRoomName(match.id);
+function startSoloMatch(match, socket) {
+  removeUserFromAllQueues(match.players[0]);
+  broadcastLobby();
 
-  // (11A) mark active
+  const room = getRoomName(match.id);
+  socket.join(room);
+
   setActiveMatchForPlayers(match);
 
-  lobby.randomQueue.delete(match.players[0]);
-
-  playerSocket.join(roomName);
-
-  io.to(roomName).emit("match_started", {
+  io.to(room).emit("match_started", {
     matchId: match.id,
-    id: match.id,
     players: match.players,
     totalRounds: match.totalRounds,
     isSolo: true,
     isPractice: !!match.isPractice,
+    difficulty: match.difficulty,
   });
 
-  beginStartReady(match);
-}
+  match.awaitingStartReady = true;
+  match.startReady.clear();
 
-// =====================
-// Capitals merge (capitals.json i /server/) + diakritik-normalisering
-// =====================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+  match.startReadyPromptTimeout = setTimeout(() => {
+    io.to(room).emit("start_ready_prompt");
+  }, START_READY_PROMPT_DELAY_MS);
 
-function normNameForKey(name) {
-  return String(name || "")
-    .trim()
-    .toLowerCase()
-    // ta bort diakritiska tecken (Reykjavík -> reykjavik)
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    // standardisera apostrofvarianter
-    .replace(/[’‘`´]/g, "'")
-    // ta bort punkter (St. -> St)
-    .replace(/\./g, "")
-    // standardisera bindestreck till mellanslag
-    .replace(/[-–—]/g, " ")
-    // komprimera whitespace
-    .replace(/\s+/g, " ");
-}
-
-function capKey(name, countryCode) {
-  return `${normNameForKey(name)}|${String(countryCode || "").trim().toUpperCase()}`;
-}
-
-function applyCapitalsToCities(citiesArr) {
-  const capitalsPath = path.join(__dirname, "capitals.json");
-
-  try {
-    if (!fs.existsSync(capitalsPath)) {
-      console.log("[capitals] capitals.json saknas – kör utan capital-flaggor.");
-      return;
-    }
-
-    const raw = fs.readFileSync(capitalsPath, "utf-8");
-    const list = JSON.parse(raw);
-
-    if (!Array.isArray(list)) {
-      console.log("[capitals] capitals.json är inte en array – ignorerar.");
-      return;
-    }
-
-    const set = new Set(
-      list
-        .map((x) => capKey(x?.name, x?.countryCode))
-        .filter((k) => {
-          const [n, cc] = String(k).split("|");
-          return !!(n && cc);
-        })
-    );
-
-    let marked = 0;
-    for (const c of citiesArr) {
-      const isCap = set.has(capKey(c?.name, c?.countryCode));
-      if (isCap) marked += 1;
-      c.isCapital = isCap;
-    }
-
-    console.log(`[capitals] Marked ${marked} cities as capitals.`);
-  } catch (e) {
-    console.log("[capitals] Kunde inte läsa/parse capitals.json – kör utan capital-flaggor.");
-    console.error(e);
-  }
-}
-
-// Kör direkt vid boot
-applyCapitalsToCities(cities);
-
-function pickCityMeta(city) {
-  const continent = city?.continent ?? city?.region ?? null;
-  return {
-    name: city?.name ?? "Okänd stad",
-    continent,
-    lat: Number(city?.lat),
-    lon: Number(city?.lon),
-    countryCode: city?.countryCode ?? null,
-    population: city?.population ?? null,
-    isCapital: city?.isCapital ?? false,
-  };
-}
-
-function normalizeCityForBadge(city) {
-  return pickCityMeta(city);
+  match.startReadyTimeout = setTimeout(() => {
+    clearStartReady(match);
+    startRound(match);
+  }, 10_000);
 }
 
 function calculateClick(city, lon, lat, timeMs, scorer) {
-  const distanceKm = haversineDistanceKm(lat, lon, city.lat, city.lon);
-  const score = scorer(distanceKm, timeMs);
-  return { lon, lat, timeMs, distanceKm, score };
+  const dKm = haversineDistanceKm(city.lat, city.lon, lat, lon);
+  // createRoundScorer() returnerar en funktion (distanceKm, timeMs) => score
+  const score = scorer(dKm, timeMs);
+  return { lon, lat, timeMs, distanceKm: dKm, score };
 }
 
-function calculateTimeoutPenaltyClick(scorer) {
-  const distanceKm = SCORER_MAX_DISTANCE_KM;
-  const timeMs = PENALTY_TIME_MS;
-  const score = scorer(distanceKm, timeMs);
-  return { lon: null, lat: null, timeMs, distanceKm, score, timedOut: true };
-}
-
-function clearIntermissionTimers(match) {
-  if (match.readyPromptTimeout) clearTimeout(match.readyPromptTimeout);
-  if (match.readyTimeout) clearTimeout(match.readyTimeout);
-  if (match.countdownTimeout) clearTimeout(match.countdownTimeout);
-  match.readyPromptTimeout = null;
-  match.readyTimeout = null;
-  match.countdownTimeout = null;
-}
-
-function clearRoundTimeout(match) {
-  if (match.roundTimeout) clearTimeout(match.roundTimeout);
-  match.roundTimeout = null;
-}
-
-function clearAllMatchTimers(match) {
-  clearIntermissionTimers(match);
-  clearStartReady(match);
-  clearRoundTimeout(match);
-}
-
-function beginIntermission(match) {
-  match.awaitingReady = true;
-  match.ready = new Set();
+function emitRoundResultAndIntermission(match, round) {
   const room = getRoomName(match.id);
+  match.awaitingReady = true;
+  match.ready.clear();
 
-  if (match.isSolo) {
-    match.readyPromptTimeout = setTimeout(() => {
-      if (match.finished) return;
-      startNextRoundCountdown(match);
-    }, 1200);
-    return;
+  const results = {};
+  for (const p of match.players) {
+    const click = round.clicks[p];
+    results[p] = click
+      ? { ...click }
+      : {
+          lon: null,
+          lat: null,
+          timeMs: PENALTY_TIME_MS,
+          distanceKm: SCORER_MAX_DISTANCE_KM,
+          score: match.scorer(SCORER_MAX_DISTANCE_KM, PENALTY_TIME_MS),
+        };
   }
 
+  io.to(room).emit("round_result", { results });
+
   match.readyPromptTimeout = setTimeout(() => {
-    if (match.finished) return;
     io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
   }, 3500);
 
   match.readyTimeout = setTimeout(() => {
-    if (match.finished) return;
     startNextRoundCountdown(match);
-  }, 20_000);
+  }, 12_000);
 }
 
 function startNextRoundCountdown(match) {
-  if (match.finished) return;
-  if (!match.awaitingReady) return;
+  if (!match || match.finished) return;
+  clearTimeout(match.readyPromptTimeout);
+  clearTimeout(match.readyTimeout);
 
-  clearIntermissionTimers(match);
   const room = getRoomName(match.id);
-
   match.awaitingReady = false;
-  const seconds = 5;
+  match.ready.clear();
 
+  const seconds = 5;
   io.to(room).emit("next_round_countdown", { seconds });
+
   match.countdownTimeout = setTimeout(() => {
-    nextRound(match);
+    match.currentRound += 1;
+    if (match.currentRound >= match.totalRounds) {
+      finishMatch(match).catch(() => {});
+    } else {
+      match.awaitingStartReady = true;
+      match.startReady.clear();
+
+      clearTimeout(match.startReadyPromptTimeout);
+      clearTimeout(match.startReadyTimeout);
+
+      match.startReadyPromptTimeout = setTimeout(() => {
+        io.to(room).emit("start_ready_prompt");
+      }, START_READY_PROMPT_DELAY_MS);
+
+      match.startReadyTimeout = setTimeout(() => {
+        clearStartReady(match);
+        startRound(match);
+      }, 10_000);
+    }
   }, seconds * 1000);
 }
 
-function emitRoundResultAndIntermission(match, round) {
-  if (!round || round.ended) return;
-  round.ended = true;
-  clearRoundTimeout(match);
+// =====================
+// Cities: capitals markering + pools
+// =====================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  io.to(getRoomName(match.id)).emit("round_result", {
-    roundIndex: match.currentRound,
-    city: round.city,
-    results: round.clicks,
-  });
-
-  beginIntermission(match);
+function loadCapitalsJson() {
+  const p = path.join(__dirname, "capitals.json");
+  try {
+    const raw = fs.readFileSync(p, "utf-8");
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn("Kunde inte läsa capitals.json:", e?.message || e);
+    return [];
+  }
 }
 
-function startRound(match) {
-  clearIntermissionTimers(match);
-  clearRoundTimeout(match);
+function applyCapitalsToCities(cityList) {
+  const caps = loadCapitalsJson();
+  const capSet = new Set(
+    (Array.isArray(caps) ? caps : [])
+      .map(
+        (c) =>
+          `${String(c?.name || "").trim().toLowerCase()}|${String(c?.countryCode || "")
+            .trim()
+            .toUpperCase()}`
+      )
+      .filter((x) => x.split("|")[0] && x.split("|")[1])
+  );
 
-  match.awaitingReady = false;
-  match.ready = new Set();
+  for (const c of cityList) {
+    const key = `${String(c?.name || "").trim().toLowerCase()}|${String(c?.countryCode || "")
+      .trim()
+      .toUpperCase()}`;
+    c.isCapital = capSet.has(key);
+  }
+}
 
-  if (match.currentRound >= match.totalRounds) {
-    finishMatch(match).catch((e) => console.error("finishMatch error", e));
-    return;
+applyCapitalsToCities(cities);
+
+// =====================
+// City pools per difficulty
+// =====================
+function safePop(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const cityPools = {
+  easy: [],
+  medium: [],
+  hard: cities,
+};
+
+function rebuildCityPools() {
+  const easy = cities.filter((c) => !!c?.isCapital || safePop(c?.population) >= EASY_POP_MIN);
+
+  const mediumSet = new Set(easy);
+  for (const c of cities) {
+    if (safePop(c?.population) >= MEDIUM_POP_MIN) mediumSet.add(c);
   }
 
-  const city = cities[Math.floor(Math.random() * cities.length)];
-  const round = { city, clicks: {}, ended: false };
+  cityPools.easy = easy;
+  cityPools.medium = Array.from(mediumSet);
+  cityPools.hard = cities;
+
+  console.log(
+    `[cities] pools: easy=${cityPools.easy.length}, medium=${cityPools.medium.length}, hard=${cityPools.hard.length}`
+  );
+}
+
+rebuildCityPools();
+
+function startRound(match) {
+  if (!match || match.finished) return;
+
+  const room = getRoomName(match.id);
+
+  const d = normalizeDifficulty(match.difficulty);
+  const poolList = cityPools[d] && cityPools[d].length ? cityPools[d] : cities;
+  const city = poolList[Math.floor(Math.random() * poolList.length)];
+
+  const round = {
+    city,
+    clicks: {},
+    startedAt: nowMs(),
+    ended: false,
+  };
+
   match.rounds[match.currentRound] = round;
 
-  const cityMeta = pickCityMeta(city);
-
-  io.to(getRoomName(match.id)).emit("round_starting", {
+  io.to(room).emit("round_start", {
     roundIndex: match.currentRound,
-    cityName: cityMeta.name,
-    city: cityMeta,
+    cityName: city.name,
+    cityMeta: {
+      name: city.name,
+      countryCode: city.countryCode || null,
+      population: city.population || null,
+      isCapital: !!city.isCapital,
+      // Behövs av klienten för km-beräkning + target-marker (visas ändå inte förrän efter klick)
+      lat: Number.isFinite(city.lat) ? city.lat : null,
+      lon: Number.isFinite(city.lon) ? city.lon : null,
+      continent: city.continent || null,
+    },
   });
 
   match.roundTimeout = setTimeout(() => {
-    if (match.finished) return;
+    if (!match || match.finished) return;
     const r = match.rounds[match.currentRound];
     if (!r || r.ended) return;
-    if (match.awaitingStartReady) return;
+
+    r.ended = true;
 
     for (const p of match.players) {
       if (!r.clicks[p]) {
-        r.clicks[p] = calculateTimeoutPenaltyClick(match.scorer);
+        r.clicks[p] = calculateClick(city, city.lon, city.lat, PENALTY_TIME_MS, match.scorer);
       }
     }
+
     emitRoundResultAndIntermission(match, r);
   }, ROUND_TIMEOUT_MS);
-
-  if (match.isSolo) {
-    setTimeout(() => {
-      const r = match.rounds[match.currentRound];
-      if (!r || match.finished || r.ended) return;
-
-      const lon = -180 + Math.random() * 360;
-      const lat = -60 + Math.random() * 120;
-      const timeMs = 600 + Math.random() * 1400;
-
-      if (!r.clicks[BOT_NAME]) {
-        r.clicks[BOT_NAME] = calculateClick(r.city, lon, lat, timeMs, match.scorer);
-      }
-
-      const [pA, pB] = match.players;
-      if (r.clicks[pA] && r.clicks[pB]) {
-        emitRoundResultAndIntermission(match, r);
-      }
-    }, 500);
-  }
 }
 
-function nextRound(match) {
-  match.currentRound += 1;
-  startRound(match);
-}
-
-function buildMatchAnalytics(match, totalScores) {
-  const [pA, pB] = match.players;
-
-  const per = {
-    [pA]: { totalScore: totalScores[pA] ?? 0, rounds: [] },
-    [pB]: { totalScore: totalScores[pB] ?? 0, rounds: [] },
-  };
-
-  for (const r of match.rounds) {
-    if (!r) continue; // IMPORTANT: match kan avbrytas mitt i
-    const city = normalizeCityForBadge(r.city);
-    for (const p of match.players) {
-      const c = r.clicks?.[p] || {};
-      per[p].rounds.push({
-        distanceKm: c.distanceKm ?? null,
-        timeMs: c.timeMs ?? null,
-        score: c.score ?? null,
-        city,
-      });
-    }
-  }
-
-  return per;
-}
-
+// =====================
+// Badges + progression (finish overlay)
+// =====================
 async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalScores) {
   const [pA, pB] = match.players;
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
 
-  const progressionDelta = {}; // username -> { oldLevel, newLevel, oldBadgesCount, newBadgesCount, newBadges: [...] }
+  if (match.isPractice) return {};
+  if (!realPlayers.length) return {};
 
-  if (match.isPractice) return progressionDelta;
-  if (realPlayers.length === 0) return progressionDelta;
+  const badges = await getBadgesCatalogWithCriteria(dbClient);
+  const byCode = mapBadgesByCode(badges);
 
-  const per = buildMatchAnalytics(match, totalScores);
+  const progressionDelta = {};
 
-  const catalog = await getBadgesCatalogWithCriteria(dbClient);
-  const byCode = mapBadgesByCode(catalog);
-
-  const hasWinStreak = await hasColumn(dbClient, "users", "win_streak");
   const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
   const hasLevel = await hasColumn(dbClient, "users", "level");
 
+  const { rows: users } = await dbClient.query(
+    `select username, badges_count, level from users where username = any($1::text[])`,
+    [realPlayers]
+  );
+  const userByName = new Map(users.map((u) => [u.username, u]));
+
   for (const u of realPlayers) {
-    const { rows: userRows } = await dbClient.query(
-      `select
-         username,
-         played,
-         wins,
-         losses,
-         coalesce(level, 0) as level,
-         coalesce(badges_count, 0) as badges_count
-         ${hasWinStreak ? ", coalesce(win_streak, 0) as win_streak" : ""}
-       from users
-       where username = $1
-       for update`,
-      [u]
-    );
-    const user = userRows[0];
-    if (!user) continue;
+    const user = userByName.get(u) || { username: u, badges_count: 0, level: 0 };
 
-    const isWinner = winner === u;
-    const opp = u === pA ? pB : pA;
+    const isWinner = winner && u === winner;
+    const myTotal = Number(totalScores?.[u] ?? 0);
 
-    const eligibleCodes = evaluateEligibleBadgeCodes({
-      catalog,
-      userStats: user,
+    const eligibleCodes = evaluateEligibleBadgeCodes(badges, {
+      match,
+      username: u,
       isWinner,
-      totalScore: per[u]?.totalScore,
-      rounds: per[u]?.rounds,
-      oppTotalScore: per[opp]?.totalScore,
-      oppRounds: per[opp]?.rounds,
+      myTotalScore: myTotal,
+      winner,
+      totalScores,
     });
 
-    // Prefilter: ta bort redan earned innan insert (snabbare + renare)
     let missingCodes = eligibleCodes;
+
     if (eligibleCodes.length) {
       const { rows: already } = await dbClient.query(
         `select badge_code
@@ -928,7 +1016,6 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       missingCodes = eligibleCodes.filter((c) => !alreadySet.has(c));
     }
 
-    // Insert: endast NEW
     let newlyInsertedCodes = [];
     if (missingCodes.length) {
       const meta = {
@@ -949,17 +1036,14 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       newlyInsertedCodes = ins.map((r) => r.badge_code).filter(Boolean);
     }
 
-    // Räkna badges efter ev insert (gör alltid: håller systemet i synk)
     const { rows: cntRows } = await dbClient.query(
       `select count(*)::int as c from public.user_badges where username = $1`,
       [u]
     );
     const newBadgesCount = cntRows[0]?.c ?? user.badges_count ?? 0;
 
-    // Level = badges_count
     const newLevel = newBadgesCount;
 
-    // Uppdatera users om kolumnerna finns
     if (hasBadgesCount || hasLevel) {
       const sets = [];
       const params = [u];
@@ -1018,7 +1102,6 @@ function computeTotalsFromRounds(match) {
   return total;
 }
 
-// ✅ NEW: uppdatera personliga rekord (om kolumner finns)
 async function updatePersonalRecordsTx(dbClient, match, total, winner, opts = {}) {
   const [pA, pB] = match.players;
   const realPlayers = [pA, pB].filter((u) => u !== BOT_NAME);
@@ -1027,13 +1110,12 @@ async function updatePersonalRecordsTx(dbClient, match, total, winner, opts = {}
   if (!realPlayers.length) return;
 
   const isWalkover = !!opts.walkover;
-  if (isWalkover) return; // undvik “konstiga” rekord på WO
+  if (isWalkover) return;
 
   const hasBestMatchScore = await hasColumn(dbClient, "users", "best_match_score");
   const hasBestWinMargin = await hasColumn(dbClient, "users", "best_win_margin");
   if (!hasBestMatchScore && !hasBestWinMargin) return;
 
-  // 1) Best (lägsta) matchscore för alla som spelade
   if (hasBestMatchScore) {
     for (const u of realPlayers) {
       const s = Number(total?.[u]);
@@ -1052,8 +1134,6 @@ async function updatePersonalRecordsTx(dbClient, match, total, winner, opts = {}
     }
   }
 
-  // 2) Största vinstmarginal (oppTotal - myTotal) för vinnaren
-  // (lägre total är bättre, så marginal = loserScore - winnerScore)
   const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
   if (hasBestWinMargin && bothReal && winner) {
     const loser = winner === pA ? pB : pA;
@@ -1078,20 +1158,15 @@ async function finishMatch(match, opts = {}) {
   match.finishedAt = nowMs();
   match.finishReason = opts.reason ?? "normal";
 
-  // stoppa timers
   clearAllMatchTimers(match);
-
-  // (11A) släpp active-match lås direkt så spelare inte fastnar
   clearActiveMatchForPlayers(match);
 
-  // (3A) rensa ev disconnect grace timers kopplade till spelarna
   for (const p of match.players) {
     if (p && p !== BOT_NAME) clearDisconnectGrace(p);
   }
 
   const [pA, pB] = match.players;
 
-  // totals + winner
   let total = opts.totalOverride ?? computeTotalsFromRounds(match);
 
   let winner = null;
@@ -1112,28 +1187,21 @@ async function finishMatch(match, opts = {}) {
       await client.query("begin");
 
       const bothReal = pA !== BOT_NAME && pB !== BOT_NAME;
+      const dc = diffCols(match.difficulty);
 
-      // Walkover: Variant X
       const isWalkover = !!opts.walkover;
       const walkoverLoser = opts.walkoverLoser ?? null;
       const walkoverWinner = opts.walkoverWinner ?? null;
 
       if (isWalkover && bothReal && walkoverLoser && walkoverWinner) {
-        // Lås båda raderna (för determinism)
         const { rows: rowsA } = await client.query(
           `select username, played, total_score, avg_score
            from users where username = $1 for update`,
           [walkoverWinner]
         );
-        const { rows: rowsB } = await client.query(
-          `select username, played, total_score, avg_score
-           from users where username = $1 for update`,
-          [walkoverLoser]
-        );
 
         const w = rowsA[0];
 
-        // Winner matchscore för att hålla avg ~ konstant.
         let winnerMatchScore = 0;
         if (w && Number(w.played) > 0) {
           const ts = Number(w.total_score ?? 0);
@@ -1152,27 +1220,36 @@ async function finishMatch(match, opts = {}) {
         await client.query(
           `update users
            set played = played + 1,
-               total_score = total_score + $2
+               total_score = total_score + $2,
+               ${dc.played} = ${dc.played} + 1,
+               ${dc.totalScore} = ${dc.totalScore} + $2
            where username = $1`,
           [walkoverWinner, winnerMatchScore]
         );
         await client.query(
           `update users
            set played = played + 1,
-               total_score = total_score + $2
+               total_score = total_score + $2,
+               ${dc.played} = ${dc.played} + 1,
+               ${dc.totalScore} = ${dc.totalScore} + $2
            where username = $1`,
           [walkoverLoser, loserMatchScore]
         );
 
-        await client.query(`update users set wins = wins + 1 where username=$1`, [walkoverWinner]);
-        await client.query(`update users set losses = losses + 1 where username=$1`, [walkoverLoser]);
+        await client.query(
+          `update users set wins = wins + 1, ${dc.wins} = ${dc.wins} + 1 where username=$1`,
+          [walkoverWinner]
+        );
+        await client.query(
+          `update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`,
+          [walkoverLoser]
+        );
 
         const hasWinStreak = await hasColumn(client, "users", "win_streak");
         if (hasWinStreak) {
-          await client.query(
-            `update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`,
-            [walkoverWinner]
-          );
+          await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [
+            walkoverWinner,
+          ]);
           await client.query(`update users set win_streak = 0 where username=$1`, [walkoverLoser]);
         }
 
@@ -1193,15 +1270,15 @@ async function finishMatch(match, opts = {}) {
           [[walkoverWinner, walkoverLoser]]
         );
 
-        // Badges: skip på walkover
         progressionDelta = {};
       } else {
-        // Normal match
         for (const u of realPlayers) {
           await client.query(
             `update users
              set played = played + 1,
-                 total_score = total_score + $2
+                 total_score = total_score + $2,
+                 ${dc.played} = ${dc.played} + 1,
+                 ${dc.totalScore} = ${dc.totalScore} + $2
              where username = $1`,
             [u, total[u] ?? 0]
           );
@@ -1210,15 +1287,19 @@ async function finishMatch(match, opts = {}) {
         if (winner && bothReal) {
           const loser = winner === pA ? pB : pA;
 
-          await client.query(`update users set wins = wins + 1 where username=$1`, [winner]);
-          await client.query(`update users set losses = losses + 1 where username=$1`, [loser]);
+          await client.query(`update users set wins = wins + 1, ${dc.wins} = ${dc.wins} + 1 where username=$1`, [
+            winner,
+          ]);
+          await client.query(
+            `update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`,
+            [loser]
+          );
 
           const hasWinStreak = await hasColumn(client, "users", "win_streak");
           if (hasWinStreak) {
-            await client.query(
-              `update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`,
-              [winner]
-            );
+            await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [
+              winner,
+            ]);
             await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
           }
         }
@@ -1240,10 +1321,7 @@ async function finishMatch(match, opts = {}) {
           [realPlayers]
         );
 
-        // ✅ NEW: personliga rekord
         await updatePersonalRecordsTx(client, match, total, winner, { walkover: false });
-
-        // badges + level + delta
         progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
       }
 
@@ -1264,7 +1342,6 @@ async function finishMatch(match, opts = {}) {
   });
 }
 
-// Walkover helper (leave/disconnect)
 async function finishMatchAsWalkover(match, winner, loser, reason) {
   if (!match || match.finished) return;
   await finishMatch(match, {
@@ -1277,42 +1354,63 @@ async function finishMatchAsWalkover(match, winner, loser, reason) {
 }
 
 // =====================
-// Challenge helpers (5A)
+// Challenge helpers + difficulty
 // =====================
 function makeChallengeKey(from, to) {
   return `${from}->${to}`;
 }
-function setPendingChallenge(from, to) {
-  const key = makeChallengeKey(from, to);
-  pendingChallenges.set(key, { from, to, expiresAt: nowMs() + CHALLENGE_TTL_MS });
-  return key;
+
+function clearChallengeById(challengeId) {
+  const entry = pendingChallengesById.get(challengeId);
+  if (!entry) return;
+  pendingChallengesById.delete(challengeId);
+  pendingChallengeByPair.delete(makeChallengeKey(entry.from, entry.to));
 }
-function hasValidPendingChallenge(from, to) {
-  const key = makeChallengeKey(from, to);
-  const entry = pendingChallenges.get(key);
-  if (!entry) return false;
+
+function createPendingChallenge(from, to, difficulty) {
+  const pairKey = makeChallengeKey(from, to);
+  const oldId = pendingChallengeByPair.get(pairKey);
+  if (oldId) clearChallengeById(oldId);
+
+  const id = crypto.randomBytes(8).toString("hex");
+  const entry = {
+    id,
+    from,
+    to,
+    difficulty: normalizeDifficulty(difficulty),
+    expiresAt: nowMs() + CHALLENGE_TTL_MS,
+  };
+  pendingChallengesById.set(id, entry);
+  pendingChallengeByPair.set(pairKey, id);
+  return entry;
+}
+
+function getValidChallengeById(challengeId) {
+  const entry = pendingChallengesById.get(challengeId);
+  if (!entry) return null;
   if (entry.expiresAt <= nowMs()) {
-    pendingChallenges.delete(key);
-    return false;
+    clearChallengeById(challengeId);
+    return null;
   }
-  return true;
+  return entry;
 }
-function clearPendingChallenge(from, to) {
-  pendingChallenges.delete(makeChallengeKey(from, to));
+
+function getValidChallengeByPair(from, to) {
+  const id = pendingChallengeByPair.get(makeChallengeKey(from, to));
+  if (!id) return null;
+  return getValidChallengeById(id);
 }
 
 // =====================
-// Sweep (1B): städa pending challenges + match map
+// Sweep
 // =====================
 setInterval(() => {
   const now = nowMs();
 
-  // challenges
-  for (const [key, entry] of pendingChallenges.entries()) {
-    if (!entry || entry.expiresAt <= now) pendingChallenges.delete(key);
+  for (const [id, entry] of pendingChallengesById.entries()) {
+    if (!entry || entry.expiresAt <= now) clearChallengeById(id);
   }
 
-  // matches
   for (const [id, match] of matches.entries()) {
     if (!match) {
       matches.delete(id);
@@ -1322,8 +1420,7 @@ setInterval(() => {
     const age = now - (match.createdAt ?? now);
     const finishedAge = match.finished ? now - (match.finishedAt ?? now) : 0;
 
-    const shouldDelete =
-      (match.finished && finishedAge > MATCH_FINISHED_TTL_MS) || age > MATCH_MAX_AGE_MS;
+    const shouldDelete = (match.finished && finishedAge > MATCH_FINISHED_TTL_MS) || age > MATCH_MAX_AGE_MS;
 
     if (shouldDelete) {
       clearAllMatchTimers(match);
@@ -1346,7 +1443,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // (4D) Kicka gammal socket om user redan online
       const oldSocketId = socketsByUser.get(username);
       if (oldSocketId && oldSocketId !== socket.id) {
         const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -1359,31 +1455,83 @@ io.on("connection", (socket) => {
       currentUser = username;
       socketsByUser.set(username, socket.id);
 
-      // (3A) om reconnect inom grace: stoppa walkover-timer
       clearDisconnectGrace(username);
 
       lobby.onlineUsers.add(username);
       broadcastLobby();
+
+      // ✅ Skicka queue_state direkt (så Lobby alltid vet status efter refresh)
+      let queuedDifficulty = null;
+      for (const d of DIFFICULTIES) {
+        if (lobby.queues[d].has(username)) {
+          queuedDifficulty = d;
+          break;
+        }
+      }
+      socket.emit("queue_state", {
+        queued: !!queuedDifficulty,
+        difficulty: queuedDifficulty,
+      });
     } catch (e) {
       console.error(e);
       socket.emit("auth_error", "Serverfel vid auth.");
     }
   });
 
-  socket.on("start_random_match", () => {
+  socket.on("start_random_match", (payload) => {
     if (!currentUser) return;
+
+    const difficulty =
+      payload && typeof payload === "object" ? normalizeDifficulty(payload.difficulty) : DEFAULT_DIFFICULTY;
 
     if (isUserInActiveMatch(currentUser)) {
       socket.emit("match_error", "Du är redan i en match.");
       return;
     }
 
-    lobby.randomQueue.add(currentUser);
+    removeUserFromAllQueues(currentUser);
+    lobby.queues[difficulty].add(currentUser);
+
+    socket.emit("queue_state", { queued: true, difficulty });
     broadcastLobby();
-    tryMatchRandom();
+    tryMatchQueue(difficulty);
   });
 
-  socket.on("start_solo_match", () => {
+  socket.on("set_queue", (payload) => {
+    if (!currentUser) return;
+
+    const queued = !!payload?.queued;
+    const difficulty = normalizeDifficulty(payload?.difficulty);
+
+    if (isUserInActiveMatch(currentUser)) {
+      socket.emit("match_error", "Du är redan i en match.");
+      return;
+    }
+
+    if (!queued) {
+      removeUserFromAllQueues(currentUser);
+      socket.emit("queue_state", { queued: false, difficulty: null });
+      broadcastLobby();
+      return;
+    }
+
+    removeUserFromAllQueues(currentUser);
+    lobby.queues[difficulty].add(currentUser);
+
+    socket.emit("queue_state", { queued: true, difficulty });
+    broadcastLobby();
+    tryMatchQueue(difficulty);
+  });
+
+  socket.on("leave_queue", () => {
+    if (!currentUser) return;
+    removeUserFromAllQueues(currentUser);
+    socket.emit("queue_state", { queued: false, difficulty: null });
+    broadcastLobby();
+  });
+
+  // ✅ Uppdaterad: tar payload { difficulty }
+  socket.on("start_solo_match", (payload) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
@@ -1391,11 +1539,21 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const match = createMatch(currentUser, BOT_NAME, { isSolo: true, isPractice: true });
+    const difficulty =
+      payload && typeof payload === "object" ? normalizeDifficulty(payload.difficulty) : normalizeDifficulty("hard");
+
+    removeUserFromAllQueues(currentUser);
+    broadcastLobby();
+
+    const match = createMatch(currentUser, BOT_NAME, {
+      isSolo: true,
+      isPractice: true,
+      difficulty,
+    });
     startSoloMatch(match, socket);
   });
 
-  socket.on("challenge_player", (targetUsername) => {
+  socket.on("challenge_player", (payload) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
@@ -1403,8 +1561,16 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const target = String(targetUsername || "").trim();
+    const target =
+      typeof payload === "string" ? String(payload || "").trim() : String(payload?.targetUsername || "").trim();
+    const difficulty =
+      typeof payload === "object" && payload ? normalizeDifficulty(payload.difficulty) : DEFAULT_DIFFICULTY;
+
     if (!target) return;
+    if (target === currentUser) {
+      socket.emit("challenge_error", "Du kan inte utmana dig själv 😅");
+      return;
+    }
 
     if (isUserInActiveMatch(target)) {
       socket.emit("challenge_error", "Spelaren är upptagen i en match");
@@ -1417,12 +1583,46 @@ io.on("connection", (socket) => {
       return;
     }
 
-    setPendingChallenge(currentUser, target);
+    removeUserFromAllQueues(currentUser);
+    broadcastLobby();
 
-    io.to(targetSocketId).emit("challenge_received", { from: currentUser });
+    const entry = createPendingChallenge(currentUser, target, difficulty);
+
+    io.to(targetSocketId).emit("challenge_received", {
+      from: currentUser,
+      difficulty: entry.difficulty,
+      challengeId: entry.id,
+    });
+
+    socket.emit("challenge_sent", { to: target, difficulty: entry.difficulty, challengeId: entry.id });
   });
 
-  socket.on("accept_challenge", (fromUsername) => {
+  socket.on("decline_challenge", (payload) => {
+    if (!currentUser) return;
+
+    const challengeId = payload && typeof payload === "object" ? String(payload.challengeId || "").trim() : "";
+    const fromFallback =
+      typeof payload === "string" ? String(payload || "").trim() : String(payload?.fromUsername || "").trim();
+
+    let entry = null;
+    if (challengeId) entry = getValidChallengeById(challengeId);
+    else if (fromFallback) entry = getValidChallengeByPair(fromFallback, currentUser);
+
+    if (!entry) return;
+    if (entry.to !== currentUser) return;
+
+    const fromSocketId = socketsByUser.get(entry.from);
+    clearChallengeById(entry.id);
+
+    if (fromSocketId) {
+      io.to(fromSocketId).emit("challenge_declined", {
+        to: currentUser,
+        challengeId: entry.id,
+      });
+    }
+  });
+
+  socket.on("accept_challenge", (payload) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
@@ -1430,34 +1630,53 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const from = String(fromUsername || "").trim();
-    if (!from) return;
+    const challengeId = payload && typeof payload === "object" ? String(payload.challengeId || "").trim() : "";
+    const fromFallback =
+      typeof payload === "string" ? String(payload || "").trim() : String(payload?.fromUsername || "").trim();
 
-    if (!hasValidPendingChallenge(from, currentUser)) {
+    let entry = null;
+
+    if (challengeId) {
+      entry = getValidChallengeById(challengeId);
+    } else if (fromFallback) {
+      entry = getValidChallengeByPair(fromFallback, currentUser);
+    }
+
+    if (!entry) {
       socket.emit("challenge_error", "Utmaningen är ogiltig eller har gått ut.");
+      return;
+    }
+
+    const from = entry.from;
+    const difficulty = entry.difficulty;
+
+    if (entry.to !== currentUser) {
+      socket.emit("challenge_error", "Utmaningen är inte riktad till dig.");
       return;
     }
 
     const fromSocketId = socketsByUser.get(from);
     if (!fromSocketId) {
       socket.emit("challenge_error", "Utmanaren är inte längre online");
-      clearPendingChallenge(from, currentUser);
+      clearChallengeById(entry.id);
       return;
     }
 
     if (isUserInActiveMatch(from)) {
       socket.emit("challenge_error", "Utmanaren är upptagen i en match");
-      clearPendingChallenge(from, currentUser);
+      clearChallengeById(entry.id);
       return;
     }
 
-    clearPendingChallenge(from, currentUser);
+    clearChallengeById(entry.id);
+    removeUserFromAllQueues(currentUser);
+    removeUserFromAllQueues(from);
+    broadcastLobby();
 
-    const match = createMatch(from, currentUser);
+    const match = createMatch(from, currentUser, { difficulty });
     startMatch(match);
   });
 
-  // leave_match
   socket.on("leave_match", async ({ matchId }) => {
     try {
       if (!currentUser) return;
@@ -1542,7 +1761,7 @@ io.on("connection", (socket) => {
     if (!currentUser) return;
 
     lobby.onlineUsers.delete(currentUser);
-    lobby.randomQueue.delete(currentUser);
+    removeUserFromAllQueues(currentUser);
 
     const mapped = socketsByUser.get(currentUser);
     if (mapped === socket.id) socketsByUser.delete(currentUser);
@@ -1556,7 +1775,7 @@ io.on("connection", (socket) => {
     if (!match || match.finished) return;
 
     const [pA, pB] = match.players;
-    if (pA === BOT_NAME || pB === BOT_NAME) return; // solo/practice
+    if (pA === BOT_NAME || pB === BOT_NAME) return;
 
     if (disconnectGrace.has(currentUser)) return;
 

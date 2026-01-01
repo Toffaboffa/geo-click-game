@@ -1284,3 +1284,283 @@ button:disabled {
 
 .logout-btn { margin-top: 0; }
 
+/* ================================
+   LOBBY v2: Queue + Wide Leaderboard
+   Lägg längst ner i styles.css
+================================== */
+
+/* Selects (du har input + button men inte select) */
+select {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid #475569;
+  background: #020617;
+  color: #e5e7eb;
+  font-weight: 700;
+  font-size: 13px;
+  outline: none;
+}
+select:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.9);
+  outline-offset: 2px;
+}
+
+/* Challenge-form: align input + select + button snyggt */
+.challenge-form {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.challenge-form input {
+  width: 100%;
+  margin: 0;
+}
+
+/* Lobby action blocks (matchmaking + öva) */
+.lobby-actions {
+  gap: 12px;
+}
+
+.lobby-action-block {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 10px 12px;
+}
+
+.lobby-action-title {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-bottom: 8px;
+}
+
+.lobby-action-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lobby-action-row button {
+  margin-top: 0; /* viktigt pga global button { margin-top: 8px } */
+}
+
+.queue-me-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+/* Kö-statusrutor (3 st) */
+.queue-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 12px;
+}
+
+.queue-card {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 10px 10px 9px;
+  text-align: center;
+  user-select: none;
+}
+
+.queue-card-title {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.queue-card-count {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.queue-card-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.7;
+}
+
+/* Markera din egen kö */
+.queue-card.is-me {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.22);
+}
+
+/* Leaderboard header + controls */
+.lb-header {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.lb-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* Tabs för EASY/MEDEL/SVÅR/TOTAL/ALLA */
+.lb-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.lb-tab {
+  margin-top: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+}
+
+.lb-tab:hover {
+  opacity: 1;
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.lb-tab.is-active {
+  background: rgba(37, 99, 235, 0.55);
+  border-color: rgba(37, 99, 235, 0.65);
+}
+
+.lb-sort-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Loading + error */
+.lb-loading,
+.lb-error {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+.lb-error {
+  color: rgba(255, 120, 120, 0.95);
+  opacity: 1;
+}
+
+/* Wide leaderboard wrap: gör tabellen bred men scrollbar horisontellt */
+.lb-wide-wrap {
+  margin-top: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  overflow: auto;               /* ✅ horisontell scroll vid behov */
+  overscroll-behavior: contain;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+/* Wide leaderboard table */
+.leaderboard.leaderboard-wide {
+  width: max(820px, 100%);      /* ✅ tillåt bred tabell */
+  margin: 0;                    /* wrap tar hand om placering */
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+/* Grupphuvuden (EASY/MEDEL/SVÅR/TOTAL) */
+.leaderboard thead th.lb-group {
+  text-align: center !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  opacity: 0.9;
+  background: rgba(2, 6, 23, 0.92);
+}
+
+/* Spelarnamn-kolumn lite stabilare */
+.leaderboard .lb-name {
+  width: 220px;
+}
+.leaderboard .lb-name-cell {
+  white-space: nowrap;
+}
+
+/* Centra alla sifferkolumner i wide (efter LVL) */
+.leaderboard.leaderboard-wide th:nth-child(n + 4),
+.leaderboard.leaderboard-wide td:nth-child(n + 4) {
+  text-align: center;
+}
+
+/* Tighta till cell-padding lite i wide för att få plats */
+.leaderboard.leaderboard-wide thead th {
+  padding: 9px 10px;
+}
+.leaderboard.leaderboard-wide tbody td {
+  padding: 9px 10px;
+}
+
+/* Små förbättringar för rank/LVL i wide */
+.leaderboard.leaderboard-wide th.lb-rank,
+.leaderboard.leaderboard-wide td.lb-rank {
+  width: 62px;
+}
+.leaderboard.leaderboard-wide th.lb-lvl,
+.leaderboard.leaderboard-wide td.lb-lvl {
+  width: 58px;
+}
+
+/* När panelen är 520px bred: tabellen får scroll i wrappern */
+.panel .lb-wide-wrap {
+  max-width: 100%;
+}
+
+/* Mobil-block finns redan; men om viewport är “smal desktop” kan vi minska padding i panel */
+@media (max-width: 1100px) {
+  .panel {
+    width: 520px; /* behåll */
+  }
+}
+
+/* Lite snällare layout för lb-header på smalare panel */
+@media (max-width: 560px) {
+  .lb-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lb-controls {
+    align-items: flex-start;
+  }
+  .lb-tabs,
+  .lb-sort-row {
+    justify-content: flex-start;
+  }
+  .challenge-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mini: ta bort margin-top på knappar i compact action rows */
+.lobby-actions-compact button {
+  margin-top: 0;
+}

@@ -104,6 +104,14 @@ function makeCalibratedProjection({ width, height, refs }) {
   return { project, invert };
 }
 
+function diffLabel(d) {
+  const v = String(d || "").toLowerCase();
+  if (v === "easy") return "Enkel";
+  if (v === "medium") return "Medel";
+  if (v === "hard") return "Svår";
+  return "Medel";
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [socket, setSocket] = useState(null);
@@ -115,7 +123,7 @@ export default function App() {
   const [gameState, setGameState] = useState({
     currentRound: -1,
     cityName: null,
-    city: null,
+    city: null, // kan vara cityMeta nu
     roundResults: [],
     finalResult: null,
   });
@@ -192,12 +200,10 @@ export default function App() {
     s.on("connect", () => s.emit("auth", session.sessionId));
 
     s.on("auth_error", (msg) => {
-      // session är kass: städa lokalt
       hardLogout(s, msg);
     });
 
     s.on("forced_logout", (msg) => {
-      // du loggade in i annan flik: städa lokalt
       hardLogout(s, msg || "Du blev utloggad.");
     });
 
@@ -211,12 +217,34 @@ export default function App() {
 
     s.on("lobby_state", (state) => setLobbyState(state));
 
-    s.on("challenge_received", ({ from }) => {
-      const accept = window.confirm(`${from} utmanar dig. Accepterar du?`);
-      if (accept) s.emit("accept_challenge", from);
+    // ✅ Uppdaterat: challenge payload innehåller challengeId + difficulty
+    s.on("challenge_received", (payload) => {
+      const from = payload?.from;
+      const challengeId = payload?.challengeId;
+      const difficulty = payload?.difficulty;
+
+      if (!from) return;
+
+      const text =
+        `${from} utmanar dig` +
+        (difficulty ? ` (${diffLabel(difficulty)})` : "") +
+        `. Accepterar du?`;
+
+      const accept = window.confirm(text);
+
+      if (accept) {
+        // ✅ skicka challengeId om vi har det (bäst)
+        if (challengeId) s.emit("accept_challenge", { challengeId });
+        else s.emit("accept_challenge", from); // fallback
+      } else {
+        // ✅ skicka decline så avsändaren får feedback (om vi har id)
+        if (challengeId) s.emit("decline_challenge", { challengeId });
+        else s.emit("decline_challenge", { fromUsername: from });
+      }
     });
 
     s.on("match_started", (data) => {
+      // server: { matchId, players, totalRounds, isSolo, isPractice, difficulty }
       setMatch(data);
       setGameState({
         currentRound: -1,
@@ -228,20 +256,26 @@ export default function App() {
       setDebugShowTarget(false);
     });
 
-    s.on("round_starting", ({ roundIndex, cityName, city }) => {
+    // ✅ Servern skickar round_start (inte round_starting) + cityMeta
+    s.on("round_start", ({ roundIndex, cityName, cityMeta }) => {
       setGameState((prev) => ({
         ...prev,
         currentRound: roundIndex,
-        cityName: cityName ?? city?.name ?? null,
-        city: city ?? null,
+        cityName: cityName ?? cityMeta?.name ?? null,
+        city: cityMeta ?? null,
       }));
     });
 
-    s.on("round_result", ({ roundIndex, city, results }) => {
-      setGameState((prev) => ({
-        ...prev,
-        roundResults: [...prev.roundResults, { roundIndex, city, results }],
-      }));
+    // ✅ Servern skickar round_result {results} (utan roundIndex/city)
+    s.on("round_result", ({ results }) => {
+      setGameState((prev) => {
+        const roundIndex = prev.currentRound;
+        const city = prev.city;
+        return {
+          ...prev,
+          roundResults: [...prev.roundResults, { roundIndex, city, results }],
+        };
+      });
     });
 
     // ✅ tar även emot finishReason nu
@@ -274,19 +308,16 @@ export default function App() {
   const handleAuth = async (mode, username, password) => {
     if (authLoading) return;
 
-    // reset UI
     setAuthLoading(true);
     setAuthHint(null);
 
     if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
     authSlowTimerRef.current = setTimeout(() => {
-      // efter ~1.2s: visa hint att servern kan vara “asleep”
       setAuthHint("Loggar in, stäng inte fönstret.");
     }, 1200);
 
     try {
-      const data =
-        mode === "login" ? await login(username, password) : await register(username, password);
+      const data = mode === "login" ? await login(username, password) : await register(username, password);
       setSession(data);
     } catch (e) {
       alert(e.message);
@@ -316,7 +347,6 @@ export default function App() {
   const handleLeaveMatch = () => {
     if (!match) return;
 
-    // om matchen redan är slut: bara tillbaka till lobby
     if (gameState?.finalResult) {
       resetToLobbyState();
       return;
@@ -326,13 +356,11 @@ export default function App() {
     if (!ok) return;
 
     try {
-      // ✅ FIX: servern använder matchId (inte id)
       socket?.emit("leave_match", { matchId: match.matchId });
     } catch {
       // ignore
     }
 
-    // UI kan gå tillbaka direkt — servern hanterar walkover/finish
     resetToLobbyState();
   };
 
