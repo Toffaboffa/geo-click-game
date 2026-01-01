@@ -28,7 +28,7 @@ body,
   align-items: flex-start;
 
   /* ✅ fast avstånd från toppen */
-  padding-top: 300px;
+  padding-top: 232px;
 
   /* ✅ lite marginal så den inte klistrar i kanterna på små skärmar */
   padding-left: 16px;
