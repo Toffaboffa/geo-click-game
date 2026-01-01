@@ -1,4 +1,5 @@
 // client/src/components/Lobby.jsx
+import { getLeaderboardWide } from "../api";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   getMe,
@@ -261,8 +262,15 @@ export default function Lobby({ session, socket, lobbyState, leaderboard, onLogo
         if (lbDir === "asc" || lbDir === "desc") params.set("dir", lbDir);
         params.set("limit", "50");
 
-        const r = await fetch(`/api/leaderboard-wide?${params.toString()}`);
-        const j = await r.json();
+		const j = await getLeaderboardWide({
+		  // sessionId är valfri här, men kan vara bra för framtida rate-limit/logik
+		  sessionId: session.sessionId,
+		  mode,
+		  sort: String(lbSort || "ppm"),
+		  dir: lbDir,
+		  limit: 50,
+		});
+
         if (!r.ok) throw new Error(j?.error || "Kunde inte ladda leaderboard.");
 
         const rows = Array.isArray(j?.rows) ? j.rows : [];
