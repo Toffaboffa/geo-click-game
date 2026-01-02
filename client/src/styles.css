@@ -823,7 +823,7 @@ button:disabled {
 
 /* ===== Resultattabell i finish overlay ===== */
 .finish-card-wide {
-  width: min(1100px, calc(100vw - 32px));
+  width: min(1250px, calc(100vw - 32px));
 }
 
 .rounds-table-wrap {
