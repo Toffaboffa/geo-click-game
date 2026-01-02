@@ -1735,7 +1735,7 @@ select:focus-visible {
 .start-ping {
   position: absolute;
   transform: translate(-50%, -50%);
-  animation: pingFade var(--ping-life, 2100ms) linear forwards;
+  animation: pingFade var(--ping-life, 1600ms) linear forwards;
 }
 
 .ping-core {
@@ -1756,8 +1756,8 @@ select:focus-visible {
   border: 2px solid rgba(239, 68, 68, 0.85);
   transform: scale(1);
   opacity: 0.9;
-  animation: pingExpand 2.6s ease-out infinite;
-  animation-duration: var(--ping-life, 2100ms);
+  animation: pingExpand 1.6s ease-out infinite;
+  animation-duration: var(--ping-life, 1600ms);
   animation-timing-function: ease-out;
   animation-fill-mode: forwards;
 }
@@ -1766,7 +1766,7 @@ select:focus-visible {
 .ping-ring.ring3 { animation-delay: 0.5s; opacity: 0.6; }
 
 @keyframes pingExpand {
-  0%   { opacity: 0.9; }
-  45%  { opacity: 0.25; }
-  100% { opacity: 0; }
+  0% { transform: scale(1); opacity: 0.9; }
+  70% { opacity: 0.12; }
+  100% { transform: scale(3.2); opacity: 0; }
 }

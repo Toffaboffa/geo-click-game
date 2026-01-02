@@ -1056,141 +1056,249 @@ function startRound(match) {
 // =====================
 // Badges + progression (finish overlay)
 // =====================
-async function awardBadgesAndLevelAfterMatchTx(dbClient, match, playerUsernames, matchState) {
-  // Only real matches affect badges/progression
-  if (match?.is_solo || match?.is_practice) return { newBadgesByUser: {}, progressionDelta: {} };
+async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalScores) {
+  // Badge/progression ska INTE triggas i öva/solo
+  if (!match || match.isPractice || match.isSolo) return {};
 
-  // Load badges catalog (cached)
-  const allBadges = await getBadgesCatalogWithCriteria(dbClient);
-  const badgesByCode = mapBadgesByCode(allBadges);
+  const [pA, pB] = match.players || [];
+  const realPlayers = [pA, pB].filter((u) => u && u !== BOT_NAME);
+  if (!realPlayers.length) return {};
 
-  const newBadgesByUser = {};
-  const progressionDelta = {}; // { username: { levelDelta, newlyEarnedBadges: [...] } }
+  const catalog = await getBadgesCatalogWithCriteria(dbClient);
+  const byCode = mapBadgesByCode(catalog);
 
-  // Evaluate per user
-  for (const username of playerUsernames) {
-    // --- Fetch user's current badges
-    const { rows: badgeRows } = await dbClient.query(
-      `select b.code
-         from user_badges ub
-         join badges b on b.id = ub.badge_id
-        where ub.username = $1`,
-      [username]
-    );
-    const userBadgeCodes = badgeRows.map((r) => r.code);
+  // Kolumn-kompat (level/badges_count kan saknas i vissa DB-varianter)
+  const hasLevel = await hasColumn(dbClient, "users", "level");
+  const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
+  const hasWinStreak = await hasColumn(dbClient, "users", "win_streak");
 
-    // --- Fetch opponent badges count (for potential future criteria)
-    const opp = playerUsernames.find((u) => u !== username);
-    const oppBadgeCount = opp
-      ? (
-          await dbClient.query(
-            `select count(*)::int as c
-               from user_badges
-              where username = $1`,
-            [opp]
-          )
-        ).rows?.[0]?.c ?? 0
-      : 0;
+  const hasEasyWins = await hasColumn(dbClient, "users", "easy_wins");
+  const hasMediumWins = await hasColumn(dbClient, "users", "medium_wins");
+  const hasHardWins = await hasColumn(dbClient, "users", "hard_wins");
 
-    // --- Pull live user stats from users row
-    // (some columns may not exist depending on schema)
-    const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
-    const hasLevel = await hasColumn(dbClient, "users", "level");
-    const hasWinStreak = await hasColumn(dbClient, "users", "win_streak");
+  const selectCols = ["username", "played", "wins", "losses"];
+  if (hasLevel) selectCols.push("level");
+  if (hasBadgesCount) selectCols.push("badges_count");
+  if (hasWinStreak) selectCols.push("win_streak");
+  if (hasEasyWins) selectCols.push("easy_wins");
+  if (hasMediumWins) selectCols.push("medium_wins");
+  if (hasHardWins) selectCols.push("hard_wins");
 
-    // Difficulty-specific win counters (för badges 49-52: wins_by_difficulty + hard_accuracy)
-    const hasEasyWins = await hasColumn(dbClient, "users", "easy_wins");
-    const hasMediumWins = await hasColumn(dbClient, "users", "medium_wins");
-    const hasHardWins = await hasColumn(dbClient, "users", "hard_wins");
+  const { rows: users } = await dbClient.query(
+    `select ${selectCols.join(", ")} from users where username = any($1::text[]) for update`,
+    [realPlayers]
+  );
+  const userByName = new Map(users.map((u) => [u.username, u]));
 
-    const selectCols = [
-      "username",
-      "played",
-      "wins",
-      "losses",
-      "total_score",
-      "best_score",
-      "avg_score",
-      "best_distance_km",
-      "best_time_ms",
-    ];
-    if (hasBadgesCount) selectCols.push("badges_count");
-    if (hasLevel) selectCols.push("level");
-    if (hasWinStreak) selectCols.push("win_streak");
-    if (hasEasyWins) selectCols.push("easy_wins");
-    if (hasMediumWins) selectCols.push("medium_wins");
-    if (hasHardWins) selectCols.push("hard_wins");
+  // Hämta redan earned badge_codes för spelarna (snabbt filter innan insert)
+  const { rows: earnedRows } = await dbClient.query(
+    `select username, badge_code
+     from public.user_badges
+     where username = any($1::text[])`,
+    [realPlayers]
+  );
+  const earnedByUser = new Map(); // username -> Set(code)
+  for (const r of earnedRows) {
+    if (!earnedByUser.has(r.username)) earnedByUser.set(r.username, new Set());
+    if (r.badge_code) earnedByUser.get(r.username).add(r.badge_code);
+  }
 
-    const { rows: userRows } = await dbClient.query(
-      `select ${selectCols.join(", ")} from users where username = $1`,
-      [username]
-    );
-    const user = userRows?.[0] || {};
+  const buildRoundsFor = (username) => {
+    const arr = [];
+    for (const r of match.rounds || []) {
+      if (!r) continue;
+      const click = r?.clicks?.[username] || null;
+      const city = r?.city || null;
 
-    // --- Build match data used by criteria evaluators
-    const myRounds = matchState?.rounds?.map((r) => r?.results?.[username]).filter(Boolean) || [];
-    const oppRounds = opp
-      ? matchState?.rounds?.map((r) => r?.results?.[opp]).filter(Boolean) || []
-      : [];
+      arr.push({
+        distanceKm: Number.isFinite(click?.distanceKm) ? click.distanceKm : null,
+        timeMs: Number.isFinite(click?.timeMs) ? click.timeMs : null,
+        score: Number.isFinite(click?.score) ? click.score : null,
+        cityMeta: {
+          name: city?.name ?? null,
+          countryCode: city?.countryCode ?? null,
+          population: city?.population ?? null,
+          isCapital: !!city?.isCapital,
+        },
+      });
+    }
+    return arr;
+  };
 
-    const didWin = matchState?.winner === username;
-    const didLose = !!matchState?.winner && matchState?.winner !== username;
+  const hasTimeoutRoundFor = (username) => {
+    // "timeout" i din design = straffrunda (20s) pga ingen click.
+    // Vi kan inte alltid skilja “klickade på exakt 20s” från “timeout”,
+    // men här markerar vi timeout när en runda saknar click-data eller har null lon/lat.
+    for (const r of match.rounds || []) {
+      if (!r) continue;
+      const c = r?.clicks?.[username];
+      if (!c) return true;
+      if (c.lon == null || c.lat == null) return true;
+      // Fallback: om tiden är max och distansen är max (dvs default-penalty)
+      if (Number.isFinite(c.timeMs) && Number.isFinite(c.distanceKm)) {
+        if (c.timeMs >= PENALTY_TIME_MS && c.distanceKm >= SCORER_MAX_DISTANCE_KM - 1) return true;
+      }
+    }
+    return false;
+  };
 
-    // --- Evaluate badge eligibility
+  const progressionDelta = {}; // { [username]: { oldLevel, newLevel, oldBadgesCount, newBadgesCount, newBadges:[...] } }
+
+  for (const username of realPlayers) {
+    const user = userByName.get(username) || {
+      username,
+      played: 0,
+      wins: 0,
+      losses: 0,
+      badges_count: 0,
+      level: 0,
+      win_streak: 0,
+      easy_wins: 0,
+      medium_wins: 0,
+      hard_wins: 0,
+    };
+
+    const isWinner = !!winner && username === winner;
+    const opponentName = username === pA ? pB : pA;
+
+    const myTotal = Number(totalScores?.[username] ?? 0);
+    const oppTotal = Number(totalScores?.[opponentName] ?? 0);
+
+    const myRounds = buildRoundsFor(username);
+    const oppRounds = opponentName && opponentName !== BOT_NAME ? buildRoundsFor(opponentName) : [];
+
+    const earnedSet = earnedByUser.get(username) || new Set();
+    const oldBadgesCount = hasBadgesCount ? Number(user.badges_count ?? 0) : earnedSet.size;
+    const oldLevel = hasLevel ? Number(user.level ?? 0) : oldBadgesCount;
+
+    const oppEarnedSet = opponentName ? earnedByUser.get(opponentName) : null;
+    const oppBadgesCount =
+      opponentName && opponentName !== BOT_NAME
+        ? (hasBadgesCount ? Number((userByName.get(opponentName) || {}).badges_count ?? 0) : (oppEarnedSet?.size ?? 0))
+        : 0;
+
     const eligibleCodes = evaluateEligibleBadgeCodes({
-      badgesCatalog: allBadges,
-      badgesByCode,
-      userBadgeCodes,
+      catalog,
       userStats: {
-        played: user.played ?? 0,
-        wins: user.wins ?? 0,
-        // per difficulty (kolumner: easy_wins/medium_wins/hard_wins)
-        wins_easy: hasEasyWins ? user.easy_wins ?? 0 : 0,
-        wins_medium: hasMediumWins ? user.medium_wins ?? 0 : 0,
-        wins_hard: hasHardWins ? user.hard_wins ?? 0 : 0,
-        win_streak: hasWinStreak ? user.win_streak ?? 0 : 0,
-        level: hasLevel ? user.level ?? 0 : 0,
-        badges_count: hasBadgesCount ? user.badges_count ?? userBadgeCodes.length : userBadgeCodes.length,
+        played: Number(user.played ?? 0),
+        wins: Number(user.wins ?? 0),
+        losses: Number(user.losses ?? 0),
+        winStreak: hasWinStreak ? Number(user.win_streak ?? 0) : null,
+        winsByDifficulty: {
+          easy: hasEasyWins ? Number(user.easy_wins ?? 0) : null,
+          medium: hasMediumWins ? Number(user.medium_wins ?? 0) : null,
+          hard: hasHardWins ? Number(user.hard_wins ?? 0) : null,
+        },
       },
-      matchContext: {
-        didWin,
-        didLose,
-        winner: matchState?.winner,
-        marginScore: matchState?.marginScore,
-        citiesMeta: matchState?.citiesMeta || [],
+      isWinner,
+      match: {
+        difficulty: match.difficulty ?? DEFAULT_DIFFICULTY,
+        isSolo: !!match.isSolo,
+        isPractice: !!match.isPractice,
+        hasTimeoutRound: hasTimeoutRoundFor(username),
+        rounds: myRounds,
       },
-      myRounds,
-      oppRounds,
-      difficulty: match.difficulty,
+      opponent: {
+        badgesCount: oppBadgesCount,
+        totalScore: oppTotal,
+        rounds: oppRounds,
+      },
+      totalScores,
+      winner,
+      username,
     });
 
-    // --- Filter to new badges only
-    const newCodes = eligibleCodes.filter((code) => !userBadgeCodes.includes(code));
-    newBadgesByUser[username] = newCodes;
+    const missingCodes = (eligibleCodes || []).filter((code) => code && !earnedSet.has(code));
+    let newlyInsertedCodes = [];
 
-    // --- Persist new badges
-    for (const code of newCodes) {
-      const badge = badgesByCode[code];
-      if (!badge?.id) continue;
+    if (missingCodes.length) {
+      const meta = {
+        source: "match_finished",
+        matchId: match.id,
+        winner: isWinner,
+        difficulty: match.difficulty ?? DEFAULT_DIFFICULTY,
+      };
 
-      await dbClient.query(
-        `insert into user_badges (username, badge_id)
-         values ($1, $2)
-         on conflict do nothing`,
-        [username, badge.id]
+      const { rows: ins } = await dbClient.query(
+        `insert into public.user_badges (username, badge_code, earned_at, match_id, meta)
+         select $1, x, now(), $2, $3::jsonb
+         from unnest($4::text[]) as x
+         on conflict (username, badge_code) do nothing
+         returning badge_code`,
+        [username, match.id, JSON.stringify(meta), missingCodes]
       );
+
+      newlyInsertedCodes = ins.map((r) => r.badge_code).filter(Boolean);
+
+      // uppdatera local earnedSet så counts/logik blir konsekvent
+      for (const c of newlyInsertedCodes) earnedSet.add(c);
+      earnedByUser.set(username, earnedSet);
     }
 
-    // --- Level/progression delta (if you use it)
+    // badges_count / level sync (om kolumner finns)
+    let newBadgesCount = oldBadgesCount;
+    if (newlyInsertedCodes.length) {
+      // snabb variant: old + delta
+      newBadgesCount = oldBadgesCount + newlyInsertedCodes.length;
+    } else {
+      newBadgesCount = oldBadgesCount;
+    }
+
+    // Om badges_count-kolumnen finns, ta hellre “sanning” från DB-count (tål parallella insertions bättre)
+    if (hasBadgesCount) {
+      const { rows: cntRows } = await dbClient.query(
+        `select count(*)::int as c from public.user_badges where username = $1`,
+        [username]
+      );
+      newBadgesCount = cntRows[0]?.c ?? newBadgesCount;
+    }
+
+    const newLevel = hasLevel ? newBadgesCount : newBadgesCount;
+
+    if (hasBadgesCount || hasLevel) {
+      const sets = [];
+      const params = [username];
+      let i = 2;
+
+      if (hasBadgesCount) {
+        sets.push(`badges_count = $${i++}`);
+        params.push(newBadgesCount);
+      }
+      if (hasLevel) {
+        sets.push(`level = $${i++}`);
+        params.push(newLevel);
+      }
+
+      if (sets.length) {
+        await dbClient.query(`update users set ${sets.join(", ")} where username = $1`, params);
+      }
+    }
+
+    const newBadges = newlyInsertedCodes
+      .map((code) => byCode.get(code))
+      .filter(Boolean)
+      .map((b) => ({
+        code: b.code,
+        name: b.name,
+        description: b.description,
+        emoji: b.emoji,
+        groupKey: b.groupKey,
+        groupName: b.groupName,
+        sortInGroup: b.sortInGroup,
+        iconUrl: b.iconUrl,
+      }));
+
     progressionDelta[username] = {
-      newlyEarnedBadges: newCodes,
-      // NOTE: actual levelDelta computation might be elsewhere in your codebase;
-      // keeping structure intact:
-      levelDelta: 0,
+      username,
+      oldLevel,
+      newLevel,
+      oldBadgesCount,
+      newBadgesCount,
+      newBadges,
     };
   }
 
-  return { newBadgesByUser, progressionDelta };
+  return progressionDelta;
 }
 
 function computeTotalsFromRounds(match) {
