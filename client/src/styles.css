@@ -1757,7 +1757,7 @@ select:focus-visible {
   transform: scale(1);
   opacity: 0.9;
   animation: pingExpand 1.6s ease-out infinite;
-  animation-duration: var(--ping-life, 1400ms);
+  animation-duration: var(--ping-life, 1200ms);
   animation-timing-function: ease-out;
   animation-fill-mode: forwards;
 }
