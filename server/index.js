@@ -807,11 +807,11 @@ function emitRoundResultAndIntermission(match, round) {
 
   match.readyPromptTimeout = setTimeout(() => {
     io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
-  }, 3500);
+  }, 2000);
 
   match.readyTimeout = setTimeout(() => {
     startNextRoundCountdown(match);
-  }, 12_000);
+  }, 4_000);
 }
 
 function startNextRoundCountdown(match) {
@@ -1729,26 +1729,50 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
-    const match = matches.get(matchId);
-    if (!match || match.finished) return;
-    if (!match.players.includes(currentUser)) return;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
-    if (match.awaitingStartReady) return;
+	 socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
+	  const match = matches.get(matchId);
+	  if (!match || match.finished) return;
+	  if (!match.players.includes(currentUser)) return;
+	  if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
+	  if (match.awaitingStartReady) return;
 
-    const round = match.rounds[match.currentRound];
-    if (!round || round.ended) return;
-    if (match.awaitingReady) return;
+	  const round = match.rounds[match.currentRound];
+	  if (!round || round.ended) return;
+	  if (match.awaitingReady) return;
 
-    if (!round.clicks[currentUser]) {
-      round.clicks[currentUser] = calculateClick(round.city, lon, lat, timeMs, match.scorer);
-    }
+	  // Spara spelarens click en gång
+	  if (!round.clicks[currentUser]) {
+		round.clicks[currentUser] = calculateClick(round.city, lon, lat, timeMs, match.scorer);
+	  }
 
-    const [pA, pB] = match.players;
-    if (round.clicks[pA] && round.clicks[pB]) {
-      emitRoundResultAndIntermission(match, round);
-    }
-  });
+	  // ✅ ÖVA/SOLO mot bot: avsluta rundan direkt när spelaren klickar
+	  const hasBot = match.players.includes(BOT_NAME);
+	  if (hasBot) {
+		if (!round.clicks[BOT_NAME]) {
+		  round.clicks[BOT_NAME] = calculateClick(
+			round.city,
+			round.city.lon,
+			round.city.lat,
+			PENALTY_TIME_MS,
+			match.scorer
+		  );
+		}
+
+		if (!round.ended) {
+		  round.ended = true;
+		  clearTimeout(match.roundTimeout);
+		  match.roundTimeout = null;
+		  emitRoundResultAndIntermission(match, round);
+		}
+		return;
+	  }
+
+	  // Vanlig 1v1: vänta tills båda klickat
+	  const [pA, pB] = match.players;
+	  if (round.clicks[pA] && round.clicks[pB]) {
+		emitRoundResultAndIntermission(match, round);
+	  }
+	});
 
   socket.on("player_ready", ({ matchId, roundIndex }) => {
     const match = matches.get(matchId);
