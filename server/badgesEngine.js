@@ -58,10 +58,32 @@ function cityNameEq(a, b) {
   return normStr(a) === normStr(b);
 }
 
-/**
- * Hämtar badges-katalog inkl. criteria. Cacheas 60s.
- * @param {object} db - pg Pool eller pg Client (måste ha .query)
- */
+function maxConsecutive(safeRounds, pred) {
+  let best = 0;
+  let cur = 0;
+  for (let i = 0; i < safeRounds.length; i++) {
+    if (pred(safeRounds[i], i)) {
+      cur += 1;
+      if (cur > best) best = cur;
+    } else {
+      cur = 0;
+    }
+  }
+  return best;
+}
+
+function difficultyEq(a, b) {
+  return String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
+}
+
+function criteriaDifficultyPasses(criteria, matchDifficulty) {
+  if (!criteria) return true;
+  if (!criteria.difficulty) return true; // inget filter
+  if (!matchDifficulty) return false; // badge kräver difficulty men vi fick ingen
+  return difficultyEq(criteria.difficulty, matchDifficulty);
+}
+
+// Hämtar badges-katalog inkl. criteria. Cacheas 60s.
 export async function getBadgesCatalogWithCriteria(db) {
   const now = Date.now();
   if (_cachedCatalog && now - _cachedAt < CATALOG_TTL_MS) return _cachedCatalog;
@@ -101,17 +123,26 @@ export function mapBadgesByCode(catalog) {
 /**
  * Räknar vilka badge codes som är "eligible" för en user givet match + stats.
  * Returnerar *alla* eligible codes (servern filtrerar bort redan-earned via SQL eller prefilter).
+ *
+ * Nya (valfria) inputs:
+ * - difficulty: "easy"|"medium"|"hard" (matchens svårighet)
+ * - timeoutMs: default 20000 (för timeout-detektering i badges)
  */
 export function evaluateEligibleBadgeCodes({
   catalog,
-  userStats, // { played, wins, losses, win_streak? }
+  userStats, // { played, wins, losses, win_streak? ... ev wins_easy/wins_medium/wins_hard }
   isWinner,
   totalScore, // match total (lägre bättre)
   rounds, // [{distanceKm,timeMs,score,city:{name,countryCode,population,isCapital?}}]
   oppTotalScore,
   oppRounds,
+
+  // NEW (optional)
+  difficulty, // match difficulty
+  timeoutMs = 20_000,
 }) {
   const eligible = [];
+
   const played = toInt(userStats?.played) ?? 0;
   const wins = toInt(userStats?.wins) ?? 0;
   const winStreak = toInt(userStats?.win_streak) ?? toInt(userStats?.winStreak) ?? null;
@@ -122,6 +153,9 @@ export function evaluateEligibleBadgeCodes({
   const anyRound = (pred) => safeRounds.some((r, i) => pred(r, i));
   const countRounds = (pred) => safeRounds.reduce((acc, r, i) => acc + (pred(r, i) ? 1 : 0), 0);
   const allRounds = (pred) => safeRounds.length > 0 && safeRounds.every((r, i) => pred(r, i));
+
+  const myTotal = toNum(totalScore);
+  const oppTotal = toNum(oppTotalScore);
 
   for (const b of catalog || []) {
     const c = safeCriteria(b.criteria);
@@ -148,8 +182,42 @@ export function evaluateEligibleBadgeCodes({
       continue;
     }
 
+    // --- Wins by difficulty (historik) — kräver att userStats innehåller per-difficulty wins
+    if (t === "wins_by_difficulty") {
+      const min = toInt(c.min) ?? 0;
+      const d = String(c.difficulty ?? "").toLowerCase();
+      if (!d) continue;
+
+      // acceptera flera möjliga fält-namn i userStats
+      const keySnake = `wins_${d}`; // wins_easy, wins_medium, wins_hard
+      const keyCamel = `wins${d[0]?.toUpperCase?.() ?? ""}${d.slice(1)}`; // winsEasy, winsMedium, winsHard
+      const v =
+        toInt(userStats?.[keySnake]) ??
+        toInt(userStats?.[keyCamel]) ??
+        null;
+
+      if (v != null && v >= min) eligible.push(b.code);
+      continue;
+    }
+
+    // --- Lose-badges (måste hanteras INNAN vi skippar losers)
+    if (t === "lose_match_by_margin_under_score") {
+      const maxMargin = toNum(c.max_margin);
+      if (maxMargin == null) continue;
+      if (isWinner) continue;
+      if (myTotal == null || oppTotal == null) continue;
+
+      // losing => myTotal > oppTotal (lägre är bättre)
+      const margin = myTotal - oppTotal;
+      if (margin > 0 && margin < maxMargin) eligible.push(b.code);
+      continue;
+    }
+
     // --- Allt nedan kräver vinst i matchen
     if (!isWinner) continue;
+
+    // --- Difficulty-filter (om criteria har difficulty måste matchen matcha)
+    if (!criteriaDifficultyPasses(c, difficulty)) continue;
 
     // --- Distance/time
     if (t === "win_match_distance_any_round_under_km") {
@@ -188,6 +256,13 @@ export function evaluateEligibleBadgeCodes({
       continue;
     }
 
+    if (t === "win_match_no_round_over_km") {
+      const maxKm = toNum(c.max_km);
+      if (maxKm == null) continue;
+      if (allRounds((r) => (toNum(r.distanceKm) ?? Infinity) <= maxKm)) eligible.push(b.code);
+      continue;
+    }
+
     // --- Total score thresholds (lägre bättre)
     if (t === "win_match_under_total_score") {
       const maxTotal = toNum(c.max_total_score);
@@ -214,6 +289,40 @@ export function evaluateEligibleBadgeCodes({
       continue;
     }
 
+    // --- Timeout based
+    if (t === "win_match_with_any_round_timeout") {
+      const ok = anyRound((r) => {
+        if (r?.isTimeout === true || r?.timedOut === true) return true;
+        const ms = toNum(r?.timeMs);
+        if (ms == null) return false;
+        return ms >= timeoutMs; // konservativt: "timeout" brukar vara 20000ms
+      });
+      if (ok) eligible.push(b.code);
+      continue;
+    }
+
+    // --- Streaks (consecutive rounds)
+    if (t === "match_consecutive_rounds_under_km") {
+      const maxKm = toNum(c.max_km);
+      const streak = toInt(c.streak) ?? 0;
+      if (maxKm == null || streak <= 0) continue;
+      const best = maxConsecutive(safeRounds, (r) => (toNum(r.distanceKm) ?? Infinity) < maxKm);
+      if (best >= streak) eligible.push(b.code);
+      continue;
+    }
+
+    if (t === "match_consecutive_rounds_under_time_s") {
+      const maxTimeS = toNum(c.max_time_s);
+      const streak = toInt(c.streak) ?? 0;
+      if (maxTimeS == null || streak <= 0) continue;
+      const best = maxConsecutive(
+        safeRounds,
+        (r) => ((toNum(r.timeMs) ?? Infinity) / 1000) < maxTimeS
+      );
+      if (best >= streak) eligible.push(b.code);
+      continue;
+    }
+
     // --- City-based special
     if (t === "win_match_closest_to_city") {
       const city = c.city;
@@ -223,8 +332,7 @@ export function evaluateEligibleBadgeCodes({
         const rr = r?.city;
         const or = safeOppRounds[i]?.city;
 
-        // Notera: här matchar vi mot antingen din eller motståndarens "city" i rundan.
-        // (Beteendet kan justeras om du vill att det strikt ska vara "staden du själv fick".)
+        // matchar mot antingen din eller motståndarens "city" i rundan
         const cityMatch = cityNameEq(rr?.name, city) || cityNameEq(or?.name, city);
         if (!cityMatch) return false;
 
@@ -284,6 +392,19 @@ export function evaluateEligibleBadgeCodes({
       if (minCaps <= 0) continue;
       const caps = countRounds((r) => r?.city?.isCapital === true);
       if (caps >= minCaps) eligible.push(b.code);
+      continue;
+    }
+
+    if (t === "win_match_min_cities_over_population") {
+      const minCities = toInt(c.min_cities) ?? 0;
+      const minPop = toInt(c.min_population);
+      if (minCities <= 0 || minPop == null) continue;
+      const n = countRounds((r) => {
+        const pop = toInt(r?.city?.population);
+        if (pop == null) return false;
+        return pop >= minPop;
+      });
+      if (n >= minCities) eligible.push(b.code);
       continue;
     }
 

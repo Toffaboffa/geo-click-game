@@ -1,5 +1,6 @@
 // client/src/components/Lobby.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import StartPings from "./StartPings";
 import {
   getMe,
   setLeaderboardVisibility,
@@ -448,6 +449,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // ---------- UI ----------
   return (
     <div className="screen">
+    <StartPings />
       <div className="panel">
         <div className="panel-header">
           <h2>Inloggad som: {session.username}</h2>

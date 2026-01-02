@@ -45,6 +45,8 @@ body,
   background-size: min(1920px, 100%) auto, cover;
   background-attachment: scroll, scroll;
   color: #e5e7eb;
+position: relative;
+  overflow: hidden;
 }
 
 .panel {
@@ -60,6 +62,8 @@ body,
   max-width: calc(100vw - 32px);
 
   box-sizing: border-box;
+position: relative;
+  z-index: 2;
 }
 
 .panel h1,
@@ -1710,4 +1714,55 @@ select:focus-visible {
 /* Mini: ta bort margin-top på knappar i compact action rows */
 .lobby-actions-compact button {
   margin-top: 0;
+}
+
+
+/* ---------- Start background pings (Login + Lobby) ---------- */
+.start-bg-overlay {
+  /* Match start background positioning: top center with fixed max width */
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+
+  width: min(1920px, 100%);
+  aspect-ratio: 5600 / 2900;
+
+  pointer-events: none;
+  z-index: 1;
+}
+
+.start-ping {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.ping-core {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 35%;
+  height: 35%;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.9);
+  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.35));
+}
+
+.ping-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid rgba(239, 68, 68, 0.85);
+  transform: scale(1);
+  opacity: 0.9;
+  animation: pingExpand 2.6s ease-out infinite;
+}
+
+.ping-ring.ring2 { animation-delay: 0.25s; opacity: 0.75; }
+.ping-ring.ring3 { animation-delay: 0.5s; opacity: 0.6; }
+
+@keyframes pingExpand {
+  0% { transform: scale(1); opacity: 0.9; }
+  70% { opacity: 0.12; }
+  100% { transform: scale(3.2); opacity: 0; }
 }

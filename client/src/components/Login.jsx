@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import StartPings from "./StartPings";
 
 export default function Login({ onSubmit }) {
   const [mode, setMode] = useState("login");
@@ -20,6 +21,7 @@ export default function Login({ onSubmit }) {
 
 return (
   <div className="screen">
+    <StartPings />
     <div className="auth-wrap">
       <div className="panel">
         <h1>GeoSense</h1>
