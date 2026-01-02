@@ -518,12 +518,34 @@ button:disabled {
 }
 
 .city-countdown {
-  margin-top: 8px;
-  font-size: 14px;
-  font-weight: 700;
+  /* ✅ Flytta upp den till mitten (samma plats som ready-knappen) */
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+
+  /* ✅ Större text men samma stilkänsla */
+  margin-top: 0;
+  font-size: 26px;        /* <-- större */
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
+
+  /* Behåll looken (ljus text + tydlighet) */
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.70);
+
+  /* Lite “chip”-känsla så den syns på ljusa partier av kartan */
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+
+  /* Ska ligga ovanpå HUD men under overlays */
+  z-index: 17;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ✅ emoji-fonts på flaggan */
