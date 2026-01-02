@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 export default function StartPings({
   maxPings = 12,
   spawnEveryMs = 520,
-  lifetimeMs = 2600,
+  lifetimeMs = 2100,
   sizeMin = 10,
   sizeMax = 18,
 }) {
@@ -112,6 +112,7 @@ export default function StartPings({
           key={p.id}
           className="start-ping"
           style={{
+			"--ping-life": `${lifetimeMs}ms`,
             left: `${p.x * scale}px`,
             top: `${p.y * scale}px`,
             width: `${p.size}px`,
