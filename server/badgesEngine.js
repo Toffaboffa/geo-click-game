@@ -50,7 +50,7 @@ function normStr(x) {
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[̀-ͯ]/g, "");
 }
 
 function cityNameEq(a, b) {
@@ -124,38 +124,128 @@ export function mapBadgesByCode(catalog) {
  * Räknar vilka badge codes som är "eligible" för en user givet match + stats.
  * Returnerar *alla* eligible codes (servern filtrerar bort redan-earned via SQL eller prefilter).
  *
- * Nya (valfria) inputs:
- * - difficulty: "easy"|"medium"|"hard" (matchens svårighet)
- * - timeoutMs: default 20000 (för timeout-detektering i badges)
+ * Accepterar både den "nya" call-shapen (server/index.js) och den gamla.
  */
 export function evaluateEligibleBadgeCodes({
   catalog,
   userStats, // { played, wins, losses, win_streak? ... ev wins_easy/wins_medium/wins_hard }
   isWinner,
+
+  // Legacy call-shape
   totalScore, // match total (lägre bättre)
   rounds, // [{distanceKm,timeMs,score,city:{name,countryCode,population,isCapital?}}]
   oppTotalScore,
   oppRounds,
 
-  // NEW (optional)
+  // Optional
   difficulty, // match difficulty
   timeoutMs = 20_000,
-}) {
+
+  // Nyare call-shape (server/index.js)
+  match,
+  opponent,
+  totalScores,
+  username,
+  winner,
+} = {}) {
   const eligible = [];
+
+  // ---------------------
+  // Normalisering / bakåtkompat
+  // ---------------------
+  const effectiveDifficulty = difficulty ?? match?.difficulty ?? null;
+
+  const normalizeRound = (r) => {
+    if (!r || typeof r !== "object") return null;
+
+    const citySrc = r.city ?? r.cityMeta ?? r.city_meta ?? null;
+    const city = citySrc
+      ? {
+          name: citySrc?.name ?? null,
+          countryCode: citySrc?.countryCode ?? citySrc?.country_code ?? null,
+          population: citySrc?.population ?? null,
+          isCapital: citySrc?.isCapital === true || citySrc?.is_capital === true,
+        }
+      : null;
+
+    const dist = Number.isFinite(r.distanceKm)
+      ? r.distanceKm
+      : Number.isFinite(r.distance_km)
+        ? r.distance_km
+        : null;
+
+    const time = Number.isFinite(r.timeMs)
+      ? r.timeMs
+      : Number.isFinite(r.time_ms)
+        ? r.time_ms
+        : null;
+
+    const score = Number.isFinite(r.score) ? r.score : null;
+
+    return {
+      distanceKm: dist,
+      timeMs: time,
+      score,
+      city,
+      isTimeout: r.isTimeout ?? r.timedOut ?? r.is_timeout ?? null,
+    };
+  };
+
+  const effectiveRoundsRaw = rounds ?? match?.rounds ?? [];
+  const effectiveOppRoundsRaw = oppRounds ?? opponent?.rounds ?? [];
+
+  const safeRounds = Array.isArray(effectiveRoundsRaw)
+    ? effectiveRoundsRaw.map(normalizeRound).filter(Boolean)
+    : [];
+  const safeOppRounds = Array.isArray(effectiveOppRoundsRaw)
+    ? effectiveOppRoundsRaw.map(normalizeRound).filter(Boolean)
+    : [];
+
+  const myTotal = toNum(
+    totalScore ??
+      (username != null && totalScores && typeof totalScores === "object" ? totalScores[username] : null)
+  );
+
+  const oppTotal = toNum(
+    oppTotalScore ??
+      opponent?.totalScore ??
+      (opponent?.username != null && totalScores && typeof totalScores === "object"
+        ? totalScores[opponent.username]
+        : null)
+  );
+
+  const isWinnerResolved =
+    typeof isWinner === "boolean"
+      ? isWinner
+      : winner != null && username != null
+        ? winner === username
+        : false;
 
   const played = toInt(userStats?.played) ?? 0;
   const wins = toInt(userStats?.wins) ?? 0;
   const winStreak = toInt(userStats?.win_streak) ?? toInt(userStats?.winStreak) ?? null;
 
-  const safeRounds = Array.isArray(rounds) ? rounds : [];
-  const safeOppRounds = Array.isArray(oppRounds) ? oppRounds : [];
+  const playedChallenges =
+    toInt(userStats?.played_challenges_total) ??
+    toInt(userStats?.playedChallengesTotal) ??
+    toInt(userStats?.playedChallenges) ??
+    0;
+
+  const winsChallenges =
+    toInt(userStats?.wins_challenges_total) ??
+    toInt(userStats?.winsChallengesTotal) ??
+    toInt(userStats?.winsChallenges) ??
+    0;
+
+  const startedViaQueue =
+    toInt(userStats?.started_matches_via_queue) ??
+    toInt(userStats?.startedMatchesViaQueue) ??
+    toInt(userStats?.startedViaQueue) ??
+    0;
 
   const anyRound = (pred) => safeRounds.some((r, i) => pred(r, i));
   const countRounds = (pred) => safeRounds.reduce((acc, r, i) => acc + (pred(r, i) ? 1 : 0), 0);
   const allRounds = (pred) => safeRounds.length > 0 && safeRounds.every((r, i) => pred(r, i));
-
-  const myTotal = toNum(totalScore);
-  const oppTotal = toNum(oppTotalScore);
 
   for (const b of catalog || []) {
     const c = safeCriteria(b.criteria);
@@ -182,42 +272,63 @@ export function evaluateEligibleBadgeCodes({
       continue;
     }
 
-    // --- Wins by difficulty (historik) — kräver att userStats innehåller per-difficulty wins
+    // --- Social totals
+    if (t === "played_challenges_total") {
+      const min = toInt(c.min) ?? 0;
+      if (playedChallenges >= min) eligible.push(b.code);
+      continue;
+    }
+
+    if (t === "wins_challenges_total") {
+      const min = toInt(c.min) ?? 0;
+      if (winsChallenges >= min) eligible.push(b.code);
+      continue;
+    }
+
+    if (t === "started_matches_via_queue") {
+      const min = toInt(c.min) ?? 0;
+      if (startedViaQueue >= min) eligible.push(b.code);
+      continue;
+    }
+
+    // --- Wins by difficulty (historik)
     if (t === "wins_by_difficulty") {
       const min = toInt(c.min) ?? 0;
       const d = String(c.difficulty ?? "").toLowerCase();
       if (!d) continue;
 
-      // acceptera flera möjliga fält-namn i userStats
-      const keySnake = `wins_${d}`; // wins_easy, wins_medium, wins_hard
-      const keyCamel = `wins${d[0]?.toUpperCase?.() ?? ""}${d.slice(1)}`; // winsEasy, winsMedium, winsHard
+      const keySnake = `${d}_wins`; // easy_wins, medium_wins, hard_wins (din DB)
+      const keyAltSnake = `wins_${d}`; // wins_easy (fallback)
+      const keyCamel = `wins${d[0]?.toUpperCase?.() ?? ""}${d.slice(1)}`; // winsEasy (fallback)
+
       const v =
         toInt(userStats?.[keySnake]) ??
+        toInt(userStats?.[keyAltSnake]) ??
         toInt(userStats?.[keyCamel]) ??
+        toInt(userStats?.winsByDifficulty?.[d]) ??
         null;
 
       if (v != null && v >= min) eligible.push(b.code);
       continue;
     }
 
-    // --- Lose-badges (måste hanteras INNAN vi skippar losers)
+    // --- Lose-badges (hanteras INNAN vi skippar losers)
     if (t === "lose_match_by_margin_under_score") {
       const maxMargin = toNum(c.max_margin);
       if (maxMargin == null) continue;
-      if (isWinner) continue;
+      if (isWinnerResolved) continue;
       if (myTotal == null || oppTotal == null) continue;
 
-      // losing => myTotal > oppTotal (lägre är bättre)
-      const margin = myTotal - oppTotal;
+      const margin = myTotal - oppTotal; // losing => >0 (lägre är bättre)
       if (margin > 0 && margin < maxMargin) eligible.push(b.code);
       continue;
     }
 
     // --- Allt nedan kräver vinst i matchen
-    if (!isWinner) continue;
+    if (!isWinnerResolved) continue;
 
-    // --- Difficulty-filter (om criteria har difficulty måste matchen matcha)
-    if (!criteriaDifficultyPasses(c, difficulty)) continue;
+    // --- Difficulty-filter
+    if (!criteriaDifficultyPasses(c, effectiveDifficulty)) continue;
 
     // --- Distance/time
     if (t === "win_match_distance_any_round_under_km") {
@@ -267,7 +378,7 @@ export function evaluateEligibleBadgeCodes({
     if (t === "win_match_under_total_score") {
       const maxTotal = toNum(c.max_total_score);
       if (maxTotal == null) continue; // null = "definieras senare"
-      if ((toNum(totalScore) ?? Infinity) < maxTotal) eligible.push(b.code);
+      if ((myTotal ?? Infinity) < maxTotal) eligible.push(b.code);
       continue;
     }
 
@@ -291,11 +402,16 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Timeout based
     if (t === "win_match_with_any_round_timeout") {
+      // Servern kan ge oss antingen per-runda timeMs/isTimeout, eller en precomputed flagga.
+      if (match?.hasTimeoutRound === true) {
+        eligible.push(b.code);
+        continue;
+      }
       const ok = anyRound((r) => {
-        if (r?.isTimeout === true || r?.timedOut === true) return true;
+        if (r?.isTimeout === true) return true;
         const ms = toNum(r?.timeMs);
         if (ms == null) return false;
-        return ms >= timeoutMs; // konservativt: "timeout" brukar vara 20000ms
+        return ms >= timeoutMs;
       });
       if (ok) eligible.push(b.code);
       continue;
@@ -332,7 +448,6 @@ export function evaluateEligibleBadgeCodes({
         const rr = r?.city;
         const or = safeOppRounds[i]?.city;
 
-        // matchar mot antingen din eller motståndarens "city" i rundan
         const cityMatch = cityNameEq(rr?.name, city) || cityNameEq(or?.name, city);
         if (!cityMatch) return false;
 
@@ -346,7 +461,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "wins_closest_in_country_cities") {
-      // Tolkning (utan historik): i DENNA matchen
+      // Per match (inte historiskt)
       const country = c.country;
       const minCities = toInt(c.min_cities) ?? 0;
       if (!country || minCities <= 0) continue;
@@ -387,7 +502,6 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_min_capitals") {
-      // Kräver city.isCapital i match-analytics (servern måste supply:a detta)
       const minCaps = toInt(c.min_capitals) ?? 0;
       if (minCaps <= 0) continue;
       const caps = countRounds((r) => r?.city?.isCapital === true);
@@ -435,9 +549,8 @@ export function evaluateEligibleBadgeCodes({
         .slice(0, lastIdx)
         .reduce((a, r) => a + (toNum(r.score) ?? 0), 0);
 
-      // Inte vinnande före sista rundan (tied eller efter)
       const wasNotWinningBefore = myBefore >= opBefore; // högre = sämre
-      const nowWinning = (toNum(totalScore) ?? Infinity) < (toNum(oppTotalScore) ?? Infinity);
+      const nowWinning = (myTotal ?? Infinity) < (oppTotal ?? Infinity);
 
       if (wasNotWinningBefore && nowWinning) eligible.push(b.code);
       continue;

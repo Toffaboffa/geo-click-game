@@ -179,6 +179,9 @@ app.get("/api/me", authMiddleware, async (req, res) => {
       "win_streak",
       "best_win_streak",
       "best_match_score",
+      "played_challenges_total",
+      "wins_challenges_total",
+      "started_matches_via_queue",
       "best_win_margin",
       "hidden",
     ];
@@ -337,7 +340,10 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
   try {
     const username = req.username;
 
-    const optional = ["level", "badges_count", "best_match_score", "best_win_margin"];
+    const optional = ["level", "badges_count", "best_match_score",
+      "played_challenges_total",
+      "wins_challenges_total",
+      "started_matches_via_queue", "best_win_margin"];
     const exists = new Map();
     for (const c of optional) exists.set(c, await hasColumn(client, "users", c));
 
@@ -397,7 +403,10 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
     const username = String(req.params.username || "").trim();
     if (!username) return res.status(400).json({ error: "Saknar username" });
 
-    const optional = ["level", "badges_count", "best_match_score", "best_win_margin"];
+    const optional = ["level", "badges_count", "best_match_score",
+      "played_challenges_total",
+      "wins_challenges_total",
+      "started_matches_via_queue", "best_win_margin"];
     const exists = new Map();
     for (const c of optional) exists.set(c, await hasColumn(client, "users", c));
 
@@ -610,6 +619,7 @@ function createMatch(playerA, playerB, opts = {}) {
     isSolo: !!opts.isSolo,
     isPractice: !!opts.isPractice,
     difficulty: normalizeDifficulty(opts.difficulty),
+    source: opts.source || (opts.isSolo ? \"solo\" : \"queue\"),
 
     // start-ready gate
     awaitingStartReady: true,
@@ -661,7 +671,7 @@ function tryMatchQueue(difficulty) {
     q.delete(a);
     q.delete(b);
 
-    const match = createMatch(a, b, { difficulty: d });
+    const match = createMatch(a, b, { difficulty: d, source: "queue" });
     startMatch(match);
   }
 }
@@ -1076,6 +1086,10 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   const hasMediumWins = await hasColumn(dbClient, "users", "medium_wins");
   const hasHardWins = await hasColumn(dbClient, "users", "hard_wins");
 
+  const hasPlayedChallengesTotal = await hasColumn(dbClient, "users", "played_challenges_total");
+  const hasWinsChallengesTotal = await hasColumn(dbClient, "users", "wins_challenges_total");
+  const hasStartedMatchesViaQueue = await hasColumn(dbClient, "users", "started_matches_via_queue");
+
   const selectCols = ["username", "played", "wins", "losses"];
   if (hasLevel) selectCols.push("level");
   if (hasBadgesCount) selectCols.push("badges_count");
@@ -1083,6 +1097,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   if (hasEasyWins) selectCols.push("easy_wins");
   if (hasMediumWins) selectCols.push("medium_wins");
   if (hasHardWins) selectCols.push("hard_wins");
+  if (hasPlayedChallengesTotal) selectCols.push("played_challenges_total");
+  if (hasWinsChallengesTotal) selectCols.push("wins_challenges_total");
+  if (hasStartedMatchesViaQueue) selectCols.push("started_matches_via_queue");
 
   const { rows: users } = await dbClient.query(
     `select ${selectCols.join(", ")} from users where username = any($1::text[]) for update`,
@@ -1188,7 +1205,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
           easy: hasEasyWins ? Number(user.easy_wins ?? 0) : null,
           medium: hasMediumWins ? Number(user.medium_wins ?? 0) : null,
           hard: hasHardWins ? Number(user.hard_wins ?? 0) : null,
-        },
+        },        playedChallengesTotal: hasPlayedChallengesTotal ? Number(user.played_challenges_total ?? 0) : null,
+        winsChallengesTotal: hasWinsChallengesTotal ? Number(user.wins_challenges_total ?? 0) : null,
+        startedMatchesViaQueue: hasStartedMatchesViaQueue ? Number(user.started_matches_via_queue ?? 0) : null,
       },
       isWinner,
       match: {
@@ -1253,7 +1272,8 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       newBadgesCount = cntRows[0]?.c ?? newBadgesCount;
     }
 
-    const newLevel = hasLevel ? newBadgesCount : newBadgesCount;
+    const matchesLevel = Math.floor(Number(user.played ?? 0) / 20);
+    const newLevel = matchesLevel + newBadgesCount;
 
     if (hasBadgesCount || hasLevel) {
       const sets = [];
@@ -1493,6 +1513,41 @@ async function finishMatch(match, opts = {}) {
             [u, total[u] ?? 0]
           );
         }
+
+        // --- Challenge/Queue counters (optional columns)
+        const hasPlayedChallenges = await hasColumn(client, "users", "played_challenges_total");
+        const hasWinsChallenges = await hasColumn(client, "users", "wins_challenges_total");
+        const hasStartedViaQueue = await hasColumn(client, "users", "started_matches_via_queue");
+
+        if (!match.isSolo && !match.isPractice) {
+          if (match.source === "challenge" && hasPlayedChallenges) {
+            await client.query(
+              `update users
+               set played_challenges_total = coalesce(played_challenges_total,0) + 1
+               where username = any($1::text[])`,
+              [realPlayers]
+            );
+          }
+
+          if (match.source === "queue" && hasStartedViaQueue) {
+            await client.query(
+              `update users
+               set started_matches_via_queue = coalesce(started_matches_via_queue,0) + 1
+               where username = any($1::text[])`,
+              [realPlayers]
+            );
+          }
+
+          if (match.source === "challenge" && winner && bothReal && hasWinsChallenges) {
+            await client.query(
+              `update users
+               set wins_challenges_total = coalesce(wins_challenges_total,0) + 1
+               where username = $1`,
+              [winner]
+            );
+          }
+        }
+
 
         if (winner && bothReal) {
           const loser = winner === pA ? pB : pA;
@@ -1756,6 +1811,7 @@ io.on("connection", (socket) => {
       isSolo: true,
       isPractice: true,
       difficulty,
+      source: "solo",
     });
     startSoloMatch(match, socket);
   });
@@ -1880,7 +1936,7 @@ io.on("connection", (socket) => {
     removeUserFromAllQueues(from);
     broadcastLobby();
 
-    const match = createMatch(from, currentUser, { difficulty });
+    const match = createMatch(from, currentUser, { difficulty, source: "challenge" });
     startMatch(match);
   });
 
