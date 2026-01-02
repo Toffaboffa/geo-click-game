@@ -27,7 +27,7 @@ const DIFFS = [
 ];
 
 const LB_VIEWS = [
-  { key: "easy", label: "EASY" },
+  { key: "easy", label: "ENKEL" },
   { key: "medium", label: "MEDEL" },
   { key: "hard", label: "SVÅR" },
   { key: "total", label: "TOTAL" },
@@ -617,7 +617,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               <div className="lb-sort-row">
                 {lbView === "all" && (
                   <select value={lbAllSortMode} onChange={(e) => setLbAllSortMode(safeLbMode(e.target.value))}>
-                    <option value="easy">Sort: Easy</option>
+                    <option value="easy">Sort: Enkel</option>
                     <option value="medium">Sort: Medel</option>
                     <option value="hard">Sort: Svår</option>
                     <option value="total">Sort: Total</option>
@@ -734,7 +734,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
 							{groupsToShow.includes("easy") && (
 							  <th className="lb-group" colSpan={5}>
-								EASY
+								ENKEL
 							  </th>
 							)}
 							{groupsToShow.includes("medium") && (
