@@ -1063,32 +1063,84 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   if (match.isPractice) return {};
   if (!realPlayers.length) return {};
 
-  const badges = await getBadgesCatalogWithCriteria(dbClient);
-  const byCode = mapBadgesByCode(badges);
+  // Badge catalog + lookup (DB -> cacheas i badgesEngine)
+  const catalog = await getBadgesCatalogWithCriteria(dbClient);
+  const byCode = mapBadgesByCode(catalog);
 
   const progressionDelta = {};
 
   const hasBadgesCount = await hasColumn(dbClient, "users", "badges_count");
   const hasLevel = await hasColumn(dbClient, "users", "level");
+  const hasWinStreak = await hasColumn(dbClient, "users", "win_streak");
 
-  const { rows: users } = await dbClient.query(`select username, badges_count, level from users where username = any($1::text[])`, [
-    realPlayers,
-  ]);
+  // Hämta "live" stats efter att finishMatch redan uppdaterat users-raden i samma TX
+  const selectCols = ["username", "played", "wins", "losses"];
+  if (hasBadgesCount) selectCols.push("badges_count");
+  if (hasLevel) selectCols.push("level");
+  if (hasWinStreak) selectCols.push("win_streak");
+
+  const { rows: users } = await dbClient.query(
+    `select ${selectCols.join(", ")} from users where username = any($1::text[])`,
+    [realPlayers]
+  );
   const userByName = new Map(users.map((u) => [u.username, u]));
 
+  // Bygg "round analytics" i formatet badgesEngine förväntar sig
+  const buildRoundsFor = (username) => {
+    const arr = [];
+    for (const r of match.rounds || []) {
+      if (!r) continue;
+      const click = r?.clicks?.[username] || null;
+      const city = r?.city || null;
+      arr.push({
+        distanceKm: Number.isFinite(click?.distanceKm) ? click.distanceKm : null,
+        timeMs: Number.isFinite(click?.timeMs) ? click.timeMs : null,
+        score: Number.isFinite(click?.score) ? click.score : null,
+        city: {
+          name: city?.name ?? null,
+          countryCode: city?.countryCode ?? null,
+          population: city?.population ?? null,
+          isCapital: !!city?.isCapital,
+        },
+      });
+    }
+    return arr;
+  };
+
   for (const u of realPlayers) {
-    const user = userByName.get(u) || { username: u, badges_count: 0, level: 0 };
-
-    const isWinner = winner && u === winner;
-    const myTotal = Number(totalScores?.[u] ?? 0);
-
-    const eligibleCodes = evaluateEligibleBadgeCodes(badges, {
-      match,
+    const user = userByName.get(u) || {
       username: u,
+      played: 0,
+      wins: 0,
+      losses: 0,
+      badges_count: 0,
+      level: 0,
+      win_streak: null,
+    };
+
+    const isWinner = !!winner && u === winner;
+    const opp = u === pA ? pB : pA;
+
+    const myTotal = Number(totalScores?.[u] ?? 0);
+    const oppTotal = Number(totalScores?.[opp] ?? 0);
+
+    const myRounds = buildRoundsFor(u);
+    const oppRounds = buildRoundsFor(opp);
+
+    // ✅ RÄTT anrop: badgesEngine expectar ett objekt med catalog + stats + matchdata
+    const eligibleCodes = evaluateEligibleBadgeCodes({
+      catalog,
+      userStats: {
+        played: user.played ?? 0,
+        wins: user.wins ?? 0,
+        losses: user.losses ?? 0,
+        win_streak: hasWinStreak ? user.win_streak ?? 0 : null,
+      },
       isWinner,
-      myTotalScore: myTotal,
-      winner,
-      totalScores,
+      totalScore: myTotal,
+      rounds: myRounds,
+      oppTotalScore: oppTotal,
+      oppRounds,
     });
 
     let missingCodes = eligibleCodes;
@@ -1125,9 +1177,13 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       newlyInsertedCodes = ins.map((r) => r.badge_code).filter(Boolean);
     }
 
-    const { rows: cntRows } = await dbClient.query(`select count(*)::int as c from public.user_badges where username = $1`, [u]);
+    const { rows: cntRows } = await dbClient.query(
+      `select count(*)::int as c from public.user_badges where username = $1`,
+      [u]
+    );
     const newBadgesCount = cntRows[0]?.c ?? user.badges_count ?? 0;
 
+    // Just nu: level = badges_count (1 level per badge)
     const newLevel = newBadgesCount;
 
     if (hasBadgesCount || hasLevel) {
@@ -1164,9 +1220,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
 
     progressionDelta[u] = {
       username: u,
-      oldLevel: user.level,
+      oldLevel: user.level ?? 0,
       newLevel,
-      oldBadgesCount: user.badges_count,
+      oldBadgesCount: user.badges_count ?? 0,
       newBadgesCount,
       newBadges,
     };
@@ -1174,6 +1230,7 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
 
   return progressionDelta;
 }
+
 
 function computeTotalsFromRounds(match) {
   const [pA, pB] = match.players;
