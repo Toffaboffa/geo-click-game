@@ -1017,7 +1017,6 @@ export const cities = [
   { name: "Tórshavn", lat: 62.009730, lon: -6.771640, countryCode: "FO", population: "13 000" },
   { name: "Basseterre", lat: 17.295500, lon: -62.724990, countryCode: "KN", population: "13 000" },
   { name: "Betio Village", lat: 1.357970, lon: 172.921050, countryCode: "KI", population: "13 000" },
-  { name: "Pago Pago", lat: -14.278060, lon: -170.702500, countryCode: "AS", population: "12 000" },
   { name: "Basse-Terre", lat: 15.997140, lon: -61.732140, countryCode: "GP", population: "11 000" },
   { name: "Pembroke Parish", lat: 32.300190, lon: -64.792040, countryCode: "BM", population: "11 000" },
   { name: "Fuvahmulah", lat: -0.298780, lon: 73.424030, countryCode: "MV", population: "11 000" },

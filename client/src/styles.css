@@ -543,7 +543,7 @@ button:disabled {
   backdrop-filter: blur(6px);
 
   /* Ska ligga ovanpå HUD men under overlays */
-  z-index: 17;
+  z-index: 99999;
   pointer-events: none;
   user-select: none;
 }
