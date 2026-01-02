@@ -650,77 +650,155 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             ) : (
               <div className="lb-wide-wrap">
                 <table className="leaderboard leaderboard-wide">
-                  <thead>
-                    <tr>
-                      <th className="lb-rank">#</th>
-                      <th className="lb-name">Spelare</th>
-                      <th className="lb-lvl">LVL</th>
+					<thead>
+					  {/*
+						✅ När view=ALLA: flytta ner "# / Spelare / LVL" så de ligger på samma rad som VM/FM/...,
+						och gör grupperna tydligare med klassade kolumner.
+					  */}
+					  {showAllGroups ? (
+						<>
+						  <tr>
+							<th className="lb-left-spacer" colSpan={3} />
 
-                      {groupsToShow.includes("easy") && (
-                        <th className="lb-group" colSpan={5}>
-                          EASY
-                        </th>
-                      )}
-                      {groupsToShow.includes("medium") && (
-                        <th className="lb-group" colSpan={5}>
-                          MEDEL
-                        </th>
-                      )}
-                      {groupsToShow.includes("hard") && (
-                        <th className="lb-group" colSpan={5}>
-                          SVÅR
-                        </th>
-                      )}
-                      {groupsToShow.includes("total") && (
-                        <th className="lb-group" colSpan={5}>
-                          TOTAL
-                        </th>
-                      )}
-                    </tr>
+							{groupsToShow.includes("easy") && (
+							  <th className="lb-group-head lb-easy lb-gstart" colSpan={5}>
+								EASY
+							  </th>
+							)}
+							{groupsToShow.includes("medium") && (
+							  <th className="lb-group-head lb-medium lb-gstart" colSpan={5}>
+								MEDEL
+							  </th>
+							)}
+							{groupsToShow.includes("hard") && (
+							  <th className="lb-group-head lb-hard lb-gstart" colSpan={5}>
+								SVÅR
+							  </th>
+							)}
+							{groupsToShow.includes("total") && (
+							  <th className="lb-group-head lb-total lb-gstart" colSpan={5}>
+								TOTAL
+							  </th>
+							)}
+						  </tr>
 
-                    <tr>
-                      <th className="lb-rank" />
-                      <th />
-                      <th className="lb-lvl" />
+						  <tr>
+							<th className="lb-rank">#</th>
+							<th className="lb-name">Spelare</th>
+							<th className="lb-lvl">LVL</th>
 
-                      {groupsToShow.includes("easy") && (
-                        <>
-                          <th>VM</th>
-                          <th>FM</th>
-                          <th>SP</th>
-                          <th>PCT</th>
-                          <th>PPM</th>
-                        </>
-                      )}
-                      {groupsToShow.includes("medium") && (
-                        <>
-                          <th>VM</th>
-                          <th>FM</th>
-                          <th>SP</th>
-                          <th>PCT</th>
-                          <th>PPM</th>
-                        </>
-                      )}
-                      {groupsToShow.includes("hard") && (
-                        <>
-                          <th>VM</th>
-                          <th>FM</th>
-                          <th>SP</th>
-                          <th>PCT</th>
-                          <th>PPM</th>
-                        </>
-                      )}
-                      {groupsToShow.includes("total") && (
-                        <>
-                          <th>VM</th>
-                          <th>FM</th>
-                          <th>SP</th>
-                          <th>PCT</th>
-                          <th>PPM</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
+							{groupsToShow.includes("easy") && (
+							  <>
+								<th className="lb-sub lb-easy lb-gstart">VM</th>
+								<th className="lb-sub lb-easy">FM</th>
+								<th className="lb-sub lb-easy">SP</th>
+								<th className="lb-sub lb-easy">PCT</th>
+								<th className="lb-sub lb-easy">PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("medium") && (
+							  <>
+								<th className="lb-sub lb-medium lb-gstart">VM</th>
+								<th className="lb-sub lb-medium">FM</th>
+								<th className="lb-sub lb-medium">SP</th>
+								<th className="lb-sub lb-medium">PCT</th>
+								<th className="lb-sub lb-medium">PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("hard") && (
+							  <>
+								<th className="lb-sub lb-hard lb-gstart">VM</th>
+								<th className="lb-sub lb-hard">FM</th>
+								<th className="lb-sub lb-hard">SP</th>
+								<th className="lb-sub lb-hard">PCT</th>
+								<th className="lb-sub lb-hard">PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("total") && (
+							  <>
+								<th className="lb-sub lb-total lb-gstart">VM</th>
+								<th className="lb-sub lb-total">FM</th>
+								<th className="lb-sub lb-total">SP</th>
+								<th className="lb-sub lb-total">PCT</th>
+								<th className="lb-sub lb-total">PPM</th>
+							  </>
+							)}
+						  </tr>
+						</>
+					  ) : (
+						<>
+						  <tr>
+							<th className="lb-rank">#</th>
+							<th className="lb-name">Spelare</th>
+							<th className="lb-lvl">LVL</th>
+
+							{groupsToShow.includes("easy") && (
+							  <th className="lb-group" colSpan={5}>
+								EASY
+							  </th>
+							)}
+							{groupsToShow.includes("medium") && (
+							  <th className="lb-group" colSpan={5}>
+								MEDEL
+							  </th>
+							)}
+							{groupsToShow.includes("hard") && (
+							  <th className="lb-group" colSpan={5}>
+								SVÅR
+							  </th>
+							)}
+							{groupsToShow.includes("total") && (
+							  <th className="lb-group" colSpan={5}>
+								TOTAL
+							  </th>
+							)}
+						  </tr>
+
+						  <tr>
+							<th className="lb-rank" />
+							<th />
+							<th className="lb-lvl" />
+
+							{groupsToShow.includes("easy") && (
+							  <>
+								<th>VM</th>
+								<th>FM</th>
+								<th>SP</th>
+								<th>PCT</th>
+								<th>PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("medium") && (
+							  <>
+								<th>VM</th>
+								<th>FM</th>
+								<th>SP</th>
+								<th>PCT</th>
+								<th>PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("hard") && (
+							  <>
+								<th>VM</th>
+								<th>FM</th>
+								<th>SP</th>
+								<th>PCT</th>
+								<th>PPM</th>
+							  </>
+							)}
+							{groupsToShow.includes("total") && (
+							  <>
+								<th>VM</th>
+								<th>FM</th>
+								<th>SP</th>
+								<th>PCT</th>
+								<th>PPM</th>
+							  </>
+							)}
+						  </tr>
+						</>
+					  )}
+					</thead>
 
                   <tbody>
                     {wideRows.slice(0, 50).map((u, idx) => {
