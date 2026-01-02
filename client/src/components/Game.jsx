@@ -147,6 +147,10 @@ export default function Game({
   // Efter att du klickat: göm linsen tills 1s kvar på countdown, sedan får den synas igen.
   const [lensUnlocked, setLensUnlocked] = useState(false);
 
+  // ✅ 1v1 fairness: visa target (och därmed ”rätt svar”) först när round_result kommit.
+  // I practice/solo vill vi fortfarande kunna visa target direkt efter eget klick.
+  const [roundResultReceived, setRoundResultReceived] = useState(false);
+
   // --- UI hover gate ---
   const [hoveringUi, setHoveringUi] = useState(false);
   const setHoveringUiSafe = useCallback((v) => {
@@ -208,6 +212,9 @@ export default function Game({
     setMyClickPx(null);
     setMyLastClickLL(null);
     setMyDistanceKm(null);
+
+    // ✅ Ny runda: vi har ännu inte fått round_result
+    setRoundResultReceived(false);
 
     // ✅ reset live-score
     setMyPendingScore(null);
@@ -356,9 +363,12 @@ export default function Game({
   }, [gameState.city, mapProject]);
 
   const shouldShowTarget = useMemo(() => {
-    // practice: visa bara target när DU klickat (eller debug)
-    return !!hasClickedThisRound || (!!oppClickPx && !isPractice) || !!debugShowTarget;
-  }, [hasClickedThisRound, oppClickPx, debugShowTarget, isPractice]);
+    // practice: visa target när DU klickat (eller debug)
+    if (isPractice) return !!hasClickedThisRound || !!debugShowTarget;
+
+    // multiplayer: visa target först när servern skickat round_result (eller debug)
+    return !!roundResultReceived || !!debugShowTarget;
+  }, [hasClickedThisRound, debugShowTarget, isPractice, roundResultReceived]);
 
   // -------- socket events ----------
   useEffect(() => {
@@ -368,6 +378,9 @@ export default function Game({
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
+
+      // ✅ Nu är rundan ”officiellt” avgjord på servern
+      setRoundResultReceived(true);
 
       // ✅ Vi har fått serverns resultat för rundan – släpp preliminär score
       setMyPendingScore(null);

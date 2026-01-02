@@ -824,7 +824,7 @@ button:disabled {
 
 .rounds-table-wrap {
   margin-top: 12px;
-  max-height: 320px;          /* scroll om den blir hög */
+  max-height: 520px;          /* scroll om den blir hög */
   overflow: auto;
   overscroll-behavior: contain; /* ✅ minskar “scroll-bounce” */
   border-radius: 12px;

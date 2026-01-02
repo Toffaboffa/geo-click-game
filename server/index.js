@@ -778,14 +778,52 @@ function startSoloMatch(match, socket) {
 }
 
 function calculateClick(city, lon, lat, timeMs, scorer) {
-  const dKm = haversineDistanceKm(city.lat, city.lon, lat, lon);
+  // Coerce till numbers och clampa tid (skyddar mot strängar / negativa värden)
+  const cLat = Number(city?.lat);
+  const cLon = Number(city?.lon);
+
+  const pLon = Number(lon);
+  const pLat = Number(lat);
+
+  const t = Math.max(0, Math.min(Number(timeMs), SCORER_MAX_TIME_MS));
+
+  const dKm = haversineDistanceKm(cLat, cLon, pLat, pLon);
   // createRoundScorer() returnerar en funktion (distanceKm, timeMs) => score
-  const score = scorer(dKm, timeMs);
-  return { lon, lat, timeMs, distanceKm: dKm, score };
+  const score = scorer(dKm, t);
+  return { lon: pLon, lat: pLat, timeMs: t, distanceKm: dKm, score };
+}
+
+// ✅ Centraliserad "end round" så vi inte kan råka skicka round_result flera gånger
+function endRoundOnce(match, round) {
+  if (!match || match.finished) return false;
+  if (!round || round.ended || round._resultEmitted) return false;
+
+  round.ended = true;
+  round._resultEmitted = true;
+
+  clearTimeout(match.roundTimeout);
+  match.roundTimeout = null;
+
+  return true;
 }
 
 function emitRoundResultAndIntermission(match, round) {
+  if (!match || match.finished) return;
+  if (!round) return;
+
+  // Om vi redan är i intermission för denna runda: gör inget (skydd mot dubbel-emits)
+  if (match.awaitingReady) return;
+
+  // Om någon råkar kalla hit utan endRoundOnce: gör det här också (failsafe)
+  if (!round._resultEmitted) {
+    round.ended = true;
+    round._resultEmitted = true;
+    clearTimeout(match.roundTimeout);
+    match.roundTimeout = null;
+  }
+
   const room = getRoomName(match.id);
+
   match.awaitingReady = true;
   match.ready.clear();
 
@@ -816,6 +854,11 @@ function emitRoundResultAndIntermission(match, round) {
 
 function startNextRoundCountdown(match) {
   if (!match || match.finished) return;
+
+  // ✅ Skydd: om countdown redan är igång, starta inte en till (detta var källan till >10 rundor)
+  if (match._countdownRunning) return;
+  match._countdownRunning = true;
+
   clearTimeout(match.readyPromptTimeout);
   clearTimeout(match.readyTimeout);
 
@@ -826,31 +869,35 @@ function startNextRoundCountdown(match) {
   const seconds = 5;
   io.to(room).emit("next_round_countdown", { seconds });
 
+  clearTimeout(match.countdownTimeout);
   match.countdownTimeout = setTimeout(() => {
+    match._countdownRunning = false;
+
     match.currentRound += 1;
+
+    // ✅ Failsafe: om vi av någon anledning går över totalRounds, avsluta matchen direkt
     if (match.currentRound >= match.totalRounds) {
       finishMatch(match).catch(() => {});
-    } else {
-      // ✅ Viktigt för flow:
-      // Mellan rundor ska vi INTE återinföra "start-ready"-gaten.
-      // Klienten visar bara start-ready UI i matchstart (currentRound < 0),
-      // så om vi sätter awaitingStartReady här blir det ett extra stopp
-      // (spelaren kan inte trycka "Redo" och rundstart väntar på auto-start).
-      clearTimeout(match.startReadyPromptTimeout);
-      clearTimeout(match.startReadyTimeout);
-      match.startReadyPromptTimeout = null;
-      match.startReadyTimeout = null;
-      match.awaitingStartReady = false;
-      match.startReady.clear();
-
-      startRound(match);
+      return;
     }
+
+    // ✅ Viktigt för flow:
+    // Mellan rundor ska vi INTE återinföra "start-ready"-gaten.
+    clearTimeout(match.startReadyPromptTimeout);
+    clearTimeout(match.startReadyTimeout);
+    match.startReadyPromptTimeout = null;
+    match.startReadyTimeout = null;
+    match.awaitingStartReady = false;
+    match.startReady.clear();
+
+    startRound(match);
   }, seconds * 1000);
 }
 
 // =====================
 // Cities: capitals markering + pools
 // =====================
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -931,17 +978,40 @@ rebuildCityPools();
 function startRound(match) {
   if (!match || match.finished) return;
 
+  // ✅ Failsafe: om någon försöker starta runda utanför 0..totalRounds-1
+  if (match.currentRound >= match.totalRounds) {
+    finishMatch(match).catch(() => {});
+    return;
+  }
+
   const room = getRoomName(match.id);
+
+  // Rensa ev. kvarvarande round-timeout (skydd mot dubbla rundstarter)
+  clearTimeout(match.roundTimeout);
+  match.roundTimeout = null;
 
   const d = normalizeDifficulty(match.difficulty);
   const poolList = cityPools[d] && cityPools[d].length ? cityPools[d] : cities;
-  const city = poolList[Math.floor(Math.random() * poolList.length)];
+
+  // ✅ Välj en stad med giltiga koordinater (skydd mot "buggade städer")
+  let city = null;
+  for (let i = 0; i < 50; i++) {
+    const candidate = poolList[Math.floor(Math.random() * poolList.length)];
+    const lat = Number(candidate?.lat);
+    const lon = Number(candidate?.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      city = candidate;
+      break;
+    }
+  }
+  if (!city) city = poolList[Math.floor(Math.random() * poolList.length)];
 
   const round = {
     city,
     clicks: {},
     startedAt: nowMs(),
     ended: false,
+    _resultEmitted: false,
   };
 
   match.rounds[match.currentRound] = round;
@@ -954,27 +1024,32 @@ function startRound(match) {
       countryCode: city.countryCode || null,
       population: city.population || null,
       isCapital: !!city.isCapital,
-      // Behövs av klienten för km-beräkning + target-marker (visas ändå inte förrän efter klick)
-      lat: Number.isFinite(city.lat) ? city.lat : null,
-      lon: Number.isFinite(city.lon) ? city.lon : null,
+      // Behövs av klienten för target-marker (visas ändå inte förrän efter round_result i UI)
+      lat: Number.isFinite(Number(city.lat)) ? Number(city.lat) : null,
+      lon: Number.isFinite(Number(city.lon)) ? Number(city.lon) : null,
       continent: city.continent || null,
     },
   });
 
   match.roundTimeout = setTimeout(() => {
     if (!match || match.finished) return;
+
     const r = match.rounds[match.currentRound];
-    if (!r || r.ended) return;
+    if (!r) return;
 
-    r.ended = true;
+    // Om vi redan avslutat (t.ex. båda klickade) så gör inget.
+    if (r.ended || r._resultEmitted) return;
 
+    // Time-out: fyll straffklick för de som inte klickat
     for (const p of match.players) {
       if (!r.clicks[p]) {
         r.clicks[p] = calculateClick(city, city.lon, city.lat, PENALTY_TIME_MS, match.scorer);
       }
     }
 
-    emitRoundResultAndIntermission(match, r);
+    if (endRoundOnce(match, r)) {
+      emitRoundResultAndIntermission(match, r);
+    }
   }, ROUND_TIMEOUT_MS);
 }
 
@@ -1729,50 +1804,59 @@ io.on("connection", (socket) => {
     }
   });
 
-	 socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
-	  const match = matches.get(matchId);
-	  if (!match || match.finished) return;
-	  if (!match.players.includes(currentUser)) return;
-	  if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(timeMs)) return;
-	  if (match.awaitingStartReady) return;
+	 
+socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
+  const match = matches.get(matchId);
+  if (!match || match.finished) return;
+  if (!currentUser) return;
+  if (!match.players.includes(currentUser)) return;
+  if (match.awaitingStartReady) return;
 
-	  const round = match.rounds[match.currentRound];
-	  if (!round || round.ended) return;
-	  if (match.awaitingReady) return;
+  const pLon = Number(lon);
+  const pLat = Number(lat);
+  const pTime = Number(timeMs);
 
-	  // Spara spelarens click en gång
-	  if (!round.clicks[currentUser]) {
-		round.clicks[currentUser] = calculateClick(round.city, lon, lat, timeMs, match.scorer);
-	  }
+  // Tillåt strängar (från JSON) men kräver att de blir giltiga numbers
+  if (!Number.isFinite(pLon) || !Number.isFinite(pLat) || !Number.isFinite(pTime)) return;
 
-	  // ✅ ÖVA/SOLO mot bot: avsluta rundan direkt när spelaren klickar
-	  const hasBot = match.players.includes(BOT_NAME);
-	  if (hasBot) {
-		if (!round.clicks[BOT_NAME]) {
-		  round.clicks[BOT_NAME] = calculateClick(
-			round.city,
-			round.city.lon,
-			round.city.lat,
-			PENALTY_TIME_MS,
-			match.scorer
-		  );
-		}
+  const round = match.rounds[match.currentRound];
+  if (!round || round.ended || round._resultEmitted) return;
 
-		if (!round.ended) {
-		  round.ended = true;
-		  clearTimeout(match.roundTimeout);
-		  match.roundTimeout = null;
-		  emitRoundResultAndIntermission(match, round);
-		}
-		return;
-	  }
+  // Om vi redan är i intermission: ignorera (skydd mot sena klick som spökar)
+  if (match.awaitingReady) return;
 
-	  // Vanlig 1v1: vänta tills båda klickat
-	  const [pA, pB] = match.players;
-	  if (round.clicks[pA] && round.clicks[pB]) {
-		emitRoundResultAndIntermission(match, round);
-	  }
-	});
+  // Spara spelarens click en gång
+  if (!round.clicks[currentUser]) {
+    round.clicks[currentUser] = calculateClick(round.city, pLon, pLat, pTime, match.scorer);
+  }
+
+  // ✅ ÖVA/SOLO mot bot: avsluta rundan direkt när spelaren klickar
+  const hasBot = match.players.includes(BOT_NAME);
+  if (hasBot) {
+    if (!round.clicks[BOT_NAME]) {
+      round.clicks[BOT_NAME] = calculateClick(
+        round.city,
+        round.city.lon,
+        round.city.lat,
+        PENALTY_TIME_MS,
+        match.scorer
+      );
+    }
+
+    if (endRoundOnce(match, round)) {
+      emitRoundResultAndIntermission(match, round);
+    }
+    return;
+  }
+
+  // ✅ Vanlig 1v1: vänta tills båda klickat — och först DÅ skickar vi round_result
+  const [pA, pB] = match.players;
+  if (round.clicks[pA] && round.clicks[pB]) {
+    if (endRoundOnce(match, round)) {
+      emitRoundResultAndIntermission(match, round);
+    }
+  }
+});
 
   socket.on("player_ready", ({ matchId, roundIndex }) => {
     const match = matches.get(matchId);
