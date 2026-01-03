@@ -69,6 +69,50 @@ function hasAnyMatches(row) {
   return keys.some((k) => Number(row?.[k] ?? 0) > 0);
 }
 
+// --- Emoji helpers: render flag emojis as deterministic SVGs (Twemoji) ---
+const TWEMOJI_SVG_BASE = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg";
+
+function isRegionalIndicator(cp) {
+  return cp >= 0x1f1e6 && cp <= 0x1f1ff;
+}
+
+// Detect standard country flag emojis (two Regional Indicator symbols, e.g. 🇸🇪).
+function isFlagEmoji(emoji) {
+  if (!emoji) return false;
+  const parts = Array.from(String(emoji).trim());
+  if (parts.length !== 2) return false;
+  const [a, b] = parts;
+  const cp1 = a.codePointAt(0);
+  const cp2 = b.codePointAt(0);
+  return isRegionalIndicator(cp1) && isRegionalIndicator(cp2);
+}
+
+function flagEmojiToTwemojiUrl(emoji) {
+  if (!isFlagEmoji(emoji)) return null;
+  const parts = Array.from(String(emoji).trim());
+  const hex = parts.map((ch) => ch.codePointAt(0).toString(16)).join("-");
+  return `${TWEMOJI_SVG_BASE}/${hex}.svg`;
+}
+
+function FlagOrEmoji({ emoji, alt, className }) {
+  const url = flagEmojiToTwemojiUrl(emoji);
+  if (url) {
+    return (
+      <img
+        className={className}
+        src={url}
+        alt={alt || ""}
+        draggable="false"
+        loading="lazy"
+        style={{ width: "1em", height: "1em", verticalAlign: "-0.12em" }}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return <>{emoji}</>;
+}
+
+
 export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [challengeName, setChallengeName] = useState("");
 
@@ -1026,7 +1070,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                             aria-label={b.name}
                             title=""
                           >
-                            {emoji}
+                            <FlagOrEmoji emoji={emoji} alt={b.name} className="badge-flag" />
                           </span>
                         );
                       })
@@ -1099,7 +1143,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                                 data-tooltip={tooltip}
                               >
                                 <div className="badge-title">
-                                  <span className="badge-emoji">{emoji}</span>
+                                  <span className="badge-emoji"><FlagOrEmoji emoji={emoji} alt={b.name} className="badge-flag" /></span>
                                   <span className="badge-name">{b.name}</span>
                                   <span className="badge-mini-status">{earned ? "✅" : "⬜"}</span>
                                 </div>
