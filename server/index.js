@@ -7,6 +7,9 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import argon2 from "argon2";
 import crypto from "crypto";
 import { cities } from "./cities.js";
 import { haversineDistanceKm, createRoundScorer } from "./gameLogic.js";
@@ -95,8 +98,34 @@ const CHALLENGE_TTL_MS = 45_000;
 // Helpers (auth/sessions)
 // =====================
 function hashPassword(pw) {
+  // Legacy (kept for backwards-compat migration on login)
   return crypto.createHash("sha256").update(pw).digest("hex");
 }
+
+function isLegacySha256Hash(stored) {
+  return typeof stored === "string" && /^[a-f0-9]{64}$/i.test(stored);
+}
+
+async function hashPasswordModern(pw) {
+  // Argon2id is the current best-practice for password hashing
+  return argon2.hash(pw, { type: argon2.argon2id });
+}
+
+async function verifyPassword(pw, storedHash) {
+  if (isLegacySha256Hash(storedHash)) {
+    return hashPassword(pw) === storedHash;
+  }
+  return argon2.verify(storedHash, pw);
+}
+
+// Rate limit auth endpoints (helps against brute-force & spam)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 function sessionTtlMs() {
   const days = Number(process.env.SESSION_TTL_DAYS || 30);
   return days * 24 * 60 * 60 * 1000;
@@ -217,13 +246,14 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/api/register", async (req, res) => {
+app.post("/api/register", authLimiter, async (req, res) => {
   try {
     const username = String(req.body.username || "").trim();
     const password = String(req.body.password || "");
     if (!username || !password) return res.status(400).json({ error: "Saknar användarnamn/lösen" });
 
-    const password_hash = hashPassword(password);
+    // Store modern password hash (argon2id)
+    const password_hash = await hashPasswordModern(password);
     await pool.query("insert into users (username, password_hash) values ($1, $2)", [
       username,
       password_hash,
@@ -240,19 +270,24 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", authLimiter, async (req, res) => {
   try {
     const username = String(req.body.username || "").trim();
     const password = String(req.body.password || "");
     if (!username || !password) return res.status(400).json({ error: "Saknar användarnamn/lösen" });
 
-    const pwHash = hashPassword(password);
-    const { rows } = await pool.query("select username from users where username=$1 and password_hash=$2", [
-      username,
-      pwHash,
-    ]);
+    const { rows } = await pool.query("select username, password_hash from users where username=$1", [username]);
     const user = rows[0];
     if (!user) return res.status(401).json({ error: "Fel användarnamn eller lösenord" });
+
+    const ok = await verifyPassword(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: "Fel användarnamn eller lösenord" });
+
+    // One-time migration: upgrade legacy sha256 hashes to argon2id on successful login
+    if (isLegacySha256Hash(user.password_hash)) {
+      const upgraded = await hashPasswordModern(password);
+      await pool.query("update users set password_hash=$1 where username=$2", [upgraded, username]);
+    }
 
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
