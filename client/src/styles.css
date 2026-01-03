@@ -61,8 +61,7 @@ body,
   top: calc(var(--panel-top) / 2);  /* ✅ mitt emellan toppen och panelen */
   transform: translate(-50%, -50%);
   width: min(520px, calc(100vw - 32px)); /* tak så den inte blir absurd på stora skärmar */
-  max-width: 520px;
-  min-width: 250px;                /* ✅ minst ~250px som du ville */
+  max-width: 200px;
   height: auto;
   z-index: 1;                      /* bakom panel (panel har z-index:2), men ovanpå bakgrunden */
   pointer-events: none;
