@@ -996,12 +996,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             {!progressLoading && !progressError && (
               <>
                 <div className="progress-summary">
-                  <div className="progress-summary-row">
-                    <span>
-                      Badges: {earnedSet.size}/{totalBadges} <span className="progress-hint">• Hovra för info</span>
-                    </span>
-                  </div>
-
                   <div className="progress-stats-grid">
                     <div className="ps-item">
                       <div className="ps-label">Spelade</div>
@@ -1039,6 +1033,11 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
 				{/* ✅ Emoji-överblick (alla badges som endast emojis) */}
 				<div className="badge-overview-wrap">
+				  <div className="progress-summary-row">
+                    <span>
+                      Badges: {earnedSet.size}/{totalBadges} <span className="progress-hint">• Hovra för info</span>
+                    </span>
+                  </div>
 				  <div className="badge-overview">
 					{groupedBadges.map((g) =>
 					  g.items.map((b) => {
