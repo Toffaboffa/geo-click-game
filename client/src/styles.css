@@ -979,14 +979,14 @@ button:disabled {
   align-items: center;
   justify-content: center;
 
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
 
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(2, 6, 23, 0.35);
 
-  font-size: 22px; /* ✅ större emoji */
+  font-size: 34px; /* ✅ större emoji */
   line-height: 1;
 
   font-family:
