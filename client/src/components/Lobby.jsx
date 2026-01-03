@@ -101,6 +101,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
 
+  // ✅ Vilken badge-grupp som är vald i progression-modalen (UI)
+  const [activeBadgeGroup, setActiveBadgeGroup] = useState(null); // groupName
+
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -381,6 +384,17 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     return groups;
   }, [badgesCatalog]);
 
+  // ✅ Default: välj första gruppen när modalen är öppen och vi har grupper
+  useEffect(() => {
+    if (!progressOpen) return;
+    if (!groupedBadges?.length) return;
+
+    const exists = groupedBadges.some((g) => g.groupName === activeBadgeGroup);
+    if (!activeBadgeGroup || !exists) {
+      setActiveBadgeGroup(groupedBadges[0].groupName);
+    }
+  }, [progressOpen, groupedBadges, activeBadgeGroup]);
+
   const earnedSet = useMemo(() => {
     const earned =
       progressData?.earnedBadges ||
@@ -450,8 +464,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // ---------- UI ----------
   return (
     <div className="screen">
-    <StartPings />
-	<img className="screen-logo" src={logo} alt="GeoSense" />
+      <StartPings />
+      <img className="screen-logo" src={logo} alt="GeoSense" />
       <div className="panel">
         <div className="panel-header">
           <h2>Inloggad som: {session.username}</h2>
@@ -577,8 +591,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             Utmana
           </button>
         </form>
-
-              </div>
+      </div>
 
       {/* Topplista modal */}
       {leaderboardOpen && (
@@ -654,155 +667,155 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             ) : (
               <div className="lb-wide-wrap">
                 <table className="leaderboard leaderboard-wide">
-					<thead>
-					  {/*
-						✅ När view=ALLA: flytta ner "# / Spelare / LVL" så de ligger på samma rad som VM/FM/...,
-						och gör grupperna tydligare med klassade kolumner.
-					  */}
-					  {showAllGroups ? (
-						<>
-						  <tr>
-							<th className="lb-left-spacer" colSpan={3} />
+                  <thead>
+                    {/*
+                      ✅ När view=ALLA: flytta ner "# / Spelare / LVL" så de ligger på samma rad som VM/FM/...,
+                      och gör grupperna tydligare med klassade kolumner.
+                    */}
+                    {showAllGroups ? (
+                      <>
+                        <tr>
+                          <th className="lb-left-spacer" colSpan={3} />
 
-							{groupsToShow.includes("easy") && (
-							  <th className="lb-group-head lb-easy lb-gstart" colSpan={5}>
-								EASY
-							  </th>
-							)}
-							{groupsToShow.includes("medium") && (
-							  <th className="lb-group-head lb-medium lb-gstart" colSpan={5}>
-								MEDEL
-							  </th>
-							)}
-							{groupsToShow.includes("hard") && (
-							  <th className="lb-group-head lb-hard lb-gstart" colSpan={5}>
-								SVÅR
-							  </th>
-							)}
-							{groupsToShow.includes("total") && (
-							  <th className="lb-group-head lb-total lb-gstart" colSpan={5}>
-								TOTAL
-							  </th>
-							)}
-						  </tr>
+                          {groupsToShow.includes("easy") && (
+                            <th className="lb-group-head lb-easy lb-gstart" colSpan={5}>
+                              EASY
+                            </th>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <th className="lb-group-head lb-medium lb-gstart" colSpan={5}>
+                              MEDEL
+                            </th>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <th className="lb-group-head lb-hard lb-gstart" colSpan={5}>
+                              SVÅR
+                            </th>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <th className="lb-group-head lb-total lb-gstart" colSpan={5}>
+                              TOTAL
+                            </th>
+                          )}
+                        </tr>
 
-						  <tr>
-							<th className="lb-rank">#</th>
-							<th className="lb-name">Spelare</th>
-							<th className="lb-lvl">LVL</th>
+                        <tr>
+                          <th className="lb-rank">#</th>
+                          <th className="lb-name">Spelare</th>
+                          <th className="lb-lvl">LVL</th>
 
-							{groupsToShow.includes("easy") && (
-							  <>
-								<th className="lb-sub lb-easy lb-gstart">VM</th>
-								<th className="lb-sub lb-easy">FM</th>
-								<th className="lb-sub lb-easy">SP</th>
-								<th className="lb-sub lb-easy">PCT</th>
-								<th className="lb-sub lb-easy">PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("medium") && (
-							  <>
-								<th className="lb-sub lb-medium lb-gstart">VM</th>
-								<th className="lb-sub lb-medium">FM</th>
-								<th className="lb-sub lb-medium">SP</th>
-								<th className="lb-sub lb-medium">PCT</th>
-								<th className="lb-sub lb-medium">PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("hard") && (
-							  <>
-								<th className="lb-sub lb-hard lb-gstart">VM</th>
-								<th className="lb-sub lb-hard">FM</th>
-								<th className="lb-sub lb-hard">SP</th>
-								<th className="lb-sub lb-hard">PCT</th>
-								<th className="lb-sub lb-hard">PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("total") && (
-							  <>
-								<th className="lb-sub lb-total lb-gstart">VM</th>
-								<th className="lb-sub lb-total">FM</th>
-								<th className="lb-sub lb-total">SP</th>
-								<th className="lb-sub lb-total">PCT</th>
-								<th className="lb-sub lb-total">PPM</th>
-							  </>
-							)}
-						  </tr>
-						</>
-					  ) : (
-						<>
-						  <tr>
-							<th className="lb-rank">#</th>
-							<th className="lb-name">Spelare</th>
-							<th className="lb-lvl">LVL</th>
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <th className="lb-sub lb-easy lb-gstart">VM</th>
+                              <th className="lb-sub lb-easy">FM</th>
+                              <th className="lb-sub lb-easy">SP</th>
+                              <th className="lb-sub lb-easy">PCT</th>
+                              <th className="lb-sub lb-easy">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <th className="lb-sub lb-medium lb-gstart">VM</th>
+                              <th className="lb-sub lb-medium">FM</th>
+                              <th className="lb-sub lb-medium">SP</th>
+                              <th className="lb-sub lb-medium">PCT</th>
+                              <th className="lb-sub lb-medium">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <th className="lb-sub lb-hard lb-gstart">VM</th>
+                              <th className="lb-sub lb-hard">FM</th>
+                              <th className="lb-sub lb-hard">SP</th>
+                              <th className="lb-sub lb-hard">PCT</th>
+                              <th className="lb-sub lb-hard">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <th className="lb-sub lb-total lb-gstart">VM</th>
+                              <th className="lb-sub lb-total">FM</th>
+                              <th className="lb-sub lb-total">SP</th>
+                              <th className="lb-sub lb-total">PCT</th>
+                              <th className="lb-sub lb-total">PPM</th>
+                            </>
+                          )}
+                        </tr>
+                      </>
+                    ) : (
+                      <>
+                        <tr>
+                          <th className="lb-rank">#</th>
+                          <th className="lb-name">Spelare</th>
+                          <th className="lb-lvl">LVL</th>
 
-							{groupsToShow.includes("easy") && (
-							  <th className="lb-group" colSpan={5}>
-								ENKEL
-							  </th>
-							)}
-							{groupsToShow.includes("medium") && (
-							  <th className="lb-group" colSpan={5}>
-								MEDEL
-							  </th>
-							)}
-							{groupsToShow.includes("hard") && (
-							  <th className="lb-group" colSpan={5}>
-								SVÅR
-							  </th>
-							)}
-							{groupsToShow.includes("total") && (
-							  <th className="lb-group" colSpan={5}>
-								TOTAL
-							  </th>
-							)}
-						  </tr>
+                          {groupsToShow.includes("easy") && (
+                            <th className="lb-group" colSpan={5}>
+                              ENKEL
+                            </th>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <th className="lb-group" colSpan={5}>
+                              MEDEL
+                            </th>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <th className="lb-group" colSpan={5}>
+                              SVÅR
+                            </th>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <th className="lb-group" colSpan={5}>
+                              TOTAL
+                            </th>
+                          )}
+                        </tr>
 
-						  <tr>
-							<th className="lb-rank" />
-							<th />
-							<th className="lb-lvl" />
+                        <tr>
+                          <th className="lb-rank" />
+                          <th />
+                          <th className="lb-lvl" />
 
-							{groupsToShow.includes("easy") && (
-							  <>
-								<th>VM</th>
-								<th>FM</th>
-								<th>SP</th>
-								<th>PCT</th>
-								<th>PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("medium") && (
-							  <>
-								<th>VM</th>
-								<th>FM</th>
-								<th>SP</th>
-								<th>PCT</th>
-								<th>PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("hard") && (
-							  <>
-								<th>VM</th>
-								<th>FM</th>
-								<th>SP</th>
-								<th>PCT</th>
-								<th>PPM</th>
-							  </>
-							)}
-							{groupsToShow.includes("total") && (
-							  <>
-								<th>VM</th>
-								<th>FM</th>
-								<th>SP</th>
-								<th>PCT</th>
-								<th>PPM</th>
-							  </>
-							)}
-						  </tr>
-						</>
-					  )}
-					</thead>
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                        </tr>
+                      </>
+                    )}
+                  </thead>
 
                   <tbody>
                     {wideRows.slice(0, 50).map((u, idx) => {
@@ -995,24 +1008,82 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                   </div>
                 </div>
 
-                <div className="progress-groups">
-                  {groupedBadges.map((g, gi) => {
+                {/* ✅ Emoji-överblick (alla badges som endast emojis) */}
+                <div className="badge-overview-wrap">
+                  <div className="badge-overview">
+                    {groupedBadges.map((g) =>
+                      g.items.map((b) => {
+                        const code = getBadgeCode(b);
+                        const earned = code ? earnedSet.has(code) : false;
+                        const emoji = b.emoji || "🏷️";
+                        const tooltip = b.description || "";
+
+                        return (
+                          <span
+                            key={code || `${g.groupName}-${b.name}-${emoji}`}
+                            className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
+                            data-tooltip={tooltip}
+                            aria-label={b.name}
+                            title=""
+                          >
+                            {emoji}
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* ✅ Grupp-knappar på en rad */}
+                <div className="badge-group-tabs" role="tablist" aria-label="Badge-grupper">
+                  {groupedBadges.map((g) => {
                     const totalInGroup = g.items.length;
                     const earnedInGroup = g.items.reduce((acc, b) => {
                       const code = getBadgeCode(b);
                       return code && earnedSet.has(code) ? acc + 1 : acc;
                     }, 0);
 
-                    const defaultOpen = gi === 0;
+                    const active = g.groupName === activeBadgeGroup;
 
                     return (
-                      <details key={g.groupName} className="badge-group" open={defaultOpen}>
-                        <summary className="badge-group-summary">
-                          <span className="badge-group-title">{g.groupName}</span>
-                          <span className="badge-group-count">
+                      <button
+                        key={g.groupName}
+                        type="button"
+                        className={`badge-group-tab ${active ? "active" : ""}`}
+                        onClick={() => setActiveBadgeGroup(g.groupName)}
+                        role="tab"
+                        aria-selected={active}
+                      >
+                        <span className="badge-group-tab-title">{g.groupName}</span>
+                        <span className="badge-group-tab-count">
+                          {earnedInGroup}/{totalInGroup}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ✅ Endast vald grupp renderas längst ned */}
+                <div className="badge-group-panel">
+                  {(() => {
+                    const g = groupedBadges.find((x) => x.groupName === activeBadgeGroup) || groupedBadges[0];
+
+                    if (!g) return null;
+
+                    const totalInGroup = g.items.length;
+                    const earnedInGroup = g.items.reduce((acc, b) => {
+                      const code = getBadgeCode(b);
+                      return code && earnedSet.has(code) ? acc + 1 : acc;
+                    }, 0);
+
+                    return (
+                      <>
+                        <div className="badge-group-panel-head">
+                          <div className="badge-group-panel-title">{g.groupName}</div>
+                          <div className="badge-group-panel-count">
                             {earnedInGroup}/{totalInGroup}
-                          </span>
-                        </summary>
+                          </div>
+                        </div>
 
                         <div className="badge-grid">
                           {g.items.map((b) => {
@@ -1036,9 +1107,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                             );
                           })}
                         </div>
-                      </details>
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </>
             )}
