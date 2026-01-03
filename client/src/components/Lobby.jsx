@@ -1052,31 +1052,39 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                   </div>
                 </div>
 
-                {/* ✅ Emoji-överblick (alla badges som endast emojis) */}
-                <div className="badge-overview-wrap">
-                  <div className="badge-overview">
-                    {groupedBadges.map((g) =>
-                      g.items.map((b) => {
-                        const code = getBadgeCode(b);
-                        const earned = code ? earnedSet.has(code) : false;
-                        const emoji = b.emoji || "🏷️";
-                        const tooltip = b.description || "";
+				{/* ✅ Emoji-överblick (alla badges som endast emojis) */}
+				<div className="badge-overview-wrap">
+				  <div className="badge-overview">
+					{groupedBadges.map((g) =>
+					  g.items.map((b) => {
+						const code = getBadgeCode(b);
+						const earned = code ? earnedSet.has(code) : false;
+						const emoji = b.emoji || "🏷️";
 
-                        return (
-                          <span
-                            key={code || `${g.groupName}-${b.name}-${emoji}`}
-                            className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
-                            data-tooltip={tooltip}
-                            aria-label={b.name}
-                            title=""
-                          >
-                            <FlagOrEmoji emoji={emoji} alt={b.name} className="badge-flag" />
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
+						const tooltipTitle = b.name || "";
+						const tooltipDesc = b.description || "";
+
+						return (
+						  <span
+							key={code || `${g.groupName}-${b.name}-${emoji}`}
+							className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
+							aria-label={tooltipTitle}
+							title=""
+						  >
+							<FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
+
+							{(tooltipTitle || tooltipDesc) && (
+							  <span className="badge-tooltip" role="tooltip">
+								<span className="badge-tooltip-title">{tooltipTitle}</span>
+								<span className="badge-tooltip-desc">{tooltipDesc}</span>
+							  </span>
+							)}
+						  </span>
+						);
+					  })
+					)}
+				  </div>
+				</div>
 
                 {/* ✅ Grupp-knappar på en rad */}
                 <div className="badge-group-tabs" role="tablist" aria-label="Badge-grupper">
