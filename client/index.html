@@ -2,11 +2,70 @@
 <html lang="sv">
   <head>
     <meta charset="UTF-8" />
-    <title>GeoSense</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<link rel="preload" as="image" href="/world.png" fetchpriority="high" />
-	<link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Primary SEO -->
+    <title>GeoSense – 1v1 kartduell där precision och tempo avgör</title>
+    <meta
+      name="description"
+      content="GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel: du får en stad, klickar på världskartan och tävlar i precision (km fel) och tempo. Lägst totalpoäng vinner."
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://www.geosense.se/" />
+
+    <!-- Social (Open Graph) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="GeoSense" />
+    <meta property="og:title" content="GeoSense – 1v1 kartduell där precision och tempo avgör" />
+    <meta
+      property="og:description"
+      content="Du får en stad, klickar på världskartan och tävlar i precision och tempo. Lägst totalpoäng vinner."
+    />
+    <meta property="og:url" content="https://www.geosense.se/" />
+    <meta property="og:image" content="https://www.geosense.se/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="GeoSense – kartspel där precision och tempo avgör" />
+
+    <!-- Social (Twitter/X) -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="GeoSense – 1v1 kartduell" />
+    <meta
+      name="twitter:description"
+      content="Klicka städer snabbare och mer exakt än din motståndare. Lägst totalpoäng vinner."
+    />
+    <meta name="twitter:image" content="https://www.geosense.se/og.png" />
+
+    <!-- UI / misc -->
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <!-- Performance -->
+    <link rel="preload" as="image" href="/world.png" fetchpriority="high" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Structured data (Google) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "GeoSense",
+        "url": "https://www.geosense.se/",
+        "inLanguage": "sv",
+        "applicationCategory": "Game",
+        "genre": ["Geography", "Arcade", "Multiplayer"],
+        "description": "GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar din geografiska intuition: du får en stad, klickar på världskartan och spelet mäter precision (km fel) och tempo (tid). Lägst totalpoäng vinner.",
+        "gamePlatform": ["Web browser"],
+        "numberOfPlayers": "1-2",
+        "operatingSystem": "Any",
+        "image": "https://www.geosense.se/og.png"
+      }
+    </script>
   </head>
+
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
