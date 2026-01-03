@@ -619,7 +619,7 @@ function createMatch(playerA, playerB, opts = {}) {
     isSolo: !!opts.isSolo,
     isPractice: !!opts.isPractice,
     difficulty: normalizeDifficulty(opts.difficulty),
-    source: opts.source || (opts.isSolo ? \"solo\" : \"queue\"),
+    source: opts.source || (opts.isSolo ? "solo" : "queue"),
 
     // start-ready gate
     awaitingStartReady: true,
