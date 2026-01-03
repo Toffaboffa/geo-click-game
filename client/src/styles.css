@@ -1000,9 +1000,9 @@ button:disabled {
   user-select: none;
 }
 
+/* ✅ FIX 3: ingen opacity här (annars blir tooltip också transparent) */
 .badge-emoji-only.is-missing {
-  filter: grayscale(1) saturate(0.35);
-  opacity: 0.65;
+  filter: grayscale(1) saturate(0.35) brightness(0.9);
 }
 
 .badge-emoji-only.is-earned {
@@ -1023,7 +1023,7 @@ button:disabled {
   padding: 8px 10px;
   border-radius: 12px;
 
-  background: #0b1220;
+  background: #0b1220; /* ✅ FIX 3: helt opak */
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.96);
 
@@ -1046,7 +1046,8 @@ button:disabled {
 
   width: 10px;
   height: 10px;
-  background: #0b1220;
+
+  background: #0b1220; /* ✅ matcha opak tooltip */
   border-left: 1px solid rgba(255, 255, 255, 0.18);
   border-top: 1px solid rgba(255, 255, 255, 0.18);
 
@@ -1060,14 +1061,19 @@ button:disabled {
   opacity: 1;
 }
 
-/* Grupp-knappar: en rad */
+/* ✅ FIX 1: Grupp-knappar kan ligga i 2 rader */
 .badge-group-tabs {
   margin-top: 10px;
   display: flex;
   gap: 8px;
-  flex-wrap: nowrap;      /* ✅ en rad */
-  overflow-x: auto;       /* safety om det blir för trångt */
-  padding-bottom: 4px;
+  flex-wrap: wrap;          /* ✅ tillåt radbrytning */
+  align-items: center;
+
+  max-height: 86px;         /* ~2 rader (tweak vid behov) */
+  overflow-y: auto;         /* ✅ scroll om fler rader */
+  overflow-x: hidden;
+
+  padding: 4px 2px;
 }
 
 .badge-group-tab {
@@ -1114,6 +1120,11 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
   padding: 10px 10px 12px;
+
+  /* ✅ FIX 2: lås höjd så modalen inte hoppar */
+  height: 170px; /* tweak vid behov */
+  display: flex;
+  flex-direction: column;
 }
 
 .badge-group-panel-head {
@@ -1210,11 +1221,16 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+/* ✅ FIX 2: badge-grid ska inte få panelen att växa -> scrolla inuti panelen */
 .badge-grid {
   padding: 10px 10px 12px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
+
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
 }
 
 /* Kompakta badge-kort */
@@ -1358,89 +1374,6 @@ button:disabled {
 .badge-card,
 .badge-card * {
   user-select: none;
-}
-
-
-/* ===== Finish overlay: Progression (level + nya badges) ===== */
-
-.finish-progression {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-@media (min-width: 880px) {
-  .finish-progression {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.finish-prog-block {
-  padding: 10px 10px 8px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.finish-prog-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap; /* ✅ så chipet inte overflowar på smalare ytor */
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.93);
-}
-
-.finish-prog-muted {
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 800;
-  opacity: 0.75;
-}
-
-/* Level-up chip */
-.level-up-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  background: rgba(34, 197, 94, 0.14);
-  border: 1px solid rgba(34, 197, 94, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.10);
-  color: rgba(255, 255, 255, 0.92);
-}
-
-/* Badge pills */
-.finish-badges {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.badge-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(2, 6, 23, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(6px);
-  max-width: 100%; /* ✅ safety */
 }
 
 /* ---------- Lobby header actions + ?-modal ---------- */
