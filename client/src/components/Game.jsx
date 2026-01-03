@@ -65,6 +65,49 @@ function scoreLocal(distanceKm, timeMs) {
 }
 
 // ---------- Progression UI helpers ----------
+// --- Emoji helpers: render flag emojis as deterministic SVGs (Twemoji) ---
+const TWEMOJI_SVG_BASE = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg";
+
+function isRegionalIndicator(cp) {
+  return cp >= 0x1f1e6 && cp <= 0x1f1ff;
+}
+
+// Detect standard country flag emojis (two Regional Indicator symbols, e.g. 🇸🇪).
+function isFlagEmoji(emoji) {
+  if (!emoji) return false;
+  const parts = Array.from(String(emoji).trim());
+  if (parts.length !== 2) return false;
+  const [a, b] = parts;
+  const cp1 = a.codePointAt(0);
+  const cp2 = b.codePointAt(0);
+  return isRegionalIndicator(cp1) && isRegionalIndicator(cp2);
+}
+
+function flagEmojiToTwemojiUrl(emoji) {
+  if (!isFlagEmoji(emoji)) return null;
+  const parts = Array.from(String(emoji).trim());
+  const hex = parts.map((ch) => ch.codePointAt(0).toString(16)).join("-");
+  return `${TWEMOJI_SVG_BASE}/${hex}.svg`;
+}
+
+function FlagOrEmoji({ emoji, alt, className }) {
+  const url = flagEmojiToTwemojiUrl(emoji);
+  if (url) {
+    return (
+      <img
+        className={className}
+        src={url}
+        alt={alt || ""}
+        draggable="false"
+        loading="lazy"
+        style={{ width: "1em", height: "1em", verticalAlign: "-0.12em" }}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return <>{emoji}</>;
+}
+
 function safeObj(v) {
   return v && typeof v === "object" ? v : {};
 }
@@ -861,64 +904,100 @@ export default function Game({
                 </div>
               )}
 
-              {/* ✅ Progression: badges + level up (endast riktiga matcher) */}
-              {!isPractice && progression.hasAnything && (
-                <div className="finish-progression">
-                  {/* Jag */}
-                  {progression.myDelta && (
-                    <div className="finish-prog-block">
-                      <div className="finish-prog-title">
-                        {myName}
-                        {progression.myLevelUp ? (
-                          <span className="level-up-chip">
-                            ⬆️ Level {progression.myDelta.oldLevel} → {progression.myDelta.newLevel}
-                          </span>
-                        ) : null}
-                      </div>
+			 {/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}
+			{!isPractice && progression.hasAnything && (
+			  <div className="finish-progression">
+				{/* Jag */}
+				{progression.myDelta && (
+				  <div className="finish-prog-row">
+					<div className="finish-prog-left">{myName}:</div>
 
-                      {progression.myNewBadges.length > 0 ? (
-                        <div className="finish-badges">
-                          {progression.myNewBadges.map((b) => (
-                            <div key={b.code} className="badge-pill" title={b.description || ""}>
-                              <span className="badge-emoji">{b.emoji || "🏷️"}</span>
-                              <span className="badge-name">{b.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="finish-prog-muted">Inga nya badges.</div>
-                      )}
-                    </div>
-                  )}
+					<div className="finish-prog-right">
+					  {progression.myLevelUp ? (
+						<span className="level-up-chip">
+						  ⬆️ Level {progression.myDelta.oldLevel} → {progression.myDelta.newLevel}
+						</span>
+					  ) : null}
 
-                  {/* Motståndare */}
-                  {progression.oppDelta && (
-                    <div className="finish-prog-block">
-                      <div className="finish-prog-title">
-                        {opponentName}
-                        {progression.oppLevelUp ? (
-                          <span className="level-up-chip">
-                            ⬆️ Level {progression.oppDelta.oldLevel} → {progression.oppDelta.newLevel}
-                          </span>
-                        ) : null}
-                      </div>
+					  {progression.myNewBadges.length > 0 ? (
+						<div className="finish-prog-icons">
+						  {progression.myNewBadges.map((b) => {
+							const emoji = b.emoji || "🏷️";
+							const tooltipTitle = b.name || "";
+							const tooltipDesc = b.description || "";
 
-                      {progression.oppNewBadges.length > 0 ? (
-                        <div className="finish-badges">
-                          {progression.oppNewBadges.map((b) => (
-                            <div key={b.code} className="badge-pill" title={b.description || ""}>
-                              <span className="badge-emoji">{b.emoji || "🏷️"}</span>
-                              <span className="badge-name">{b.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="finish-prog-muted">Inga nya badges.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+							return (
+							  <span
+								key={b.code}
+								className="badge-emoji-only is-earned"
+								aria-label={tooltipTitle}
+								title=""
+							  >
+								<FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
+
+								{(tooltipTitle || tooltipDesc) && (
+								  <span className="badge-tooltip" role="tooltip">
+									<span className="badge-tooltip-title">{tooltipTitle}</span>
+									<span className="badge-tooltip-desc">{tooltipDesc}</span>
+								  </span>
+								)}
+							  </span>
+							);
+						  })}
+						</div>
+					  ) : (
+						!progression.myLevelUp && <span className="finish-prog-dash">—</span>
+					  )}
+					</div>
+				  </div>
+				)}
+
+				{/* Motståndare */}
+				{progression.oppDelta && (
+				  <div className="finish-prog-row">
+					<div className="finish-prog-left">{opponentName}:</div>
+
+					<div className="finish-prog-right">
+					  {progression.oppLevelUp ? (
+						<span className="level-up-chip">
+						  ⬆️ Level {progression.oppDelta.oldLevel} → {progression.oppDelta.newLevel}
+						</span>
+					  ) : null}
+
+					  {progression.oppNewBadges.length > 0 ? (
+						<div className="finish-prog-icons">
+						  {progression.oppNewBadges.map((b) => {
+							const emoji = b.emoji || "🏷️";
+							const tooltipTitle = b.name || "";
+							const tooltipDesc = b.description || "";
+
+							return (
+							  <span
+								key={b.code}
+								className="badge-emoji-only is-earned"
+								aria-label={tooltipTitle}
+								title=""
+							  >
+								<FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
+
+								{(tooltipTitle || tooltipDesc) && (
+								  <span className="badge-tooltip" role="tooltip">
+									<span className="badge-tooltip-title">{tooltipTitle}</span>
+									<span className="badge-tooltip-desc">{tooltipDesc}</span>
+								  </span>
+								)}
+							  </span>
+							);
+						  })}
+						</div>
+					  ) : (
+						!progression.oppLevelUp && <span className="finish-prog-dash">—</span>
+					  )}
+					</div>
+				  </div>
+				)}
+			  </div>
+			)}
 
               {/* ✅ Per-runda tabell */}
               <div className="rounds-table-wrap">

@@ -784,6 +784,64 @@ button:disabled {
   justify-content: center;
 }
 
+/* ===== Finish progression (kompakt, ikon-only som i Lobby) ===== */
+.finish-progression {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.finish-prog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.finish-prog-left {
+  font-size: 13px;
+  font-weight: 900;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.finish-prog-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.finish-prog-icons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.finish-prog-dash {
+  opacity: 0.7;
+  font-weight: 900;
+}
+
+/* Gör badge-emoji-only mindre i finish, så modalen inte växer på höjden */
+.finish-progression .badge-emoji-only {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 22px;
+}
+
+/* Om du vill att tooltipen ska ligga snyggt även i finish-overlayn */
+.finish-progression .badge-tooltip {
+  width: min(260px, 55vw);
+}
+
 .city-pop {
   margin-top: 4px;
   font-size: 14px;

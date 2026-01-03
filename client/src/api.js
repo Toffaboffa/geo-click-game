@@ -68,7 +68,7 @@ async function apiFetch(path, opts = {}) {
 
   // Timeout-säkring (så fetch inte kan hänga “för evigt”)
   const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? 15000;
+  const timeoutMs = opts.timeoutMs ?? 45000;
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
