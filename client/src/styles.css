@@ -1064,20 +1064,20 @@ button:disabled {
 
 /* Titel och beskrivning (olika stil) */
 .badge-tooltip-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;          /* "bolder" kan variera mellan fonter */
   line-height: 1.15;
 
   text-transform: uppercase; /* ✅ UPPERCASE */
   letter-spacing: 0.06em;    /* ✅ lite spacing mellan bokstäver */
 
-  opacity: 0.92;             /* ✅ lite ljusare/”lättare” än 1.0 */
+  opacity: 0.99;             /* ✅ lite ljusare/”lättare” än 1.0 */
   /* alternativt: color: rgba(255,255,255,0.92); */
 }
 
 .badge-tooltip-desc {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   line-height: 1.25;
   opacity: 0.92;
 }
