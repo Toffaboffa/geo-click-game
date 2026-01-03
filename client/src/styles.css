@@ -751,10 +751,10 @@ button:disabled {
 }
 
 .finish-title {
-  font-size: 24px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: 0.12em;
-  opacity: 0.8;
+  opacity: 0.99;
   text-transform: uppercase;
   margin-bottom: 10px;
 }

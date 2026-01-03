@@ -987,7 +987,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="finish-overlay" onClick={closeProgress}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
             <div className="finish-title">
-              Progression: {progressUser} • Level {levelValue}
+              {progressUser} • Level {levelValue}
             </div>
 
             {progressLoading && <div className="progress-loading">Laddar...</div>}
