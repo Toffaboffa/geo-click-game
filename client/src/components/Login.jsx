@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import StartPings from "./StartPings";
+import logo from "../assets/logo.png";
 
 export default function Login({ onSubmit }) {
   const [mode, setMode] = useState("login");
@@ -22,6 +23,7 @@ export default function Login({ onSubmit }) {
 return (
   <div className="screen">
     <StartPings />
+	<img className="screen-logo" src={logo} alt="GeoSense" />
     <div className="auth-wrap">
       <div className="panel">
         <h1>GeoSense</h1>

@@ -1,6 +1,7 @@
 // client/src/components/Lobby.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import StartPings from "./StartPings";
+import logo from "../assets/logo.png";
 import {
   getMe,
   setLeaderboardVisibility,
@@ -450,6 +451,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   return (
     <div className="screen">
     <StartPings />
+	<img className="screen-logo" src={logo} alt="GeoSense" />
       <div className="panel">
         <div className="panel-header">
           <h2>Inloggad som: {session.username}</h2>

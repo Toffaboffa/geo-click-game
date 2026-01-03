@@ -45,9 +45,36 @@ body,
   background-size: min(1920px, 100%) auto, cover;
   background-attachment: scroll, scroll;
   color: #e5e7eb;
-position: relative;
+  position: relative;
+  overflow: hidden;
+    --panel-top: 232px;       /* ✅ en enda källa till sanningen */
+  padding-top: var(--panel-top);
+
+  position: relative;
   overflow: hidden;
 }
+
+/* ---------- Screen logo (login + lobby) ---------- */
+.screen-logo {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--panel-top) / 2);  /* ✅ mitt emellan toppen och panelen */
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px)); /* tak så den inte blir absurd på stora skärmar */
+  max-width: 520px;
+  min-width: 250px;                /* ✅ minst ~250px som du ville */
+  height: auto;
+  z-index: 1;                      /* bakom panel (panel har z-index:2), men ovanpå bakgrunden */
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 14px 40px rgba(0,0,0,0.55));
+}
+
+/* mobil: om du ändå blockar appen under 900px, men detta ger snygg fallback */
+@media (max-width: 900px) {
+  .screen-logo { display: none; }
+}
+
 
 .panel {
   background: #020617;
