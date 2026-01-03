@@ -3,19 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Primary SEO -->
-    <title>GeoSense – 1v1 kartduell där precision och tempo avgör</title>
+    <title>GeoSense – 1v1 DUEL</title>
     <meta
       name="description"
-      content="GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel: du får en stad, klickar på världskartan och tävlar i precision (km fel) och tempo. Lägst totalpoäng vinner."
+      content="GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du får en stad, klickar på världskartan och tävlar i precision (km fel) och tempo. Lägst totalpoäng vinner."
     />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://www.geosense.se/" />
 
-    <!-- Social (Open Graph) -->
+    <meta name="application-name" content="GeoSense" />
+    <meta name="author" content="Toffaboffa" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="GeoSense" />
+    <meta property="og:locale" content="sv_SE" />
     <meta property="og:title" content="GeoSense – 1v1 kartduell där precision och tempo avgör" />
     <meta
       property="og:description"
@@ -27,27 +33,12 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="GeoSense – kartspel där precision och tempo avgör" />
 
-    <!-- Social (Twitter/X) -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="GeoSense – 1v1 kartduell" />
-    <meta
-      name="twitter:description"
-      content="Klicka städer snabbare och mer exakt än din motståndare. Lägst totalpoäng vinner."
-    />
     <meta name="twitter:image" content="https://www.geosense.se/og.png" />
 
-    <!-- UI / misc -->
-    <meta name="theme-color" content="#000000" />
-    <meta name="color-scheme" content="dark light" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
-
-    <!-- Performance -->
     <link rel="preload" as="image" href="/world.png" fetchpriority="high" />
 
-    <!-- Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
 
-    <!-- Structured data (Google) -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -57,16 +48,30 @@
         "inLanguage": "sv",
         "applicationCategory": "Game",
         "genre": ["Geography", "Arcade", "Multiplayer"],
-        "description": "GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar din geografiska intuition: du får en stad, klickar på världskartan och spelet mäter precision (km fel) och tempo (tid). Lägst totalpoäng vinner.",
+        "description": "GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar dina geografikunskaper. Du får en stad, klickar på världskartan och spelet mäter precision och tempo. Lägst totalpoäng vinner.",
         "gamePlatform": ["Web browser"],
         "numberOfPlayers": "1-2",
         "operatingSystem": "Any",
-        "image": "https://www.geosense.se/og.png"
+        "image": "https://www.geosense.se/og.png",
+        "publisher": {
+          "@type": "Organization",
+          "name": "GeoSense"
+        }
       }
     </script>
   </head>
 
   <body>
+    <noscript>
+      <h1>GeoSense</h1>
+      <p>
+        GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar dina geografikunskaper.
+        Var ligger staden – exakt? Du får ett stadsnamn, klickar på världskartan och spelet mäter både
+        precision (km fel) och tempo (tid). Lägst totalpoäng vinner.
+      </p>
+      <p>Det är lika delar geografi, precision och reaktion.</p>
+    </noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
