@@ -145,9 +145,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
 
-  // ✅ Vilken badge-grupp som är vald i progression-modalen (UI)
-  const [activeBadgeGroup, setActiveBadgeGroup] = useState(null); // groupName
-
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -427,18 +424,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
     return groups;
   }, [badgesCatalog]);
-
-  // ✅ Default: välj första gruppen när modalen är öppen och vi har grupper
-  useEffect(() => {
-    if (!progressOpen) return;
-    if (!groupedBadges?.length) return;
-
-    const exists = groupedBadges.some((g) => g.groupName === activeBadgeGroup);
-    if (!activeBadgeGroup || !exists) {
-      setActiveBadgeGroup(groupedBadges[0].groupName);
-    }
-  }, [progressOpen, groupedBadges, activeBadgeGroup]);
-
   const earnedSet = useMemo(() => {
     const earned =
       progressData?.earnedBadges ||
@@ -1085,84 +1070,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 					)}
 				  </div>
 				</div>
-
-                {/* ✅ Grupp-knappar på en rad */}
-                <div className="badge-group-tabs" role="tablist" aria-label="Badge-grupper">
-                  {groupedBadges.map((g) => {
-                    const totalInGroup = g.items.length;
-                    const earnedInGroup = g.items.reduce((acc, b) => {
-                      const code = getBadgeCode(b);
-                      return code && earnedSet.has(code) ? acc + 1 : acc;
-                    }, 0);
-
-                    const active = g.groupName === activeBadgeGroup;
-
-                    return (
-                      <button
-                        key={g.groupName}
-                        type="button"
-                        className={`badge-group-tab ${active ? "active" : ""}`}
-                        onClick={() => setActiveBadgeGroup(g.groupName)}
-                        role="tab"
-                        aria-selected={active}
-                      >
-                        <span className="badge-group-tab-title">{g.groupName}</span>
-                        <span className="badge-group-tab-count">
-                          {earnedInGroup}/{totalInGroup}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* ✅ Endast vald grupp renderas längst ned */}
-                <div className="badge-group-panel">
-                  {(() => {
-                    const g = groupedBadges.find((x) => x.groupName === activeBadgeGroup) || groupedBadges[0];
-
-                    if (!g) return null;
-
-                    const totalInGroup = g.items.length;
-                    const earnedInGroup = g.items.reduce((acc, b) => {
-                      const code = getBadgeCode(b);
-                      return code && earnedSet.has(code) ? acc + 1 : acc;
-                    }, 0);
-
-                    return (
-                      <>
-                        <div className="badge-group-panel-head">
-                          <div className="badge-group-panel-title">{g.groupName}</div>
-                          <div className="badge-group-panel-count">
-                            {earnedInGroup}/{totalInGroup}
-                          </div>
-                        </div>
-
-                        <div className="badge-grid">
-                          {g.items.map((b) => {
-                            const code = getBadgeCode(b);
-                            const earned = code ? earnedSet.has(code) : false;
-                            const emoji = b.emoji || "🏷️";
-                            const tooltip = b.description || "";
-
-                            return (
-                              <div
-                                key={code || `${b.name}-${emoji}`}
-                                className={`badge-card ${earned ? "is-earned" : "is-missing"}`}
-                                data-tooltip={tooltip}
-                              >
-                                <div className="badge-title">
-                                  <span className="badge-emoji"><FlagOrEmoji emoji={emoji} alt={b.name} className="badge-flag" /></span>
-                                  <span className="badge-name">{b.name}</span>
-                                  <span className="badge-mini-status">{earned ? "✅" : "⬜"}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
               </>
             )}
 
