@@ -312,6 +312,28 @@ export function evaluateEligibleBadgeCodes({
       continue;
     }
 
+    // --- Played by difficulty (historik)
+    if (t === "played_by_difficulty") {
+      const min = toInt(c.min) ?? 0;
+      const d = String(c.difficulty ?? "").toLowerCase();
+      if (!d) continue;
+
+      const keySnake = `${d}_played`; // easy_played, medium_played, hard_played (din DB)
+      const keyAltSnake = `played_${d}`; // played_easy (fallback)
+      const keyCamel = `played${d[0]?.toUpperCase?.() ?? ""}${d.slice(1)}`; // playedEasy (fallback)
+
+      const v =
+        toInt(userStats?.[keySnake]) ??
+        toInt(userStats?.[keyAltSnake]) ??
+        toInt(userStats?.[keyCamel]) ??
+        toInt(userStats?.playedByDifficulty?.[d]) ??
+        null;
+
+      if (v != null && v >= min) eligible.push(b.code);
+      continue;
+    }
+
+
     // --- Lose-badges (hanteras INNAN vi skippar losers)
     if (t === "lose_match_by_margin_under_score") {
       const maxMargin = toNum(c.max_margin);

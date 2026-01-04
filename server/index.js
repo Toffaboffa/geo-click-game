@@ -1121,6 +1121,10 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   const hasMediumWins = await hasColumn(dbClient, "users", "medium_wins");
   const hasHardWins = await hasColumn(dbClient, "users", "hard_wins");
 
+  const hasEasyPlayed = await hasColumn(dbClient, "users", "easy_played");
+  const hasMediumPlayed = await hasColumn(dbClient, "users", "medium_played");
+  const hasHardPlayed = await hasColumn(dbClient, "users", "hard_played");
+
   const hasPlayedChallengesTotal = await hasColumn(dbClient, "users", "played_challenges_total");
   const hasWinsChallengesTotal = await hasColumn(dbClient, "users", "wins_challenges_total");
   const hasStartedMatchesViaQueue = await hasColumn(dbClient, "users", "started_matches_via_queue");
@@ -1132,6 +1136,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
   if (hasEasyWins) selectCols.push("easy_wins");
   if (hasMediumWins) selectCols.push("medium_wins");
   if (hasHardWins) selectCols.push("hard_wins");
+  if (hasEasyPlayed) selectCols.push("easy_played");
+  if (hasMediumPlayed) selectCols.push("medium_played");
+  if (hasHardPlayed) selectCols.push("hard_played");
   if (hasPlayedChallengesTotal) selectCols.push("played_challenges_total");
   if (hasWinsChallengesTotal) selectCols.push("wins_challenges_total");
   if (hasStartedMatchesViaQueue) selectCols.push("started_matches_via_queue");
@@ -1208,6 +1215,9 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       easy_wins: 0,
       medium_wins: 0,
       hard_wins: 0,
+      easy_played: 0,
+      medium_played: 0,
+      hard_played: 0,
     };
 
     const isWinner = !!winner && username === winner;
@@ -1240,7 +1250,13 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
           easy: hasEasyWins ? Number(user.easy_wins ?? 0) : null,
           medium: hasMediumWins ? Number(user.medium_wins ?? 0) : null,
           hard: hasHardWins ? Number(user.hard_wins ?? 0) : null,
-        },        playedChallengesTotal: hasPlayedChallengesTotal ? Number(user.played_challenges_total ?? 0) : null,
+        },
+        playedByDifficulty: {
+          easy: hasEasyPlayed ? Number(user.easy_played ?? 0) : null,
+          medium: hasMediumPlayed ? Number(user.medium_played ?? 0) : null,
+          hard: hasHardPlayed ? Number(user.hard_played ?? 0) : null,
+        },
+        playedChallengesTotal: hasPlayedChallengesTotal ? Number(user.played_challenges_total ?? 0) : null,
         winsChallengesTotal: hasWinsChallengesTotal ? Number(user.wins_challenges_total ?? 0) : null,
         startedMatchesViaQueue: hasStartedMatchesViaQueue ? Number(user.started_matches_via_queue ?? 0) : null,
       },
