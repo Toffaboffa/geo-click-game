@@ -253,6 +253,12 @@ export function evaluateEligibleBadgeCodes({
 
     const t = String(c.type);
 
+    const requiredDifficulty = c.difficulty;
+    const difficultyOk =
+      requiredDifficulty == null || requiredDifficulty === ""
+        ? true
+        : difficultyEq(effectiveDifficulty, requiredDifficulty);
+
     // --- Totals (oberoende av matchdata)
     if (t === "wins_total") {
       const min = toInt(c.min) ?? 0;
@@ -336,6 +342,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Lose-badges (hanteras INNAN vi skippar losers)
     if (t === "lose_match_by_margin_under_score") {
+      if (!difficultyOk) continue;
       const maxMargin = toNum(c.max_margin);
       if (maxMargin == null) continue;
       if (isWinnerResolved) continue;
@@ -354,6 +361,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Distance/time
     if (t === "win_match_distance_any_round_under_km") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       if (maxKm == null) continue;
       if (anyRound((r) => (toNum(r.distanceKm) ?? Infinity) < maxKm)) eligible.push(b.code);
@@ -361,6 +369,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_distance_rounds_under_km") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       const minRounds = toInt(c.min_rounds) ?? 0;
       if (maxKm == null) continue;
@@ -370,6 +379,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_round_under_combo") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       const maxTimeS = toNum(c.max_time_s);
       if (maxKm == null || maxTimeS == null) continue;
@@ -383,6 +393,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_all_rounds_under_km") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       if (maxKm == null) continue;
       if (allRounds((r) => (toNum(r.distanceKm) ?? Infinity) < maxKm)) eligible.push(b.code);
@@ -390,6 +401,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_no_round_over_km") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       if (maxKm == null) continue;
       if (allRounds((r) => (toNum(r.distanceKm) ?? Infinity) <= maxKm)) eligible.push(b.code);
@@ -398,6 +410,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Total score thresholds (lägre bättre)
     if (t === "win_match_under_total_score") {
+      if (!difficultyOk) continue;
       const maxTotal = toNum(c.max_total_score);
       if (maxTotal == null) continue; // null = "definieras senare"
       if ((myTotal ?? Infinity) < maxTotal) eligible.push(b.code);
@@ -406,6 +419,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Avg time thresholds
     if (t === "win_match_avg_time_under_s") {
+      if (!difficultyOk) continue;
       const maxAvg = toNum(c.max_avg_time_s);
       if (maxAvg == null) continue; // null = "definieras senare"
       if (safeRounds.length === 0) continue;
@@ -416,6 +430,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_no_round_over_time_s") {
+      if (!difficultyOk) continue;
       const maxTimeS = toNum(c.max_time_s);
       if (maxTimeS == null) continue;
       if (allRounds((r) => ((toNum(r.timeMs) ?? Infinity) / 1000) <= maxTimeS)) eligible.push(b.code);
@@ -424,6 +439,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Timeout based
     if (t === "win_match_with_any_round_timeout") {
+      if (!difficultyOk) continue;
       // Servern kan ge oss antingen per-runda timeMs/isTimeout, eller en precomputed flagga.
       if (match?.hasTimeoutRound === true) {
         eligible.push(b.code);
@@ -441,6 +457,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Streaks (consecutive rounds)
     if (t === "match_consecutive_rounds_under_km") {
+      if (!difficultyOk) continue;
       const maxKm = toNum(c.max_km);
       const streak = toInt(c.streak) ?? 0;
       if (maxKm == null || streak <= 0) continue;
@@ -450,6 +467,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "match_consecutive_rounds_under_time_s") {
+      if (!difficultyOk) continue;
       const maxTimeS = toNum(c.max_time_s);
       const streak = toInt(c.streak) ?? 0;
       if (maxTimeS == null || streak <= 0) continue;
@@ -505,6 +523,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_with_any_round_over_km") {
+      if (!difficultyOk) continue;
       const minKm = toNum(c.min_km);
       if (minKm == null) continue;
       if (anyRound((r) => (toNum(r.distanceKm) ?? -Infinity) > minKm)) eligible.push(b.code);
@@ -512,6 +531,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_all_cities_under_population") {
+      if (!difficultyOk) continue;
       const maxPop = toInt(c.max_population);
       if (maxPop == null) continue;
       const ok = allRounds((r) => {
@@ -524,6 +544,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_min_capitals") {
+      if (!difficultyOk) continue;
       const minCaps = toInt(c.min_capitals) ?? 0;
       if (minCaps <= 0) continue;
       const caps = countRounds((r) => r?.city?.isCapital === true);
@@ -532,6 +553,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_min_cities_over_population") {
+      if (!difficultyOk) continue;
       const minCities = toInt(c.min_cities) ?? 0;
       const minPop = toInt(c.min_population);
       if (minCities <= 0 || minPop == null) continue;
@@ -546,6 +568,7 @@ export function evaluateEligibleBadgeCodes({
 
     // --- Comeback/extremfall
     if (t === "win_match_after_losing_first_n_rounds") {
+      if (!difficultyOk) continue;
       const n = toInt(c.n) ?? 0;
       if (n <= 0) continue;
 
@@ -562,6 +585,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_last_round_decides") {
+      if (!difficultyOk) continue;
       if (safeRounds.length < 1) continue;
 
       const lastIdx = safeRounds.length - 1;
@@ -579,6 +603,7 @@ export function evaluateEligibleBadgeCodes({
     }
 
     if (t === "win_match_with_rounds_lost_by_score") {
+      if (!difficultyOk) continue;
       const minLost = toInt(c.min_rounds_lost) ?? 0;
       if (minLost <= 0) continue;
 
