@@ -1060,7 +1060,7 @@ button:disabled {
 
 /* ✅ FIX 3: ingen opacity här (annars blir tooltip också transparent) */
 .badge-emoji-only.is-missing {
-  filter: grayscale(1) saturate(0.35) brightness(0.9);
+  filter: grayscale(1) saturate(0.35) brightness(0.4);
 }
 
 .badge-emoji-only.is-earned {
