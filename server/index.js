@@ -886,23 +886,38 @@ function emitRoundResultAndIntermission(match, round) {
         };
   }
 
-  io.to(room).emit("round_result", { results });
+	io.to(room).emit("round_result", { results });
 
-  match.readyPromptTimeout = setTimeout(() => {
-    io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
-  }, 2000);
+	// ✅ SISTA RUNDAN? Då ska vi INTE visa "ready_prompt" eller "Nästa runda om..."
+	if (match.currentRound >= match.totalRounds - 1) {
+	  setTimeout(() => {
+		finishMatch(match).catch(() => {});
+	  }, 1200); // liten delay så round_result hinner visas
+	  return;
+	}
 
-  match.readyTimeout = setTimeout(() => {
-    startNextRoundCountdown(match);
-  }, 4_000);
+	match.readyPromptTimeout = setTimeout(() => {
+	  io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
+	}, 2000);
+
+	match.readyTimeout = setTimeout(() => {
+	  startNextRoundCountdown(match);
+	}, 4_000);
 }
 
 function startNextRoundCountdown(match) {
   if (!match || match.finished) return;
 
-  // ✅ Skydd: om countdown redan är igång, starta inte en till (detta var källan till >10 rundor)
+  // ✅ Skydd: om countdown redan är igång, starta inte en till
   if (match._countdownRunning) return;
   match._countdownRunning = true;
+
+  // ✅ SISTA RUNDAN? Ingen countdown alls.
+  if (match.currentRound >= match.totalRounds - 1) {
+    match._countdownRunning = false;
+    finishMatch(match).catch(() => {});
+    return;
+  }
 
   clearTimeout(match.readyPromptTimeout);
   clearTimeout(match.readyTimeout);
