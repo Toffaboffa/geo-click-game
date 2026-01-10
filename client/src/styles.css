@@ -882,31 +882,13 @@ button:disabled {
   backdrop-filter: blur(6px);
 }
 
-/* ===== Blockera mobil ===== */
-.mobile-block {
-  display: none;
+/* ===== Mobile block (App.jsx renders .mobile-block) ===== */
+.mobile-block{display:none;min-height:100vh;padding:32px;align-items:center;justify-content:center;text-align:center}
+@media (max-width: 900px){
+  .app-desktop{display:none !important;}
+  .mobile-block{display:flex;}
 }
 
-@media (max-width: 900px) {
-  /* göm hela appen */
-  #root {
-    display: none;
-  }
-
-  /* visa en “blockerad på mobil”-sida */
-  body::before {
-    content: "Det här spelet stöds inte på mobil. Öppna på dator.";
-    display: grid;
-    place-items: center;
-    min-height: 100vh;
-    padding: 24px;
-    text-align: center;
-    font-size: 18px;
-    font-weight: 800;
-    color: #e5e7eb;
-    background: #0f172a;
-  }
-}
 
 /* ===== Resultattabell i finish overlay ===== */
 .finish-card-wide {
@@ -1753,3 +1735,10 @@ select:focus-visible {
     opacity: 0;
   }
 }
+
+
+/* i18n */
+.screen-topbar{position:absolute;top:16px;right:16px;z-index:5}
+.lang-toggle{display:flex;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.25);color:inherit;cursor:pointer;user-select:none}
+.lang-toggle:hover{background:rgba(0,0,0,0.35)}
+.lang-toggle .lang-active{font-weight:700;text-decoration:underline}

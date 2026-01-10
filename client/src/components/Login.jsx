@@ -1,89 +1,106 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import StartPings from "./StartPings";
 import logo from "../assets/logo.png";
+import LanguageToggle from "../i18n/LanguageToggle.jsx";
+import { useI18n } from "../i18n/LanguageProvider.jsx";
 
-export default function Login({ onSubmit }) {
-  const [mode, setMode] = useState("login");
+export default function Login({ onSubmit, authLoading = false, authHint = "" }) {
+  const { t } = useI18n();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [localLoading, setLocalLoading] = useState(false);
+
+  const loading = authLoading || localLoading;
+  const year = useMemo(() => new Date().getFullYear(), []);
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!username || !password) return;
     if (loading) return;
-    setLoading(true);
+
+    setLocalLoading(true);
     try {
-      await onSubmit(mode, username, password);
+      await onSubmit({ username, password, mode });
     } finally {
-      setLoading(false);
+      setLocalLoading(false);
     }
   };
 
-return (
-  <div className="screen">
-    <StartPings />
-	<img className="screen-logo" src={logo} alt="GeoSense" />
-    <div className="auth-wrap">
-      <div className="panel">
-        <h1>GeoSense</h1>
-        <p>Logga in eller skapa konto med valfritt användarnamn och lösenord.</p>
+  const isLogin = mode === "login";
 
-        <div className="tabs">
+  return (
+    <div className="screen start-screen">
+      <div className="screen-topbar">
+        <LanguageToggle />
+      </div>
+
+      <StartPings />
+
+      <div className="panel">
+        <h1 className="title">{t("login.headline")}</h1>
+        <p className="subtitle">{t("login.blurb")}</p>
+
+        <div className="mode-toggle">
           <button
             type="button"
-            className={mode === "login" ? "active" : ""}
+            className={`mode-btn ${isLogin ? "is-active" : ""}`}
             onClick={() => setMode("login")}
             disabled={loading}
           >
-            Logga in
+            {t("login.loginBtn")}
           </button>
           <button
             type="button"
-            className={mode === "register" ? "active" : ""}
+            className={`mode-btn ${!isLogin ? "is-active" : ""}`}
             onClick={() => setMode("register")}
             disabled={loading}
           >
-            Registrera
+            {t("login.registerBtn")}
           </button>
         </div>
 
-        <form onSubmit={submit}>
-          <input
-            placeholder="Användarnamn"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            disabled={loading}
-          />
-          <input
-            type="password"
-            placeholder="Lösenord"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            disabled={loading}
-          />
-          <button type="submit" disabled={loading}>
+        <form onSubmit={submit} className="form">
+          <label className="label">
+            {t("login.username")}
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={t("login.username")}
+              autoComplete="username"
+              disabled={loading}
+            />
+          </label>
+
+          <label className="label">
+            {t("login.password")}
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={t("login.password")}
+              autoComplete={isLogin ? "current-password" : "new-password"}
+              disabled={loading}
+            />
+          </label>
+
+          <button className="primary-btn" type="submit" disabled={loading}>
             {loading
-              ? mode === "login"
-                ? "Loggar in…"
-                : "Skapar konto…"
-              : mode === "login"
-              ? "Logga in"
-              : "Skapa konto"}
+              ? isLogin
+                ? t("login.loggingIn")
+                : t("login.registering")
+              : isLogin
+              ? t("login.loginBtn")
+              : t("login.registerBtn")}
           </button>
 
-          {loading && (
-            <div className="login-loading-hint">
-              Loggar in...
-            </div>
-          )}
+          <div className="hint">{authHint ? authHint : t("login.hint")}</div>
         </form>
-      </div>
 
-      <div className="auth-copyright">© Kristoffer Åberg 2026</div>
+        <div className="footer">{t("login.copy", { year })}</div>
+      </div>
     </div>
-  </div>
-);
+  );
 }

@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import StartPings from "./StartPings";
 import logo from "../assets/logo.png";
+import LanguageToggle from "../i18n/LanguageToggle.jsx";
+import { useI18n } from "../i18n/LanguageProvider.jsx";
 import {
   getMe,
   setLeaderboardVisibility,
@@ -22,19 +24,9 @@ function fmtPctOrDash(v) {
   return n.toFixed(1);
 }
 
-const DIFFS = [
-  { key: "easy", label: "Enkel" },
-  { key: "medium", label: "Medel" },
-  { key: "hard", label: "Svår" },
-];
+const DIFFS = ["easy", "medium", "hard"];
 
-const LB_VIEWS = [
-  { key: "easy", label: "ENKEL" },
-  { key: "medium", label: "MEDEL" },
-  { key: "hard", label: "SVÅR" },
-  { key: "total", label: "TOTAL" },
-  { key: "all", label: "ALLA" },
-];
+const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
 
 const SORT_KEYS = [
   { key: "ppm", label: "PPM" },
@@ -114,6 +106,7 @@ function FlagOrEmoji({ emoji, alt, className }) {
 
 
 export default function Lobby({ session, socket, lobbyState, onLogout }) {
+  const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
   // difficulty val
@@ -198,12 +191,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     if (!socket) return;
 
     const onForcedLogout = (msg) => {
-      window.alert(msg || "Du blev utloggad eftersom du loggade in i en annan flik.");
+      window.alert(msg || t("errors.forcedLogout"));
       onLogout?.();
     };
 
     const onAuthError = (msg) => {
-      window.alert(msg || "Ogiltig session, logga in igen.");
+      window.alert(msg || t("errors.sessionInvalid"));
       onLogout?.();
     };
 
@@ -329,7 +322,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
         setLbRows(filtered);
       } catch (e) {
-        if (!cancelled) setLbError(e?.message || "Kunde inte ladda leaderboard.");
+        if (!cancelled) setLbError(e?.message ? (String(e.message).startsWith("errors.") ? t(e.message) : e.message) : t("errors.leaderboardLoadFailed"));
         if (!cancelled) setLbRows([]);
       } finally {
         if (!cancelled) setLbLoading(false);
@@ -382,7 +375,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
       setProgressData(p || null);
     } catch (e) {
-      setProgressError(e?.message || "Kunde inte ladda progression.");
+      setProgressError(e?.message ? (String(e.message).startsWith("errors.") ? t(e.message) : e.message) : t("errors.progressionLoadFailed"));
     } finally {
       setProgressLoading(false);
     }
@@ -393,7 +386,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     const map = new Map();
 
     for (const b of catalog) {
-      const groupName = b.groupName ?? b.group_name ?? b.group ?? "Övrigt";
+      const groupName = b.groupName ?? b.group_name ?? b.group ?? t("common.other");
       const groupKey = b.groupKey ?? b.group_key ?? null;
 
       if (!map.has(groupName)) map.set(groupName, { groupKey, items: [] });
@@ -494,30 +487,31 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   return (
     <div className="screen">
       <StartPings />
-      <img className="screen-logo" src={logo} alt="GeoSense" />
+      <img className="screen-logo" src={logo} alt={t("common.appName")} />
+      <div className="screen-topbar"><LanguageToggle /></div>
       <div className="panel">
         <div className="panel-header">
-          <h2>Inloggad som: {session.username}</h2>
+          <h2>{t("lobby.loggedInAs", { user: session.username })}</h2>
 
           <div className="panel-header-actions">
             <button
               type="button"
               className="help-btn"
               onClick={openAbout}
-              title="Vad är GeoSense?"
-              aria-label="Vad är GeoSense?"
+              title={t("lobby.aboutTitle")}
+              aria-label={t("lobby.aboutTitle")}
             >
               ?
             </button>
             <button className="logout-btn" onClick={onLogout}>
-              Logga ut
+              {t("common.logout")}
             </button>
           </div>
         </div>
 
         <div className="panel-sub-actions">
           <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
-            🏆 Topplista
+            🏆 {t("lobby.leaderboard")}
           </button>
           <button
             type="button"
@@ -525,35 +519,35 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             onClick={() => openProgressFor(session.username)}
             disabled={!session?.sessionId}
           >
-            ⭐ Min progression
+            ⭐ {t("lobby.myProgress")}
           </button>
         </div>
 
-        <p>Online just nu: {onlineCount}st.</p>
+        <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
 
         {/* Queue status cards */}
         <div className="queue-cards">
           <div className={`queue-card ${queueState.queued && queueState.difficulty === "easy" ? "is-me" : ""}`}>
-            <div className="queue-card-title">Enkel</div>
+            <div className="queue-card-title">{t("common.difficulty.easy")}</div>
             <div className="queue-card-count">{queueCounts.easy}</div>
-            <div className="queue-card-sub">redo</div>
+            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
           </div>
           <div className={`queue-card ${queueState.queued && queueState.difficulty === "medium" ? "is-me" : ""}`}>
-            <div className="queue-card-title">Medel</div>
+            <div className="queue-card-title">{t("common.difficulty.medium")}</div>
             <div className="queue-card-count">{queueCounts.medium}</div>
-            <div className="queue-card-sub">redo</div>
+            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
           </div>
           <div className={`queue-card ${queueState.queued && queueState.difficulty === "hard" ? "is-me" : ""}`}>
-            <div className="queue-card-title">Svår</div>
+            <div className="queue-card-title">{t("common.difficulty.hard")}</div>
             <div className="queue-card-count">{queueCounts.hard}</div>
-            <div className="queue-card-sub">redo</div>
+            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
           </div>
         </div>
 
         {/* Matchmaking */}
         <div className="lobby-actions">
           <div className="lobby-action-block">
-            <div className="lobby-action-title">Match mot slumpvis</div>
+            <div className="lobby-action-title">{t("lobby.matchRandom.title")}</div>
             <div className="lobby-action-row">
               <select
                 value={queueDifficulty}
@@ -561,26 +555,26 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 disabled={!socket || queueState.queued}
               >
                 {DIFFS.map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.label}
+                  <option key={d} value={d}>
+                    {t(`common.difficulty.${d}`)}
                   </option>
                 ))}
               </select>
 
               {!queueState.queued ? (
                 <button onClick={startQueue} disabled={!socket}>
-                  Ställ mig redo
+                  {t("lobby.matchRandom.readyUp")}
                 </button>
               ) : (
                 <button onClick={leaveQueue} disabled={!socket}>
-                  Lämna kö
+                  {t("lobby.matchRandom.leaveQueue")}
                 </button>
               )}
             </div>
           </div>
 
           <div className="lobby-action-block">
-            <div className="lobby-action-title">Öva</div>
+            <div className="lobby-action-title">{t("common.modes.practice")}</div>
             <div className="lobby-action-row">
               <select
                 value={practiceDifficulty}
@@ -588,13 +582,13 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 disabled={!socket}
               >
                 {DIFFS.map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.label}
+                  <option key={d} value={d}>
+                    {t(`common.difficulty.${d}`)}
                   </option>
                 ))}
               </select>
               <button onClick={startSolo} disabled={!socket}>
-                Starta övning
+                {t("lobby.practice.start")}
               </button>
             </div>
           </div>
@@ -603,21 +597,21 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         {/* Challenge */}
         <form onSubmit={challenge} className="challenge-form">
           <input
-            placeholder="Utmana användare..."
+            placeholder={t("lobby.challenge.placeholder")}
             value={challengeName}
             onChange={(e) => setChallengeName(e.target.value)}
           />
 
           <select value={challengeDifficulty} onChange={(e) => setChallengeDifficulty(safeDiff(e.target.value))}>
             {DIFFS.map((d) => (
-              <option key={d.key} value={d.key}>
-                {d.label}
+              <option key={d} value={d}>
+                {t(`common.difficulty.${d}`)}
               </option>
             ))}
           </select>
 
           <button type="submit" disabled={!socket || !challengeName.trim()}>
-            Utmana
+            {t("lobby.challenge.btn")}
           </button>
         </form>
       </div>
@@ -627,7 +621,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="finish-overlay" onClick={closeLeaderboard}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
             <div className="lb-modal-head">
-              <div className="finish-title">Topplista</div>
+              <div className="finish-title">{t("lobby.leaderboard")}</div>
 
               <div className="lb-modal-actions">
                 <label className="lb-visibility">
@@ -637,12 +631,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                     onChange={(e) => setShowMe(e.target.checked)}
                     disabled={savingVis}
                   />
-                  <span>{showMeOnLeaderboard ? "Visas i topplistan" : "Dold i topplistan"}</span>
+                  <span>{showMeOnLeaderboard ? t("lobby.lb.visible") : t("lobby.lb.hidden")}</span>
                 </label>
 
                 <button className="hud-btn" onClick={closeLeaderboard} type="button">
-                  Stäng
-                </button>
+                {t("common.close")}
+              </button>
               </div>
             </div>
 
@@ -650,12 +644,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               <div className="lb-tabs">
                 {LB_VIEWS.map((v) => (
                   <button
-                    key={v.key}
+                    key={v}
                     type="button"
-                    className={`lb-tab ${lbView === v.key ? "is-active" : ""}`}
-                    onClick={() => setLbView(v.key)}
+                    className={`lb-tab ${lbView === v ? "is-active" : ""}`}
+                    onClick={() => setLbView(v)}
                   >
-                    {v.label}
+                    {v === "all" ? t("lobby.lb.view.all") : t(`lobby.lb.groups.${v}`)}
                   </button>
                 ))}
               </div>
@@ -663,10 +657,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               <div className="lb-sort-row">
                 {lbView === "all" && (
                   <select value={lbAllSortMode} onChange={(e) => setLbAllSortMode(safeLbMode(e.target.value))}>
-                    <option value="easy">Sort: Enkel</option>
-                    <option value="medium">Sort: Medel</option>
-                    <option value="hard">Sort: Svår</option>
-                    <option value="total">Sort: Total</option>
+                    <option value="easy">{t("lobby.lb.sortOption", { mode: t("common.difficulty.easy") })}</option>
+                    <option value="medium">{t("lobby.lb.sortOption", { mode: t("common.difficulty.medium") })}</option>
+                    <option value="hard">{t("lobby.lb.sortOption", { mode: t("common.difficulty.hard") })}</option>
+                    <option value="total">{t("lobby.lb.sortOption", { mode: t("common.difficulty.total") })}</option>
                   </select>
                 )}
 
@@ -679,20 +673,20 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 </select>
 
                 <select value={lbDir} onChange={(e) => setLbDir(String(e.target.value || ""))}>
-                  <option value="">Auto</option>
-                  <option value="asc">Asc</option>
-                  <option value="desc">Desc</option>
+                  <option value="">{t("common.auto")}</option>
+                  <option value="asc">{t("common.asc")}</option>
+                  <option value="desc">{t("common.desc")}</option>
                 </select>
               </div>
             </div>
 
             {/* ✅ Wide leaderboard output states */}
             {lbLoading ? (
-              <div className="lb-loading">Laddar topplista...</div>
+              <div className="lb-loading">{t("lobby.lb.loading")}</div>
             ) : lbError ? (
               <div className="lb-error">{lbError}</div>
             ) : wideRows.length === 0 ? (
-              <div className="lb-empty">Inga matcher spelade ännu.</div>
+              <div className="lb-empty">{t("lobby.lb.empty")}</div>
             ) : (
               <div className="lb-wide-wrap">
                 <table className="leaderboard leaderboard-wide">
@@ -708,29 +702,29 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("easy") && (
                             <th className="lb-group-head lb-easy lb-gstart" colSpan={5}>
-                              EASY
+                              {t("lobby.lb.groups.easy")}
                             </th>
                           )}
                           {groupsToShow.includes("medium") && (
                             <th className="lb-group-head lb-medium lb-gstart" colSpan={5}>
-                              MEDEL
+                              {t("lobby.lb.groups.medium")}
                             </th>
                           )}
                           {groupsToShow.includes("hard") && (
                             <th className="lb-group-head lb-hard lb-gstart" colSpan={5}>
-                              SVÅR
+                              {t("lobby.lb.groups.hard")}
                             </th>
                           )}
                           {groupsToShow.includes("total") && (
                             <th className="lb-group-head lb-total lb-gstart" colSpan={5}>
-                              TOTAL
+                              {t("lobby.lb.groups.total")}
                             </th>
                           )}
                         </tr>
 
                         <tr>
                           <th className="lb-rank">#</th>
-                          <th className="lb-name">Spelare</th>
+                          <th className="lb-name">{t("lobby.lb.player")}</th>
                           <th className="lb-lvl">LVL</th>
 
                           {groupsToShow.includes("easy") && (
@@ -775,27 +769,27 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                       <>
                         <tr>
                           <th className="lb-rank">#</th>
-                          <th className="lb-name">Spelare</th>
+                          <th className="lb-name">{t("lobby.lb.player")}</th>
                           <th className="lb-lvl">LVL</th>
 
                           {groupsToShow.includes("easy") && (
                             <th className="lb-group" colSpan={5}>
-                              ENKEL
+                              {t("lobby.lb.groups.easy")}
                             </th>
                           )}
                           {groupsToShow.includes("medium") && (
                             <th className="lb-group" colSpan={5}>
-                              MEDEL
+                              {t("lobby.lb.groups.medium")}
                             </th>
                           )}
                           {groupsToShow.includes("hard") && (
                             <th className="lb-group" colSpan={5}>
-                              SVÅR
+                              {t("lobby.lb.groups.hard")}
                             </th>
                           )}
                           {groupsToShow.includes("total") && (
                             <th className="lb-group" colSpan={5}>
-                              TOTAL
+                              {t("lobby.lb.groups.total")}
                             </th>
                           )}
                         </tr>
@@ -925,57 +919,30 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {aboutOpen && (
         <div className="finish-overlay" onClick={closeAbout}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
-            <div className="finish-title">Vad är GeoSense?</div>
+            <div className="finish-title">{t("lobby.aboutTitle")}</div>
 
             <div className="about-content">
-              <p>
-                GeoSense är ett snabbt, nervigt och beroendeframkallande kartspel där du tränar din geografiska
-                intuition på riktigt: var ligger staden – exakt? Du får ett stadsnamn, du klickar på världskartan,
-                och spelet mäter både precision (hur många km fel) och tempo (hur snabbt du hinner klicka).
-              </p>
+              <p>{t("lobby.about.p1")}</p>
+              <p>{t("lobby.about.p2")}</p>
 
-              <p>Det är lika delar “geografi”, “reaktion” och “kallsvettig finalsekund”.</p>
+              <h3>{t("lobby.about.howTitle")}</h3>
+              <p>{t("lobby.about.p3")}</p>
+              <p>{t("lobby.about.p4")}</p>
 
-              <h3>Så spelar du</h3>
-              <p>
-                En match består av 10 rundor. Varje runda får ni en ny stad och en timer. Du klickar där du tror att
-                staden ligger – och ju närmare du är och ju snabbare du är, desto bättre. Spelet räknar ut ditt
-                rundresultat och visar efteråt en tydlig resultattabell med alla rundor, tider och avstånd.
-              </p>
+              <h3>{t("lobby.about.modesTitle")}</h3>
+              <p>{t("lobby.about.p5")}</p>
 
-              <p>
-                Viktigt: I GeoSense är lägre totalpoäng bättre. Det är mer “golf” än “high score”: minimera
-                felmarginalen och kapa tiden.
-              </p>
+              <h3>{t("lobby.about.lensTitle")}</h3>
+              <p>{t("lobby.about.p6")}</p>
 
-              <h3>Spellägen</h3>
-              <p>
-                Du kan spela 1 mot 1 mot slumpvis spelare (eller utmana någon du ser online). Det finns också ett
-                övningsläge där du kan nöta upp muskelminnet utan pressen från en motståndare.
-              </p>
-
-              <h3>Zoom-lins och tydlig feedback</h3>
-              <p>
-                Kartan fyller hela skärmen och du får en förstorings-lins runt muspekaren för att sätta klicket mer
-                exakt. Efter klicket ser du markörer för både din klickpunkt och målets position, plus avståndet
-                mellan dem – så man lär sig snabbt sina “klassiska missar”.
-              </p>
-
-              <h3>Topplista och progression</h3>
-              <p>
-                GeoSense har en Topplista där du kan jämföra statistik som spelade matcher, vinster/förluster,
-                winrate och poäng per match. Du kan också välja att dölja dig från topplistan.
-              </p>
-
-              <p>
-                Klickar du på ett namn öppnas spelarens progression: level + badges. Badges är grupperade för
-                överblick och du kan hovra för att se vad varje badge betyder.
-              </p>
+              <h3>{t("lobby.about.progressTitle")}</h3>
+              <p>{t("lobby.about.p7")}</p>
+              <p>{t("lobby.about.p8")}</p>
             </div>
 
             <div className="finish-actions">
               <button className="hud-btn" onClick={closeAbout}>
-                Stäng
+                {t("common.close")}
               </button>
             </div>
           </div>
@@ -987,10 +954,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="finish-overlay" onClick={closeProgress}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
             <div className="finish-title">
-              {progressUser} • Level {levelValue}
+              {t("lobby.progress.title", { user: progressUser, levelLabel: t("common.level"), level: levelValue })}
             </div>
 
-            {progressLoading && <div className="progress-loading">Laddar...</div>}
+            {progressLoading && <div className="progress-loading">{t("common.loading")}</div>}
             {progressError && <div className="progress-error">{progressError}</div>}
 
             {!progressLoading && !progressError && (
@@ -998,32 +965,32 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 <div className="progress-summary">
                   <div className="progress-stats-grid">
                     <div className="ps-item">
-                      <div className="ps-label">Spelade</div>
+                      <div className="ps-label">{t("lobby.progress.statsPlayed")}</div>
                       <div className="ps-value">{fmtIntOrDash(progStats.played)}</div>
                     </div>
                     <div className="ps-item">
-                      <div className="ps-label">Vinster</div>
+                      <div className="ps-label">{t("lobby.progress.statsWins")}</div>
                       <div className="ps-value">{fmtIntOrDash(progStats.wins)}</div>
                     </div>
                     <div className="ps-item">
-                      <div className="ps-label">Förluster</div>
+                      <div className="ps-label">{t("lobby.progress.statsLosses")}</div>
                       <div className="ps-value">{fmtIntOrDash(progStats.losses)}</div>
                     </div>
                     <div className="ps-item">
-                      <div className="ps-label">Winrate</div>
+                      <div className="ps-label">{t("lobby.progress.statsWinrate")}</div>
                       <div className="ps-value">{fmtPctOrDash(progStats.pct)}%</div>
                     </div>
                     <div className="ps-item">
-                      <div className="ps-label">Snittpoäng</div>
+                      <div className="ps-label">{t("lobby.progress.statsAvgScore")}</div>
                       <div className="ps-value">{fmtIntOrDash(progStats.avgScore)}</div>
                     </div>
 
                     <div className="ps-item">
-                      <div className="ps-label">Bästa match</div>
+                      <div className="ps-label">{t("lobby.progress.statsBestMatch")}</div>
                       <div className="ps-value">{fmtIntOrDash(progStats.bestMatchScore)}</div>
                     </div>
                     <div className="ps-item">
-                      <div className="ps-label">Största vinst</div>
+                      <div className="ps-label">{t("lobby.progress.statsBestWin")}</div>
                       <div className="ps-value">
                         {Number.isFinite(Number(progStats.bestWinMargin)) ? fmtIntOrDash(progStats.bestWinMargin) : "—"}
                       </div>
@@ -1035,7 +1002,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 				<div className="badge-overview-wrap">
 				  <div className="progress-summary-row">
                     <span>
-                      Badges: {earnedSet.size}/{totalBadges} <span className="progress-hint">• Hovra för info</span>
+                      {t("lobby.progress.badgesLine", { label: t("common.badges"), earned: earnedSet.size, total: totalBadges, hover: t("common.hoverForInfo") })}
                     </span>
                   </div>
 				  <div className="badge-overview">
@@ -1074,7 +1041,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
             <div className="finish-actions">
               <button className="hud-btn" onClick={closeProgress}>
-                Stäng
+                {t("common.close")}
               </button>
             </div>
           </div>

@@ -1,11 +1,11 @@
 // client/src/App.jsx
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { io } from "socket.io-client";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Login from "./components/Login";
+import Lobby from "./components/Lobby";
+import Game from "./components/Game";
+import { register, login, logout, API_BASE } from "./api";
+import { useI18n } from "./i18n/LanguageProvider.jsx";
 import { geoRobinson } from "d3-geo-projection";
-import { login, register, logout, getLeaderboard, API_BASE } from "./api";
-import Login from "./components/Login.jsx";
-import Lobby from "./components/Lobby.jsx";
-import Game from "./components/Game.jsx";
 
 /**
  * Pixelpunkter uppmätta på din bas-bild (world_debug.png / world.png).
@@ -104,295 +104,338 @@ function makeCalibratedProjection({ width, height, refs }) {
   return { project, invert };
 }
 
-function diffLabel(d) {
-  const v = String(d || "").toLowerCase();
-  if (v === "easy") return "Enkel";
-  if (v === "medium") return "Medel";
-  if (v === "hard") return "Svår";
-  return "Medel";
+
+function tFromError(err, t) {
+  const msg = String(err?.message || "");
+  const status = err?.status;
+
+  if (msg.startsWith("errors.")) {
+    return t(msg, status ? { status } : undefined);
+  }
+  return msg || t("errors.unknown");
+}
+
+
+function translateServerMessage(message, t) {
+  const msg = String(message || "").trim();
+  if (!msg) return t("errors.unknown");
+
+  // Allow server to optionally send i18n keys directly.
+  if (msg.startsWith("errors.")) return t(msg);
+
+  // Socket.io server messages (sv) -> i18n
+  const map = {
+    "Ogiltig session, logga in igen.": "errors.sessionInvalid",
+    "Serverfel vid auth.": "errors.authServer",
+    "Du blev utloggad eftersom du loggade in i en annan flik.": "errors.forcedLogout",
+
+    "Du är redan i en match.": "errors.alreadyInMatch",
+
+    "Du kan inte utmana dig själv 😅": "errors.challengeSelf",
+    "Spelaren är inte online": "errors.playerNotOnline",
+    "Spelaren är upptagen i en match": "errors.playerBusy",
+    "Utmanaren är inte längre online": "errors.challengerNotOnline",
+    "Utmanaren är upptagen i en match": "errors.challengerBusy",
+    "Utmaningen är inte riktad till dig.": "errors.challengeNotForYou",
+    "Utmaningen är ogiltig eller har gått ut.": "errors.challengeInvalid",
+  };
+
+  const key = map[msg];
+  return key ? t(key) : msg;
 }
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [socket, setSocket] = useState(null);
+  const { t } = useI18n();
 
-  const [lobbyState, setLobbyState] = useState({ onlineCount: 0 });
-  const [leaderboard, setLeaderboard] = useState([]);
-
-  const [match, setMatch] = useState(null);
-  const [gameState, setGameState] = useState({
+  const initialGameStateRef = useRef({
+    city: null,
     currentRound: -1,
-    cityName: null,
-    city: null, // kan vara cityMeta nu
     roundResults: [],
     finalResult: null,
   });
 
-  const [debugShowTarget, setDebugShowTarget] = useState(false);
-  const toggleDebugShowTarget = useCallback(() => {
-    setDebugShowTarget((v) => !v);
-  }, []);
+  const [session, setSession] = useState(null);
+  const [view, setView] = useState("login"); // "login" | "lobby" | "game"
+  const [socket, setSocket] = useState(null);
+  const [lobbyState, setLobbyState] = useState({ onlineCount: 0, queueCounts: {} });
+  // kept for backward compatibility (Lobby no longer consumes it, but other code may)
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [match, setMatch] = useState(null);
+  const [gameState, setGameState] = useState(initialGameStateRef.current);
 
-  // ✅ login/loading-state + “Render vaknar”-hint
   const [authLoading, setAuthLoading] = useState(false);
-  const [authHint, setAuthHint] = useState(null);
-  const authSlowTimerRef = useRef(null);
+  const [authHint, setAuthHint] = useState("");
 
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
-
-  const scaledRefs = useMemo(() => {
-    const { width, height } = mapSize;
-    if (!width || !height) return null;
-    const sx = width / MAP_REF_BASE_SIZE.width;
-    const sy = height / MAP_REF_BASE_SIZE.height;
-    return ALL_REFS_BASE.map((r) => ({
-      ...r,
-      x: r.x * sx,
-      y: r.y * sy,
-    }));
-  }, [mapSize.width, mapSize.height]);
-
-  const calibrated = useMemo(() => {
-    if (!scaledRefs) return null;
-    return makeCalibratedProjection({
-      width: mapSize.width,
-      height: mapSize.height,
-      refs: scaledRefs,
-    });
-  }, [mapSize.width, mapSize.height, scaledRefs]);
-
-  const mapInvert = calibrated?.invert ?? null;
-  const mapProject = calibrated?.project ?? null;
-
-  const resetToLobbyState = useCallback(() => {
-    setMatch(null);
-    setGameState({
-      currentRound: -1,
-      cityName: null,
-      city: null,
-      roundResults: [],
-      finalResult: null,
-    });
-    setDebugShowTarget(false);
-  }, []);
-
-  // “Hard logout” utan API (bra för forced_logout / auth_error)
-  const hardLogout = useCallback(
-    (s, msg) => {
-      if (msg) alert(msg);
-      try {
-        s?.disconnect();
-      } catch {
-        // ignore
-      }
-      setSocket(null);
-      resetToLobbyState();
-      setSession(null);
-    },
-    [resetToLobbyState]
+  
+    const scaledRefs = useMemo(() => {
+      const { width, height } = mapSize;
+      if (!width || !height) return null;
+      const sx = width / MAP_REF_BASE_SIZE.width;
+      const sy = height / MAP_REF_BASE_SIZE.height;
+      return ALL_REFS_BASE.map((r) => ({
+        ...r,
+        x: r.x * sx,
+        y: r.y * sy,
+      }));
+    }, [mapSize.width, mapSize.height]);
+  
+    const calibrated = useMemo(() => {
+      if (!scaledRefs) return null;
+      return makeCalibratedProjection({
+        width: mapSize.width,
+        height: mapSize.height,
+        refs: scaledRefs,
+      });
+    }, [mapSize.width, mapSize.height, scaledRefs]);
+  
+    const mapInvert = calibrated?.invert ?? null;
+    const mapProject = calibrated?.project ?? null;
+const DIFFS = useMemo(
+    () => [
+      { key: "easy", label: t("common.difficulty.easy") },
+      { key: "medium", label: t("common.difficulty.medium") },
+      { key: "hard", label: t("common.difficulty.hard") },
+    ],
+    [t]
   );
 
+  const diffLabel = (key) => DIFFS.find((d) => d.key === key)?.label || key;
+
+  const resetToLobbyState = () => {
+    setMatch(null);
+    setGameState(initialGameStateRef.current);
+    setView("lobby");
+  };
+
+  const hardLogout = (message, sock = socket) => {
+    if (message) window.alert(message);
+    try {
+      sock?.disconnect();
+    } catch (_) {}
+    setSocket(null);
+    setSession(null);
+    setMatch(null);
+    setGameState(initialGameStateRef.current);
+    setView("login");
+  };
+
+  // --- Socket wiring (connect after login) ---
   useEffect(() => {
-    if (!session) return;
+    if (!session?.sessionId) return;
 
-    const s = io(API_BASE, { transports: ["websocket"], path: "/socket.io" });
+    let alive = true;
+    let s = null;
 
-    s.on("connect", () => s.emit("auth", session.sessionId));
+    (async () => {
+      try {
+        const mod = await import("socket.io-client");
+        if (!alive) return;
 
-    s.on("auth_error", (msg) => {
-      hardLogout(s, msg);
-    });
+        const io = mod.io;
+        // Server expects an explicit "auth" event after connect (not handshake auth)
+        s = io(API_BASE, {
+          transports: ["websocket"],
+          path: "/socket.io",
+        });
 
-    s.on("forced_logout", (msg) => {
-      hardLogout(s, msg || "Du blev utloggad.");
-    });
+        setSocket(s);
 
-    s.on("match_error", (msg) => {
-      alert(msg || "Matchfel.");
-    });
+        s.on("connect", () => {
+          try {
+            s.emit("auth", session.sessionId);
+          } catch (_) {}
+        });
 
-    s.on("challenge_error", (msg) => {
-      alert(msg || "Utmaningsfel.");
-    });
+        s.on("connect_error", (err) => {
+          alert(tFromError(err, t));
+        });
 
-    s.on("lobby_state", (state) => setLobbyState(state));
+        s.on("lobby_state", (state) => {
+          setLobbyState(state || { onlineCount: 0, queueCounts: {} });
+        });
 
-    // ✅ Uppdaterat: challenge payload innehåller challengeId + difficulty
-    s.on("challenge_received", (payload) => {
-      const from = payload?.from;
-      const challengeId = payload?.challengeId;
-      const difficulty = payload?.difficulty;
+        s.on("match_started", (data) => {
+          // server: { matchId, players, totalRounds, isSolo, isPractice, difficulty }
+          setMatch(data || null);
+          setGameState(initialGameStateRef.current);
+          setView("game");
+        });
 
-      if (!from) return;
+        s.on("round_start", ({ roundIndex, cityMeta }) => {
+          setGameState((prev) => ({
+            ...prev,
+            currentRound: typeof roundIndex === "number" ? roundIndex : prev.currentRound,
+            city: cityMeta || null,
+          }));
+        });
 
-      const text =
-        `${from} utmanar dig` +
-        (difficulty ? ` (${diffLabel(difficulty)})` : "") +
-        `. Accepterar du?`;
+        s.on("round_result", ({ results }) => {
+          setGameState((prev) => {
+            const roundIndex = prev.currentRound;
+            const city = prev.city;
+            return {
+              ...prev,
+              roundResults: [...(prev.roundResults || []), { roundIndex, city, results }],
+            };
+          });
+        });
 
-      const accept = window.confirm(text);
+        s.on("match_finished", ({ totalScores, winner, progressionDelta, finishReason }) => {
+          setGameState((prev) => ({
+            ...prev,
+            finalResult: {
+              totalScores,
+              winner,
+              finishReason: finishReason || "normal",
+              progressionDelta: progressionDelta || {},
+            },
+          }));
+        });
 
-      if (accept) {
-        // ✅ skicka challengeId om vi har det (bäst)
-        if (challengeId) s.emit("accept_challenge", { challengeId });
-        else s.emit("accept_challenge", from); // fallback
-      } else {
-        // ✅ skicka decline så avsändaren får feedback (om vi har id)
-        if (challengeId) s.emit("decline_challenge", { challengeId });
-        else s.emit("decline_challenge", { fromUsername: from });
+        s.on("auth_error", (message) => {
+          hardLogout(translateServerMessage(message, t), s);
+        });
+
+        s.on("forced_logout", (message) => {
+          hardLogout(translateServerMessage(message, t), s);
+        });
+
+        s.on("match_error", (message) => {
+          alert(translateServerMessage(message, t));
+        });
+
+        s.on("challenge_error", (message) => {
+          alert(translateServerMessage(message, t));
+        });
+
+        s.on("challenge_received", (payload) => {
+          const from = payload?.from;
+          const challengeId = payload?.challengeId;
+          const difficulty = payload?.difficulty;
+          if (!from) return;
+
+          let text = t("dialogs.acceptChallenge", { from });
+          if (difficulty) text += ` (${diffLabel(difficulty)})`;
+
+          const ok = window.confirm(text);
+          if (ok) {
+            if (challengeId) s.emit("accept_challenge", { challengeId });
+            else s.emit("accept_challenge", from);
+          } else {
+            if (challengeId) s.emit("decline_challenge", { challengeId });
+            else s.emit("decline_challenge", { fromUsername: from });
+          }
+        });
+      } catch (e) {
+        alert(tFromError(e, t));
       }
-    });
-
-    s.on("match_started", (data) => {
-      // server: { matchId, players, totalRounds, isSolo, isPractice, difficulty }
-      setMatch(data);
-      setGameState({
-        currentRound: -1,
-        cityName: null,
-        city: null,
-        roundResults: [],
-        finalResult: null,
-      });
-      setDebugShowTarget(false);
-    });
-
-    // ✅ Servern skickar round_start (inte round_starting) + cityMeta
-    s.on("round_start", ({ roundIndex, cityName, cityMeta }) => {
-      setGameState((prev) => ({
-        ...prev,
-        currentRound: roundIndex,
-        cityName: cityName ?? cityMeta?.name ?? null,
-        city: cityMeta ?? null,
-      }));
-    });
-
-    // ✅ Servern skickar round_result {results} (utan roundIndex/city)
-    s.on("round_result", ({ results }) => {
-      setGameState((prev) => {
-        const roundIndex = prev.currentRound;
-        const city = prev.city;
-        return {
-          ...prev,
-          roundResults: [...prev.roundResults, { roundIndex, city, results }],
-        };
-      });
-    });
-
-    // ✅ tar även emot finishReason nu
-    s.on("match_finished", ({ totalScores, winner, progressionDelta, finishReason }) => {
-      setGameState((prev) => ({
-        ...prev,
-        finalResult: {
-          totalScores,
-          winner,
-          finishReason: finishReason || "normal",
-          progressionDelta: progressionDelta || {},
-        },
-      }));
-      getLeaderboard(session.sessionId).then(setLeaderboard).catch(console.error);
-    });
-
-    setSocket(s);
-    getLeaderboard(session.sessionId).then(setLeaderboard).catch(console.error);
+    })();
 
     return () => {
+      alive = false;
       try {
-        s.disconnect();
-      } catch {
-        // ignore
-      }
+        s?.disconnect();
+      } catch (_) {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, hardLogout]);
+  }, [session?.sessionId, t]);
 
-  const handleAuth = async (mode, username, password) => {
-    if (authLoading) return;
-
+  const handleAuth = async ({ username, password, mode }) => {
     setAuthLoading(true);
-    setAuthHint(null);
-
-    if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
-    authSlowTimerRef.current = setTimeout(() => {
-      setAuthHint("Loggar in, stäng inte fönstret.");
-    }, 1200);
+    setAuthHint(t("common.loading"));
 
     try {
-      const data = mode === "login" ? await login(username, password) : await register(username, password);
-      setSession(data);
+      const fn = mode === "register" ? register : login;
+      const res = await fn(username, password);
+
+      setSession(res);
+      setView("lobby");
+      setAuthHint("");
     } catch (e) {
-      alert(e.message);
+      alert(tFromError(e, t));
+      setAuthHint("");
     } finally {
-      if (authSlowTimerRef.current) clearTimeout(authSlowTimerRef.current);
-      authSlowTimerRef.current = null;
       setAuthLoading(false);
-      setAuthHint(null);
     }
   };
 
   const handleLogout = async () => {
+    const ok = window.confirm(t("dialogs.logoutConfirm"));
+    if (!ok) return;
+
     try {
-      if (session) await logout(session.sessionId).catch(() => {});
+      if (session?.sessionId) await logout(session.sessionId);
+    } catch (e) {
+      // ignore network failures here (still log out locally)
     } finally {
+      setSession(null);
+      setSocket(null);
+      setMatch(null);
+      setGameState(initialGameStateRef.current);
+      setView("login");
       try {
         socket?.disconnect();
-      } catch {
-        // ignore
-      }
-      setSocket(null);
-      resetToLobbyState();
-      setSession(null);
+      } catch (_) {}
     }
   };
 
   const handleLeaveMatch = () => {
     if (!match) return;
 
+    // If match is already finished locally, just go back.
     if (gameState?.finalResult) {
       resetToLobbyState();
       return;
     }
 
-    const ok = window.confirm("Lämna matchen? Det räknas som walkover om det är PvP.");
+    const ok = window.confirm(t("dialogs.leaveMatch"));
     if (!ok) return;
 
     try {
       socket?.emit("leave_match", { matchId: match.matchId });
-    } catch {
-      // ignore
-    }
+    } catch (_) {}
 
     resetToLobbyState();
   };
 
-  if (!session) {
-    return <Login onSubmit={handleAuth} authLoading={authLoading} authHint={authHint} />;
-  }
-
-  if (!match) {
-    return (
-      <Lobby
-        session={session}
-        socket={socket}
-        lobbyState={lobbyState}
-        leaderboard={leaderboard}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
   return (
-    <Game
-      session={session}
-      socket={socket}
-      match={match}
-      gameState={gameState}
-      onLogout={handleLogout}
-      onLeaveMatch={handleLeaveMatch}
-      mapInvert={mapInvert}
-      mapProject={mapProject}
-      onMapSize={setMapSize}
-      debugShowTarget={debugShowTarget}
-      onToggleDebugShowTarget={toggleDebugShowTarget}
-    />
+    <>
+      <div className="mobile-block" role="status" aria-live="polite">
+        {t("mobile.blocked")}
+      </div>
+
+      <div className="app-desktop">
+        {view === "login" && (
+          <Login onSubmit={handleAuth} authLoading={authLoading} authHint={authHint} />
+        )}
+
+        {view === "lobby" && session && socket && (
+          <Lobby
+            session={session}
+            socket={socket}
+            lobbyState={lobbyState}
+            leaderboard={leaderboard}
+            onLogout={handleLogout}
+            diffLabel={diffLabel}
+            diffs={DIFFS}
+          />
+        )}
+
+        {view === "game" && session && socket && match && (
+          <Game
+            session={session}
+            socket={socket}
+            match={match}
+            gameState={gameState}
+            onLeaveMatch={handleLeaveMatch}
+            onLogout={handleLogout}
+            mapProject={mapProject}
+            mapInvert={mapInvert}
+            onMapSize={setMapSize}
+          />
+        )}
+      </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 // client/src/components/Game.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useI18n } from "../i18n/LanguageProvider.jsx";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -154,6 +155,7 @@ export default function Game({
   debugShowTarget,
   onToggleDebugShowTarget,
 }) {
+  const { t } = useI18n();
   const mapRef = useRef(null);
   const myName = session.username;
 
@@ -162,7 +164,7 @@ export default function Game({
 
   const opponentName = useMemo(() => {
     const players = Array.isArray(match?.players) ? match.players : [];
-    return players.find((p) => p !== myName) || "Motståndare";
+    return players.find((p) => p !== myName) || t("game.opponent");
   }, [match?.players, myName]);
 
   // --- map load gate ---
@@ -513,7 +515,7 @@ export default function Game({
     if (gameState.currentRound < 0) return;
 
     if (!mapInvert) {
-      alert("Kartan är inte kalibrerad än (mapInvert saknas).");
+      alert(t("game.mapNotCalibrated"));
       return;
     }
 
@@ -606,7 +608,9 @@ export default function Game({
 
     const mapped = rows.map((rr, i) => {
       const city = rr?.city || null;
-      const cityLabel = shortCityName(city?.name || rr?.cityName || `Runda ${i + 1}`);
+	const cityLabel = shortCityName(
+	  city?.name || rr?.cityName || t("game.roundN", { n: i + 1 })
+	);
 
       const myRes = rr?.results?.[myName] || null;
       const oppRes = rr?.results?.[opponentName] || null;
@@ -696,9 +700,9 @@ export default function Game({
       >
         {/* Score + rundrader */}
         <div className="hud hud-left">
-          <div className="hud-name">{isPractice ? `${myName} (Öva)` : myName}</div>
+          <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
           <div className="hud-score-line">
-            <div className="hud-score-label">Aktuell totalpoäng</div>
+            <div className="hud-score-label">{t("game.currentTotalScore")}</div>
             <div className="hud-score">{Math.round(myScoreLive)}</div>
           </div>
 
@@ -721,7 +725,7 @@ export default function Game({
           <div className="hud hud-right">
             <div className="hud-name">{opponentName}</div>
             <div className="hud-score-line">
-              <div className="hud-score-label">Aktuell totalpoäng</div>
+              <div className="hud-score-label">{t("game.currentTotalScore")}</div>
               <div className="hud-score">{Math.round(oppScoreSoFar)}</div>
             </div>
 
@@ -747,13 +751,11 @@ export default function Game({
           onMouseLeave={() => setHoveringUiSafe(false)}
         >
           <button className="hud-btn" onClick={stop(onToggleDebugShowTarget)}>
-            {debugShowTarget ? "Debug: ON" : "Debug"}
+            {debugShowTarget ? t("game.debugOn") : t("game.debug")}
           </button>
-          <button className="hud-btn" onClick={stop(onLeaveMatch)}>
-            Lämna
-          </button>
+          <button className="hud-btn" onClick={stop(onLeaveMatch)}>{t("common.leave")}</button>
           <button className="hud-btn" onClick={stop(onLogout)}>
-            Logga ut
+            {t("common.logout")}
           </button>
         </div>
 
@@ -772,10 +774,10 @@ export default function Game({
                 />
               ) : null}
             </div>
-            {pop ? <div className="city-pop">Pop: {pop}</div> : null}
+            {pop ? <div className="city-pop">{t("game.pop")}: {pop}</div> : null}
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
             {countdown !== null && countdown > 0 && (
-              <div className="city-countdown">Nästa runda om {countdown}s</div>
+              <div className="city-countdown">{t("game.nextRoundIn")} {countdown}s</div>
             )}
           </div>
         </div>
@@ -850,7 +852,7 @@ export default function Game({
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
             <button className="ready-btn" onClick={stop(onPressReady)} disabled={iAmReady}>
-              {iAmReady ? "Väntar på andra..." : "Redo för nästa"}
+              {iAmReady ? t("game.waitingForOthers") : t("game.readyForNext")}
             </button>
           </div>
         )}
@@ -867,7 +869,7 @@ export default function Game({
               onClick={stop(onPressStartReady)}
               disabled={!mapLoaded || startReadySent}
             >
-              {!mapLoaded ? "Laddar karta..." : startReadySent ? "Väntar..." : "Redo"}
+              {!mapLoaded ? t("game.loadingMap") : startReadySent ? t("game.waiting") : t("game.ready")}
             </button>
           </div>
         )}
@@ -880,7 +882,7 @@ export default function Game({
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
             <div className="finish-card finish-card-wide">
-              <div className="finish-title">{isPractice ? "Övning klar" : "Slutresultat"}</div>
+              <div className="finish-title">{isPractice ? t("game.practiceFinished") : t("game.finalResults")}</div>
 
               <div className="finish-row">
                 <span>{myName}</span>
@@ -899,7 +901,7 @@ export default function Game({
                   {gameState.finalResult.winner === myName
                     ? "Du vann"
                     : gameState.finalResult.winner
-                    ? "Du förlorade"
+                    ? t("game.youLost")
                     : "Oavgjort"}
                 </div>
               )}
@@ -1005,15 +1007,15 @@ export default function Game({
                   <thead>
                     <tr>
                       <th>R</th>
-                      <th>Stad</th>
-                      <th>{myName} poäng</th>
-                      <th>{myName} avstånd</th>
-                      <th>{myName} tid</th>
+                      <th>{t("game.city")}</th>
+                      <th>{t("game.table.scoreCol", { name: myName })}</th>
+                      <th>{t("game.table.distanceCol", { name: myName })}</th>
+                      <th>{t("game.table.timeCol", { name: myName })}</th>
                       {!isPractice && (
                         <>
-                          <th>{opponentName} poäng</th>
-                          <th>{opponentName} avstånd</th>
-                          <th>{opponentName} tid</th>
+                          <th>{t("game.table.scoreCol", { name: opponentName })}</th>
+                          <th>{t("game.table.distanceCol", { name: opponentName })}</th>
+                          <th>{t("game.table.timeCol", { name: opponentName })}</th>
                         </>
                       )}
                     </tr>
@@ -1052,7 +1054,7 @@ export default function Game({
 
                     {/* Total */}
                     <tr className="rt-total">
-                      <td colSpan={2}>Total</td>
+                      <td colSpan={2}>{t("game.total")}</td>
                       <td>{fmtScore(roundsTable.totals.myScore)}</td>
                       <td colSpan={2} />
                       {!isPractice && (
@@ -1067,9 +1069,7 @@ export default function Game({
               </div>
 
               <div className="finish-actions">
-                <button className="hud-btn" onClick={stop(onLeaveMatch)}>
-                  Till lobby
-                </button>
+                <button className="hud-btn" onClick={stop(onLeaveMatch)}>{t("game.backToLobby")}</button>
               </div>
             </div>
           </div>
