@@ -40,7 +40,7 @@ export default {
     registerBtn: "Create account",
     loggingIn: "Logging in…",
     registering: "Creating account…",
-    hint: "Tip: pick a unique username.",
+    hint: " ",
     copy: "© {year} GeoSense",
   },
 

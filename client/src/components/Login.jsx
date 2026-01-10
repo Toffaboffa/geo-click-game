@@ -62,9 +62,12 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
         </div>
 
         <form onSubmit={submit} className="form">
-          <label className="label">
-            {t("login.username")}
+          <div className="form-row">
+            <label className="form-label" htmlFor="login-username">
+              {t("login.username")}
+            </label>
             <input
+              id="login-username"
               className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -72,11 +75,14 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
               autoComplete="username"
               disabled={loading}
             />
-          </label>
+          </div>
 
-          <label className="label">
-            {t("login.password")}
+          <div className="form-row">
+            <label className="form-label" htmlFor="login-password">
+              {t("login.password")}
+            </label>
             <input
+              id="login-password"
               className="input"
               type="password"
               value={password}
@@ -85,7 +91,7 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
               autoComplete={isLogin ? "current-password" : "new-password"}
               disabled={loading}
             />
-          </label>
+          </div>
 
           <button className="primary-btn" type="submit" disabled={loading}>
             {loading
@@ -100,7 +106,7 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
           <div className="hint">{authHint ? authHint : t("login.hint")}</div>
         </form>
 
-        <div className="footer">{t("login.copy", { year })}</div>
+        <div className="footer">© {year} {t("common.appName")} (by Kristoffer Åberg)</div>
       </div>
     </div>
   );

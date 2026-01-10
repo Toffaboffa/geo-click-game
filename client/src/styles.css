@@ -153,6 +153,98 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* ---------- Login layout tweaks (mode buttons + form grid) ---------- */
+/* 1) Mindre text på blurb/undertitel */
+.subtitle {
+  font-size: 13px;
+  line-height: 1.35;
+  opacity: 0.9;
+  margin-top: 6px;
+}
+
+/* 2) Mode-knappar (Logga in / Skapa konto) ska inte se ut som primär-knappen */
+.mode-toggle {
+  display: inline-flex;
+  gap: 8px;
+  margin: 10px 0 14px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.mode-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  color: #e5e7eb;
+  padding: 7px 14px;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.mode-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mode-btn.is-active {
+  background: rgba(37, 99, 235, 0.25);
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+/* 3) Form: fält under varandra, labels högerjusterade mot inputs */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.form-label {
+  text-align: right;
+  font-size: 13px;
+  opacity: 0.95;
+  white-space: nowrap;
+}
+
+.form .input {
+  width: 100%;
+  margin: 0;
+}
+
+/* liten spacing mellan raderna på små skärmar */
+@media (max-width: 420px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+  }
+  .form-label {
+    text-align: left;
+  }
+}
+
+/* 4) Footer centrerad */
+.footer {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Gör primärknappen explicit (om global button-stil ändras senare) */
+.primary-btn {
+  background: #2563eb;
+}
+.primary-btn:hover {
+  opacity: 0.92;
+}
 .login-loading-hint {
   margin-top: 10px;
   font-size: 12px;
