@@ -1436,15 +1436,19 @@ select:focus-visible {
 }
 
 /* Lobby action blocks (matchmaking + öva) */
-.lobby-actions {
+.lobby-actions{
+  display: flex;
   gap: 12px;
+  align-items: stretch;   /* samma höjd */
+  flex-wrap: wrap;        /* fallback på smala skärmar */
 }
 
 /* Lobby action blocks (matchmaking + öva) */
-.lobby-action-block {
-  flex: 1 1 0;
-  min-width: 220px;
-
+.lobby-action-block{
+  flex: 1 1 50%;
+  width: auto;            /* viktigt: inte 100% */
+  min-width: 260px;       /* justera vid behov */
+  
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
@@ -1460,11 +1464,10 @@ select:focus-visible {
   margin-bottom: 8px;
 }
 
-.lobby-action-row {
+.lobby-action-row{
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .lobby-action-row button {
