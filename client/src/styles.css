@@ -166,7 +166,7 @@ button:disabled {
 .mode-toggle {
   display: inline-flex;
   gap: 8px;
-  margin: 10px 0 14px;
+  margin: 10px 100px 14px 120px;
   padding: 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
@@ -202,7 +202,7 @@ button:disabled {
 
 .form-row {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: 160px 1fr;
   align-items: center;
   column-gap: 10px;
 }
@@ -215,7 +215,7 @@ button:disabled {
 }
 
 .form .input {
-  width: 100%;
+  width: 150px;
   margin: 0;
 }
 
@@ -241,6 +241,9 @@ button:disabled {
 /* Gör primärknappen explicit (om global button-stil ändras senare) */
 .primary-btn {
   background: #2563eb;
+  width: 100px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .primary-btn:hover {
   opacity: 0.92;
