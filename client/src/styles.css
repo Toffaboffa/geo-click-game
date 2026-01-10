@@ -1483,7 +1483,6 @@ select:focus-visible {
     flex: 1 1 100%;
   }
 }
-*/
 }
 
 .queue-me-hint {
@@ -1891,4 +1890,3 @@ select:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-
