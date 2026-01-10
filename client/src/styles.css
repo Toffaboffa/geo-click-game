@@ -241,7 +241,7 @@ button:disabled {
 /* Gör primärknappen explicit (om global button-stil ändras senare) */
 .primary-btn {
   background: #2563eb;
-  width: 100px;
+  width: 115px;
   margin-left: auto;
   margin-right: auto;
 }
