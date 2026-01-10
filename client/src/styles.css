@@ -82,7 +82,7 @@ body,
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 
   /* ✅ fast bredd */
-  width: 520px;
+  width: 630px;
 
   /* ✅ säkerhetsnät för mobil / små fönster */
   max-width: calc(100vw - 32px);
@@ -1447,7 +1447,7 @@ select:focus-visible {
 /* Varje block tar halva bredden och håller sig symmetriskt */
 .lobby-action-block{
   flex: 1 1 0;            /* lika breda */
-  min-width: 0;           /* viktigt: låt innehållet krympa istället för att bryta rad */
+  max-width: 250px;           /* viktigt: låt innehållet krympa istället för att bryta rad */
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
