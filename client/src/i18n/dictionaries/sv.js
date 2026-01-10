@@ -41,7 +41,7 @@ export default {
     loggingIn: "Loggar in…",
     registering: "Skapar konto…",
     hint:
-      "Tips: välj ett unikt användarnamn. Du kan byta senare genom att skapa nytt konto.",
+      " ",
     copy: "© {year} GeoSense",
   },
 
