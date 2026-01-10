@@ -1397,6 +1397,7 @@ button:disabled {
 
 /* Selects (du har input + button men inte select) */
 select {
+  font-family: inherit;
   padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid #475569;
@@ -1406,6 +1407,7 @@ select {
   font-size: 13px;
   outline: none;
 }
+
 select:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.9);
   outline-offset: 2px;
@@ -1438,8 +1440,11 @@ select:focus-visible {
   gap: 12px;
 }
 
+/* Lobby action blocks (matchmaking + öva) */
 .lobby-action-block {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 220px;
+
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
