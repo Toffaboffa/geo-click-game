@@ -52,6 +52,14 @@ export default {
     loggedInAs: "Inloggad som: {user}",
     onlineNowCount: "Online just nu: {n}st.",
 
+
+    bugReport: "Rapportera bugg",
+    bugReportTitle: "Rapportera en bugg",
+    bugReportHint: "Skriv kort vad som hände. Kopiera rapporten (inkl. diagnos) och klistra in där du rapporterar – eller öppna ett mailutkast.",
+    bugReportPlaceholder: "Steg för steg…\n\nFörväntat: …\nFaktiskt: …",
+    bugReportCopy: "Kopiera rapport",
+    bugReportCopied: "Kopierat!",
+    bugReportEmail: "Öppna e‑post",
     queue: {
       ready: "redo",
     },

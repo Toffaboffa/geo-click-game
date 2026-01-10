@@ -1889,3 +1889,57 @@ select:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+
+/* ---------- Discreet bug report link under lobby panel ---------- */
+.lobby-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.bug-report-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.72);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bug-report-btn:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.bug-report-text {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  outline: none;
+}
+
+.bug-report-text:focus {
+  border-color: rgba(99, 102, 241, 0.55);
+}
+
+.bug-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}

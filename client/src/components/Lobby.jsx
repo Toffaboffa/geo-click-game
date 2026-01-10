@@ -141,6 +141,11 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
 
+  // Bug report (discreet link under lobby panel)
+  const [bugOpen, setBugOpen] = useState(false);
+  const [bugText, setBugText] = useState("");
+  const [bugCopied, setBugCopied] = useState(false);
+
   // Leaderboard modal
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
@@ -217,6 +222,77 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   };
 
   const openAbout = () => setAboutOpen(true);
+
+  const closeBug = () => setBugOpen(false);
+  const openBug = () => {
+    setBugCopied(false);
+    setBugOpen(true);
+  };
+
+  const buildBugReport = () => {
+    const nowIso = new Date().toISOString();
+    const info = {
+      user: session?.username ?? "",
+      time: nowIso,
+      url: typeof window !== "undefined" ? window.location?.href : "",
+      ua: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      lang: typeof navigator !== "undefined" ? navigator.language : "",
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      screen:
+        typeof window !== "undefined"
+          ? `${window.screen?.width ?? "?"}x${window.screen?.height ?? "?"}`
+          : "",
+      onlineCount,
+      queueCounts,
+      queueState,
+    };
+
+    return [
+      "GeoSense – Bug Report",
+      "",
+      "Describe what happened (steps, expected vs actual):",
+      bugText || "",
+      "",
+      "Diagnostics:",
+      JSON.stringify(info, null, 2),
+      "",
+    ].join("\n");
+  };
+
+  const copyBugReport = async () => {
+    const text = buildBugReport();
+    try {
+      await navigator.clipboard.writeText(text);
+      setBugCopied(true);
+      setTimeout(() => setBugCopied(false), 1400);
+    } catch {
+      // Fallback: old browsers
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setBugCopied(true);
+        setTimeout(() => setBugCopied(false), 1400);
+      } catch {
+        // If all else fails, do nothing.
+      }
+    }
+  };
+
+const BUG_REPORT_EMAIL = "kristoffer.aberg81@gmail.com";
+
+const emailBugReport = () => {
+  const subject = "GeoSense – Bug Report";
+  const body = encodeURIComponent(buildBugReport());
+  window.location.href = `mailto:${encodeURIComponent(BUG_REPORT_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${body}`;
+};
+
   const closeAbout = () => setAboutOpen(false);
 
   const openLeaderboard = () => setLeaderboardOpen(true);
@@ -616,6 +692,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         </form>
       </div>
 
+      <div className="lobby-footer">
+        <button type="button" className="bug-report-btn" onClick={openBug}>
+          🐞 {t("lobby.bugReport")}
+        </button>
+      </div>
+
       {/* Topplista modal */}
       {leaderboardOpen && (
         <div className="finish-overlay" onClick={closeLeaderboard}>
@@ -949,7 +1031,40 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         </div>
       )}
 
-      {/* Progression modal */}
+      
+      {/* Bug report modal */}
+      {bugOpen && (
+        <div className="finish-overlay" onClick={closeBug}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">{t("lobby.bugReportTitle")}</div>
+
+            <div className="about-content">
+              <p>{t("lobby.bugReportHint")}</p>
+
+              <textarea
+                className="bug-report-text"
+                value={bugText}
+                onChange={(e) => setBugText(e.target.value)}
+                placeholder={t("lobby.bugReportPlaceholder")}
+              />
+
+              <div className="bug-report-actions">
+                <button type="button" className="hud-btn" onClick={copyBugReport}>
+                  {bugCopied ? `✅ ${t("lobby.bugReportCopied")}` : t("lobby.bugReportCopy")}
+                </button>
+                <button type="button" className="hud-btn" onClick={emailBugReport}>
+                  ✉️ {t("lobby.bugReportEmail")}
+                </button>
+                <button type="button" className="hud-btn" onClick={closeBug}>
+                  {t("common.close")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* Progression modal */}
       {progressOpen && (
         <div className="finish-overlay" onClick={closeProgress}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>

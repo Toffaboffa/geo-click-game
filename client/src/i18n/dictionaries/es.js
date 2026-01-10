@@ -51,6 +51,14 @@ export default {
     loggedInAs: "Conectado como: {user}",
     onlineNowCount: "En línea: {n}.",
 
+
+    bugReport: "Reportar un bug",
+    bugReportTitle: "Reportar un bug",
+    bugReportHint: "Describe brevemente lo ocurrido. Copia el informe (incl. diagnósticos) y pégalo donde reportes errores — o abre un borrador de correo.",
+    bugReportPlaceholder: "Pasos…\n\nEsperado: …\nActual: …",
+    bugReportCopy: "Copiar informe",
+    bugReportCopied: "¡Copiado!",
+    bugReportEmail: "Abrir correo",
     queue: {
       ready: "listo",
     },
