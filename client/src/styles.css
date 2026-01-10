@@ -1397,14 +1397,15 @@ button:disabled {
 
 /* Selects (du har input + button men inte select) */
 select {
-  font-family: inherit;
+  font: inherit;          /* samma typsnitt som resten */
+  font-weight: 700;
+  font-size: 13px;
+
   padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid #475569;
   background: #020617;
   color: #e5e7eb;
-  font-weight: 700;
-  font-size: 13px;
   outline: none;
 }
 
@@ -1440,15 +1441,13 @@ select:focus-visible {
   display: flex;
   gap: 12px;
   align-items: stretch;   /* samma höjd */
-  flex-wrap: wrap;        /* fallback på smala skärmar */
+  flex-wrap: nowrap;      /* håll 2 kolumner i panelen */
 }
 
-/* Lobby action blocks (matchmaking + öva) */
+/* Varje block tar halva bredden och håller sig symmetriskt */
 .lobby-action-block{
-  flex: 1 1 50%;
-  width: auto;            /* viktigt: inte 100% */
-  min-width: 260px;       /* justera vid behov */
-  
+  flex: 1 1 0;            /* lika breda */
+  min-width: 0;           /* viktigt: låt innehållet krympa istället för att bryta rad */
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
@@ -1468,10 +1467,23 @@ select:focus-visible {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;        /* om det blir trångt: select + knapp får gå ner */
 }
 
 .lobby-action-row button {
   margin-top: 0; /* viktigt pga global button { margin-top: 8px } */
+}
+
+/* På riktigt små skärmar: stacka istället */
+@media (max-width: 420px) {
+  .lobby-actions{
+    flex-wrap: wrap;
+  }
+  .lobby-action-block{
+    flex: 1 1 100%;
+  }
+}
+*/
 }
 
 .queue-me-hint {
