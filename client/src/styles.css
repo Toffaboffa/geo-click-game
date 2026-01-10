@@ -426,8 +426,8 @@ button:disabled {
 }
 
 .hud-name {
-  font-size: 12px;
-  opacity: 0.75;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .hud-score {
@@ -441,8 +441,8 @@ button:disabled {
 }
 
 .hud-score-label {
-  font-size: 10px;
-  opacity: 0.65;
+  font-size: 14px;
+  opacity: 0.85;
   letter-spacing: 0.15px;
 }
 
