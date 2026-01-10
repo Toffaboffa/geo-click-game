@@ -645,7 +645,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="lobby-main">
           <div className="panel">
           <div className="panel-header">
-            <h2>{t("lobby.loggedInAs", { user: session.username })}{meLevel != null && Number.isFinite(Number(meLevel)) ? ` . L${Math.round(Number(meLevel))}` : ""}</h2>
+            <h2>{t("lobby.loggedInAs", { user: session.username })}{meLevel != null && Number.isFinite(Number(meLevel)) ? ` · L${Math.round(Number(meLevel))}` : ""}</h2>
 
             <div className="panel-header-actions">
               <button
