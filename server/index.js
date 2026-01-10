@@ -822,6 +822,18 @@ function startSoloMatch(match, socket) {
   }, 10_000);
 }
 
+function wrapLon180(lon) {
+  // Normalisera lon till intervallet [-180, 180]
+  const x = ((Number(lon) + 180) % 360 + 360) % 360 - 180;
+  return x;
+}
+
+function antipodeLonLat(lon, lat) {
+  // Antipod: punkt på motsatta sidan av jorden (≈ maxdistans)
+  return [wrapLon180(Number(lon) + 180), -Number(lat)];
+}
+
+
 function calculateClick(city, lon, lat, timeMs, scorer) {
   // Coerce till numbers och clampa tid (skyddar mot strängar / negativa värden)
   const cLat = Number(city?.lat);
@@ -1103,7 +1115,8 @@ function startRound(match) {
     // Time-out: fyll straffklick för de som inte klickat
     for (const p of match.players) {
       if (!r.clicks[p]) {
-        r.clicks[p] = calculateClick(city, city.lon, city.lat, PENALTY_TIME_MS, match.scorer);
+        const [pLon, pLat] = antipodeLonLat(city.lon, city.lat);
+        r.clicks[p] = calculateClick(city, pLon, pLat, PENALTY_TIME_MS, match.scorer);
       }
     }
 
@@ -1540,12 +1553,22 @@ async function finishMatch(match, opts = {}) {
         await client.query(`update users set losses = losses + 1, ${dc.losses} = ${dc.losses} + 1 where username=$1`, [
           walkoverLoser,
         ]);
-
         const hasWinStreak = await hasColumn(client, "users", "win_streak");
+        const hasBestWinStreak = await hasColumn(client, "users", "best_win_streak");
         if (hasWinStreak) {
-          await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [
-            walkoverWinner,
-          ]);
+          if (hasBestWinStreak) {
+            await client.query(
+              `update users
+               set win_streak = coalesce(win_streak,0) + 1,
+                   best_win_streak = greatest(coalesce(best_win_streak,0), coalesce(win_streak,0) + 1)
+               where username=$1`,
+              [walkoverWinner]
+            );
+          } else {
+            await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [
+              walkoverWinner,
+            ]);
+          }
           await client.query(`update users set win_streak = 0 where username=$1`, [walkoverLoser]);
         }
 
@@ -1625,10 +1648,30 @@ async function finishMatch(match, opts = {}) {
             loser,
           ]);
 
+                    const hasWinStreak = await hasColumn(client, "users", "win_streak");
+          const hasBestWinStreak = await hasColumn(client, "users", "best_win_streak");
+          if (hasWinStreak) {
+            if (hasBestWinStreak) {
+              await client.query(
+                `update users
+                 set win_streak = coalesce(win_streak,0) + 1,
+                     best_win_streak = greatest(coalesce(best_win_streak,0), coalesce(win_streak,0) + 1)
+                 where username=$1`,
+                [winner]
+              );
+            } else {
+              await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [winner]);
+            }
+            await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
+          }
+        }
+
+
+        // ✅ Oavgjort mellan två riktiga spelare ska bryta win streak (ingen vann)
+        if (!winner && bothReal) {
           const hasWinStreak = await hasColumn(client, "users", "win_streak");
           if (hasWinStreak) {
-            await client.query(`update users set win_streak = coalesce(win_streak,0) + 1 where username=$1`, [winner]);
-            await client.query(`update users set win_streak = 0 where username=$1`, [loser]);
+            await client.query(`update users set win_streak = 0 where username = any($1::text[])`, [realPlayers]);
           }
         }
 

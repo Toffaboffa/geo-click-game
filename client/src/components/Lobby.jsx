@@ -25,7 +25,6 @@ function fmtPctOrDash(v) {
 }
 
 const DIFFS = ["easy", "medium", "hard"];
-
 const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
 
 const SORT_KEYS = [
@@ -104,7 +103,6 @@ function FlagOrEmoji({ emoji, alt, className }) {
   return <>{emoji}</>;
 }
 
-
 export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
@@ -122,7 +120,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [savingVis, setSavingVis] = useState(false);
 
   // leaderboard wide
-  const [lbView, setLbView] = useState("total"); // easy|medium|hard|total|all
+  const [lbView, setLbView] = useState("all"); // easy|medium|hard|total|all
   const [lbSort, setLbSort] = useState("ppm"); // ppm|pct|sp|vm|fm
   const [lbDir, setLbDir] = useState(""); // "" => server default
   const [lbAllSortMode, setLbAllSortMode] = useState("total"); // när view=all: vilken grupp sorterar vi på
@@ -285,13 +283,15 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     }
   };
 
-const BUG_REPORT_EMAIL = "kristoffer.aberg81@gmail.com";
+  const BUG_REPORT_EMAIL = "kristoffer.aberg81@gmail.com";
 
-const emailBugReport = () => {
-  const subject = "GeoSense – Bug Report";
-  const body = encodeURIComponent(buildBugReport());
-  window.location.href = `mailto:${encodeURIComponent(BUG_REPORT_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${body}`;
-};
+  const emailBugReport = () => {
+    const subject = "GeoSense – Bug Report";
+    const body = encodeURIComponent(buildBugReport());
+    window.location.href = `mailto:${encodeURIComponent(BUG_REPORT_EMAIL)}?subject=${encodeURIComponent(
+      subject
+    )}&body=${body}`;
+  };
 
   const closeAbout = () => setAboutOpen(false);
 
@@ -300,20 +300,21 @@ const emailBugReport = () => {
 
   // ESC stänger modaler
   useEffect(() => {
-    if (!progressOpen && !aboutOpen && !leaderboardOpen) return;
+    if (!progressOpen && !aboutOpen && !leaderboardOpen && !bugOpen) return;
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
         if (progressOpen) closeProgress();
         if (aboutOpen) closeAbout();
         if (leaderboardOpen) closeLeaderboard();
+        if (bugOpen) closeBug();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressOpen, aboutOpen, leaderboardOpen]);
+  }, [progressOpen, aboutOpen, leaderboardOpen, bugOpen]);
 
   const setShowMe = async (next) => {
     const val = !!next;
@@ -327,10 +328,6 @@ const emailBugReport = () => {
     } finally {
       setSavingVis(false);
     }
-  };
-
-  const onToggleShowMe = async () => {
-    await setShowMe(!showMeOnLeaderboard);
   };
 
   // Queue start/stop
@@ -392,13 +389,18 @@ const emailBugReport = () => {
         const nonZero = rows.filter(hasAnyMatches);
 
         // privacy-toggle (lokal filtrering)
-        const filtered = showMeOnLeaderboard
-          ? nonZero
-          : nonZero.filter((u) => u.namn !== session.username);
+        const filtered = showMeOnLeaderboard ? nonZero : nonZero.filter((u) => u.namn !== session.username);
 
         setLbRows(filtered);
       } catch (e) {
-        if (!cancelled) setLbError(e?.message ? (String(e.message).startsWith("errors.") ? t(e.message) : e.message) : t("errors.leaderboardLoadFailed"));
+        if (!cancelled)
+          setLbError(
+            e?.message
+              ? String(e.message).startsWith("errors.")
+                ? t(e.message)
+                : e.message
+              : t("errors.leaderboardLoadFailed")
+          );
         if (!cancelled) setLbRows([]);
       } finally {
         if (!cancelled) setLbLoading(false);
@@ -451,7 +453,13 @@ const emailBugReport = () => {
 
       setProgressData(p || null);
     } catch (e) {
-      setProgressError(e?.message ? (String(e.message).startsWith("errors.") ? t(e.message) : e.message) : t("errors.progressionLoadFailed"));
+      setProgressError(
+        e?.message
+          ? String(e.message).startsWith("errors.")
+            ? t(e.message)
+            : e.message
+          : t("errors.progressionLoadFailed")
+      );
     } finally {
       setProgressLoading(false);
     }
@@ -493,6 +501,7 @@ const emailBugReport = () => {
 
     return groups;
   }, [badgesCatalog]);
+
   const earnedSet = useMemo(() => {
     const earned =
       progressData?.earnedBadges ||
@@ -564,138 +573,145 @@ const emailBugReport = () => {
     <div className="screen">
       <StartPings />
       <img className="screen-logo" src={logo} alt={t("common.appName")} />
-      <div className="screen-topbar"><LanguageToggle /></div>
-      <div className="panel">
-        <div className="panel-header">
-          <h2>{t("lobby.loggedInAs", { user: session.username })}</h2>
+      <div className="screen-topbar">
+        <LanguageToggle />
+      </div>
 
-          <div className="panel-header-actions">
-            <button
-              type="button"
-              className="help-btn"
-              onClick={openAbout}
-              title={t("lobby.aboutTitle")}
-              aria-label={t("lobby.aboutTitle")}
-            >
-              ?
-            </button>
-            <button className="logout-btn" onClick={onLogout}>
-              {t("common.logout")}
-            </button>
-          </div>
-        </div>
+      {/* ✅ Viktigt: wrappar panel + footer i en egen kolumn-stack så den hamnar UNDER, inte bredvid */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+        <div className="panel">
+          <div className="panel-header">
+            <h2>{t("lobby.loggedInAs", { user: session.username })}</h2>
 
-        <div className="panel-sub-actions">
-          <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
-            🏆 {t("lobby.leaderboard")}
-          </button>
-          <button
-            type="button"
-            className="sub-action-btn"
-            onClick={() => openProgressFor(session.username)}
-            disabled={!session?.sessionId}
-          >
-            ⭐ {t("lobby.myProgress")}
-          </button>
-        </div>
-
-        <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
-
-        {/* Queue status cards */}
-        <div className="queue-cards">
-          <div className={`queue-card ${queueState.queued && queueState.difficulty === "easy" ? "is-me" : ""}`}>
-            <div className="queue-card-title">{t("common.difficulty.easy")}</div>
-            <div className="queue-card-count">{queueCounts.easy}</div>
-            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
-          </div>
-          <div className={`queue-card ${queueState.queued && queueState.difficulty === "medium" ? "is-me" : ""}`}>
-            <div className="queue-card-title">{t("common.difficulty.medium")}</div>
-            <div className="queue-card-count">{queueCounts.medium}</div>
-            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
-          </div>
-          <div className={`queue-card ${queueState.queued && queueState.difficulty === "hard" ? "is-me" : ""}`}>
-            <div className="queue-card-title">{t("common.difficulty.hard")}</div>
-            <div className="queue-card-count">{queueCounts.hard}</div>
-            <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
-          </div>
-        </div>
-
-        {/* Matchmaking */}
-        <div className="lobby-actions">
-          <div className="lobby-action-block">
-            <div className="lobby-action-title">{t("lobby.matchRandom.title")}</div>
-            <div className="lobby-action-row">
-              <select
-                value={queueDifficulty}
-                onChange={(e) => setQueueDifficulty(safeDiff(e.target.value))}
-                disabled={!socket || queueState.queued}
+            <div className="panel-header-actions">
+              <button
+                type="button"
+                className="help-btn"
+                onClick={openAbout}
+                title={t("lobby.aboutTitle")}
+                aria-label={t("lobby.aboutTitle")}
               >
-                {DIFFS.map((d) => (
-                  <option key={d} value={d}>
-                    {t(`common.difficulty.${d}`)}
-                  </option>
-                ))}
-              </select>
-
-              {!queueState.queued ? (
-                <button onClick={startQueue} disabled={!socket}>
-                  {t("lobby.matchRandom.readyUp")}
-                </button>
-              ) : (
-                <button onClick={leaveQueue} disabled={!socket}>
-                  {t("lobby.matchRandom.leaveQueue")}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="lobby-action-block">
-            <div className="lobby-action-title">{t("common.modes.practice")}</div>
-            <div className="lobby-action-row">
-              <select
-                value={practiceDifficulty}
-                onChange={(e) => setPracticeDifficulty(safeDiff(e.target.value))}
-                disabled={!socket}
-              >
-                {DIFFS.map((d) => (
-                  <option key={d} value={d}>
-                    {t(`common.difficulty.${d}`)}
-                  </option>
-                ))}
-              </select>
-              <button onClick={startSolo} disabled={!socket}>
-                {t("lobby.practice.start")}
+                ?
+              </button>
+              <button className="logout-btn" onClick={onLogout}>
+                {t("common.logout")}
               </button>
             </div>
           </div>
+
+          <div className="panel-sub-actions">
+            <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
+              🏆 {t("lobby.leaderboard")}
+            </button>
+            <button
+              type="button"
+              className="sub-action-btn"
+              onClick={() => openProgressFor(session.username)}
+              disabled={!session?.sessionId}
+            >
+              ⭐ {t("lobby.myProgress")}
+            </button>
+          </div>
+
+          <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
+
+          {/* Queue status cards */}
+          <div className="queue-cards">
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "easy" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.easy")}</div>
+              <div className="queue-card-count">{queueCounts.easy}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "medium" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.medium")}</div>
+              <div className="queue-card-count">{queueCounts.medium}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "hard" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.hard")}</div>
+              <div className="queue-card-count">{queueCounts.hard}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+          </div>
+
+          {/* Matchmaking */}
+          <div className="lobby-actions">
+            <div className="lobby-action-block">
+              <div className="lobby-action-title">{t("lobby.matchRandom.title")}</div>
+              <div className="lobby-action-row">
+                <select
+                  value={queueDifficulty}
+                  onChange={(e) => setQueueDifficulty(safeDiff(e.target.value))}
+                  disabled={!socket || queueState.queued}
+                >
+                  {DIFFS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`common.difficulty.${d}`)}
+                    </option>
+                  ))}
+                </select>
+
+                {!queueState.queued ? (
+                  <button onClick={startQueue} disabled={!socket}>
+                    {t("lobby.matchRandom.readyUp")}
+                  </button>
+                ) : (
+                  <button onClick={leaveQueue} disabled={!socket}>
+                    {t("lobby.matchRandom.leaveQueue")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="lobby-action-block">
+              <div className="lobby-action-title">{t("common.modes.practice")}</div>
+              <div className="lobby-action-row">
+                <select
+                  value={practiceDifficulty}
+                  onChange={(e) => setPracticeDifficulty(safeDiff(e.target.value))}
+                  disabled={!socket}
+                >
+                  {DIFFS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`common.difficulty.${d}`)}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={startSolo} disabled={!socket}>
+                  {t("lobby.practice.start")}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Challenge */}
+          <form onSubmit={challenge} className="challenge-form">
+            <input
+              placeholder={t("lobby.challenge.placeholder")}
+              value={challengeName}
+              onChange={(e) => setChallengeName(e.target.value)}
+            />
+
+            <select value={challengeDifficulty} onChange={(e) => setChallengeDifficulty(safeDiff(e.target.value))}>
+              {DIFFS.map((d) => (
+                <option key={d} value={d}>
+                  {t(`common.difficulty.${d}`)}
+                </option>
+              ))}
+            </select>
+
+            <button type="submit" disabled={!socket || !challengeName.trim()}>
+              {t("lobby.challenge.btn")}
+            </button>
+          </form>
         </div>
 
-        {/* Challenge */}
-        <form onSubmit={challenge} className="challenge-form">
-          <input
-            placeholder={t("lobby.challenge.placeholder")}
-            value={challengeName}
-            onChange={(e) => setChallengeName(e.target.value)}
-          />
-
-          <select value={challengeDifficulty} onChange={(e) => setChallengeDifficulty(safeDiff(e.target.value))}>
-            {DIFFS.map((d) => (
-              <option key={d} value={d}>
-                {t(`common.difficulty.${d}`)}
-              </option>
-            ))}
-          </select>
-
-          <button type="submit" disabled={!socket || !challengeName.trim()}>
-            {t("lobby.challenge.btn")}
+        {/* ✅ Nu hamnar den här UNDER panelen, centrerat */}
+        <div className="lobby-footer">
+          <button type="button" className="bug-report-btn" onClick={openBug}>
+            🐞 {t("lobby.bugReport")}
           </button>
-        </form>
-      </div>
-
-      <div className="lobby-footer">
-        <button type="button" className="bug-report-btn" onClick={openBug}>
-          🐞 {t("lobby.bugReport")}
-        </button>
+        </div>
       </div>
 
       {/* Topplista modal */}
@@ -717,8 +733,8 @@ const emailBugReport = () => {
                 </label>
 
                 <button className="hud-btn" onClick={closeLeaderboard} type="button">
-                {t("common.close")}
-              </button>
+                  {t("common.close")}
+                </button>
               </div>
             </div>
 
@@ -773,10 +789,6 @@ const emailBugReport = () => {
               <div className="lb-wide-wrap">
                 <table className="leaderboard leaderboard-wide">
                   <thead>
-                    {/*
-                      ✅ När view=ALLA: flytta ner "# / Spelare / LVL" så de ligger på samma rad som VM/FM/...,
-                      och gör grupperna tydligare med klassade kolumner.
-                    */}
                     {showAllGroups ? (
                       <>
                         <tr>
@@ -1031,7 +1043,6 @@ const emailBugReport = () => {
         </div>
       )}
 
-      
       {/* Bug report modal */}
       {bugOpen && (
         <div className="finish-overlay" onClick={closeBug}>
@@ -1064,7 +1075,7 @@ const emailBugReport = () => {
         </div>
       )}
 
-{/* Progression modal */}
+      {/* Progression modal */}
       {progressOpen && (
         <div className="finish-overlay" onClick={closeProgress}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
@@ -1113,44 +1124,49 @@ const emailBugReport = () => {
                   </div>
                 </div>
 
-				{/* ✅ Emoji-överblick (alla badges som endast emojis) */}
-				<div className="badge-overview-wrap">
-				  <div className="progress-summary-row">
+                {/* ✅ Emoji-överblick (alla badges som endast emojis) */}
+                <div className="badge-overview-wrap">
+                  <div className="progress-summary-row">
                     <span>
-                      {t("lobby.progress.badgesLine", { label: t("common.badges"), earned: earnedSet.size, total: totalBadges, hover: t("common.hoverForInfo") })}
+                      {t("lobby.progress.badgesLine", {
+                        label: t("common.badges"),
+                        earned: earnedSet.size,
+                        total: totalBadges,
+                        hover: t("common.hoverForInfo"),
+                      })}
                     </span>
                   </div>
-				  <div className="badge-overview">
-					{groupedBadges.map((g) =>
-					  g.items.map((b) => {
-						const code = getBadgeCode(b);
-						const earned = code ? earnedSet.has(code) : false;
-						const emoji = b.emoji || "🏷️";
+                  <div className="badge-overview">
+                    {groupedBadges.map((g) =>
+                      g.items.map((b) => {
+                        const code = getBadgeCode(b);
+                        const earned = code ? earnedSet.has(code) : false;
+                        const emoji = b.emoji || "🏷️";
 
-						const tooltipTitle = b.name || "";
-						const tooltipDesc = b.description || "";
+                        const tooltipTitle = b.name || "";
+                        const tooltipDesc = b.description || "";
 
-						return (
-						  <span
-							key={code || `${g.groupName}-${b.name}-${emoji}`}
-							className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
-							aria-label={tooltipTitle}
-							title=""
-						  >
-							<FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
+                        return (
+                          <span
+                            key={code || `${g.groupName}-${b.name}-${emoji}`}
+                            className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
+                            aria-label={tooltipTitle}
+                            title=""
+                          >
+                            <FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
 
-							{(tooltipTitle || tooltipDesc) && (
-							  <span className="badge-tooltip" role="tooltip">
-								<span className="badge-tooltip-title">{tooltipTitle}</span>
-								<span className="badge-tooltip-desc">{tooltipDesc}</span>
-							  </span>
-							)}
-						  </span>
-						);
-					  })
-					)}
-				  </div>
-				</div>
+                            {(tooltipTitle || tooltipDesc) && (
+                              <span className="badge-tooltip" role="tooltip">
+                                <span className="badge-tooltip-title">{tooltipTitle}</span>
+                                <span className="badge-tooltip-desc">{tooltipDesc}</span>
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               </>
             )}
 

@@ -1943,3 +1943,18 @@ select:focus-visible {
   margin-top: 12px;
   justify-content: flex-end;
 }
+
+/* --- Lobby: stack panel + "report bug" under, without touching .screen --- */
+.lobby-stack{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.bug-report-under{
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
