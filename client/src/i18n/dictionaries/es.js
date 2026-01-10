@@ -61,6 +61,8 @@ export default {
     bugReportEmail: "Abrir correo",
     chat: {
       title: "Chat de lobby",
+      toggleShow: "Mostrar chat",
+      toggleHide: "Ocultar chat",
       placeholder: "Escribe un mensaje…",
       send: "Enviar",
       ttl: "Desaparece en 5 min",

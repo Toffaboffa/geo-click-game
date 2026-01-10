@@ -62,6 +62,8 @@ export default {
     bugReportEmail: "Öppna e‑post",
     chat: {
       title: "Lobbychat",
+      toggleShow: "Visa chat",
+      toggleHide: "Dölj chat",
       placeholder: "Skriv ett meddelande…",
       send: "Skicka",
       ttl: "Försvinner efter 5 min",

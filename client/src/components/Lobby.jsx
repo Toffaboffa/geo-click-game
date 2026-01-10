@@ -107,6 +107,26 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
+  // Lobby chat toggle (persisted in localStorage)
+  const [chatOpen, setChatOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem("geosense:lobbyChatOpen");
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch {
+      // ignore
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("geosense:lobbyChatOpen", chatOpen ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [chatOpen]);
+
   // difficulty val
   const [queueDifficulty, setQueueDifficulty] = useState("medium");
   const [challengeDifficulty, setChallengeDifficulty] = useState("medium");
@@ -675,6 +695,15 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             >
               ⭐ {t("lobby.myProgress")}
             </button>
+            <button
+              type="button"
+              className={`sub-action-btn ${chatOpen ? "" : "is-off"}`}
+              onClick={() => setChatOpen((v) => !v)}
+              aria-pressed={chatOpen}
+              title={chatOpen ? t("lobby.chat.toggleHide") : t("lobby.chat.toggleShow")}
+            >
+              💬 {chatOpen ? t("lobby.chat.toggleHide") : t("lobby.chat.toggleShow")}
+            </button>
           </div>
 
           <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
@@ -770,7 +799,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </form>
         </div>
 
-                  <div className="lobby-chat" aria-label={t("lobby.chat.title")}>
+          {chatOpen && (
+            <div className="lobby-chat" aria-label={t("lobby.chat.title")}>
             <div className="lobby-chat-header">
               <span className="lobby-chat-title">💬 {t("lobby.chat.title")}</span>
               <span className="lobby-chat-meta">{t("lobby.chat.ttl")}</span>
@@ -813,6 +843,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               </button>
             </div>
           </div>
+          )}
 
         </div>
 
