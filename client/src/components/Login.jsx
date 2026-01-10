@@ -36,6 +36,7 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
       </div>
 
       <StartPings />
+          <img className="screen-logo" src={logo} alt={t("common.appName")} />
 
       <div className="panel">
         <h1 className="title">{t("login.headline")}</h1>
