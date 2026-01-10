@@ -666,9 +666,10 @@ async function getUserLevelSafe(username) {
   return level;
 }
 
-function pruneLobbyChat(now = Date.now()) {(now = Date.now()) {
+function pruneLobbyChat(now = Date.now()) {
   const cutoff = now - LOBBY_CHAT_TTL_MS;
   while (lobbyChat.length && lobbyChat[0].ts < cutoff) lobbyChat.shift();
+
   // extra safety: håll max storlek även om det blir spam
   if (lobbyChat.length > LOBBY_CHAT_MAX) {
     lobbyChat.splice(0, lobbyChat.length - LOBBY_CHAT_MAX);

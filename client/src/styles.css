@@ -278,14 +278,24 @@ button:disabled {
 }
 
 .lobby-main {
-  display: flex;
-  gap: 18px;
+  display: grid;
+
+  /* 1fr | PANEL | gap | CHAT | 1fr  */
+  grid-template-columns: 1fr 630px 18px 320px 1fr;
+
   align-items: stretch;
-  justify-content: center;
   width: 100%;
-  max-width: 1020px;
   padding: 0 16px;
   box-sizing: border-box;
+}
+
+/* Placera elementen i rätt kolumner */
+.lobby-main > .panel {
+  grid-column: 2;
+}
+
+.lobby-main > .lobby-chat {
+  grid-column: 4;
 }
 
 .lobby-chat {
@@ -405,8 +415,12 @@ button:disabled {
 
 @media (max-width: 980px) {
   .lobby-main {
-    flex-direction: column;
-    align-items: center;
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .lobby-main > .panel,
+  .lobby-main > .lobby-chat {
+    grid-column: 1;
   }
   .lobby-chat {
     width: 630px;
