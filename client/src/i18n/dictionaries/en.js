@@ -59,6 +59,13 @@ export default {
     bugReportCopy: "Copy report",
     bugReportCopied: "Copied!",
     bugReportEmail: "Open email",
+    chat: {
+      title: "Lobby chat",
+      placeholder: "Write a message…",
+      send: "Send",
+      ttl: "Disappears after 5 min",
+      empty: "No messages yet.",
+    },
     queue: {
       ready: "ready",
     },

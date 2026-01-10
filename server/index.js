@@ -627,6 +627,74 @@ function broadcastLobby() {
   io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() });
 }
 
+// =====================
+// Lobby chat (ephemeral, 5 min TTL)
+// =====================
+const LOBBY_CHAT_TTL_MS = 5 * 60 * 1000;
+const LOBBY_CHAT_MAX = 200; // säkerhetsgräns i minnet
+const lobbyChat = []; // { id, ts, user, text, emojiText }
+
+const EMOJI_REPLACEMENTS = new Map([
+  // hälsningar / reaktioner
+  ["hej", "👋"], ["hello", "👋"], ["hi", "👋"],
+  ["gg", "🤝"], ["wp", "👏"], ["nice", "✨"], ["snyggt", "✨"],
+  ["lol", "😂"], ["haha", "😂"], [":)", "🙂"], [":(", "🙁"], ["<3", "❤️"],
+  // tempo / precision
+  ["snabb", "⚡"], ["fast", "⚡"], ["långsam", "🐢"], ["slow", "🐢"],
+  ["nära", "🎯"], ["close", "🎯"], ["långt", "🧭"], ["far", "🧭"],
+  // geografi
+  ["stad", "🏙️"], ["city", "🏙️"], ["huvudstad", "🏛️"], ["capital", "🏛️"],
+  ["världen", "🌍"], ["world", "🌍"],
+  ["norr", "⬆️"], ["north", "⬆️"],
+  ["söder", "⬇️"], ["south", "⬇️"],
+  ["öst", "➡️"], ["east", "➡️"],
+  ["väst", "⬅️"], ["west", "⬅️"],
+  // svårighet
+  ["enkel", "🟢"], ["easy", "🟢"],
+  ["medel", "🟡"], ["medium", "🟡"],
+  ["svår", "🔴"], ["hard", "🔴"],
+]);
+
+function emojiifyText(input) {
+  const text = String(input ?? "");
+  // Dela men behåll whitespace så vi inte sabbar spacing
+  const parts = text.split(/(\s+)/);
+  return parts
+    .map((p) => {
+      if (/^\s+$/.test(p)) return p;
+
+      // behåll skiljetecken men matcha "ordkärnan"
+      const m = p.match(/^([\W_]*)([\p{L}\p{N}]+)([\W_]*)$/u);
+      if (!m) {
+        return EMOJI_REPLACEMENTS.get(p.toLowerCase()) || p;
+      }
+      const pre = m[1] || "";
+      const core = m[2] || "";
+      const post = m[3] || "";
+      const repl = EMOJI_REPLACEMENTS.get(core.toLowerCase());
+      return repl ? `${pre}${repl}${post}` : p;
+    })
+    .join("");
+}
+
+function pruneLobbyChat(now = Date.now()) {
+  const cutoff = now - LOBBY_CHAT_TTL_MS;
+  while (lobbyChat.length && lobbyChat[0].ts < cutoff) lobbyChat.shift();
+  // extra safety: håll max storlek även om det blir spam
+  if (lobbyChat.length > LOBBY_CHAT_MAX) {
+    lobbyChat.splice(0, lobbyChat.length - LOBBY_CHAT_MAX);
+  }
+}
+
+function getLobbyChatSnapshot() {
+  pruneLobbyChat();
+  return lobbyChat.slice(-LOBBY_CHAT_MAX);
+}
+
+// Purge-loop (tyst, bara för minne/TTL)
+setInterval(() => pruneLobbyChat(), 30 * 1000);
+
+
 function isUserInActiveMatch(username) {
   return activeMatchByUser.has(username);
 }
@@ -1831,6 +1899,9 @@ io.on("connection", (socket) => {
       lobby.onlineUsers.add(username);
       broadcastLobby();
 
+      // ✅ Lobbychat-historik (max 5 min)
+      socket.emit("lobby_chat_history", { messages: getLobbyChatSnapshot() });
+
       // ✅ Skicka queue_state direkt (så Lobby alltid vet status efter refresh)
       let queuedDifficulty = null;
       for (const d of DIFFICULTIES) {
@@ -1847,6 +1918,32 @@ io.on("connection", (socket) => {
       console.error(e);
       socket.emit("auth_error", "Serverfel vid auth.");
     }
+  });
+
+  // =====================
+  // Lobbychat
+  // =====================
+  socket.on("lobby_chat_send", (payload) => {
+    if (!currentUser) return;
+
+    let text = String(payload?.text ?? "").trim();
+    if (!text) return;
+
+    // enkel anti-spam: begränsa längd
+    if (text.length > 240) text = text.slice(0, 240);
+
+    const msg = {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      user: currentUser,
+      text,
+      emojiText: emojiifyText(text),
+    };
+
+    lobbyChat.push(msg);
+    pruneLobbyChat();
+
+    io.emit("lobby_chat_message", msg);
   });
 
   socket.on("start_random_match", (payload) => {

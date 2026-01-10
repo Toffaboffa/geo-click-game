@@ -59,6 +59,13 @@ export default {
     bugReportCopy: "Copiar informe",
     bugReportCopied: "¡Copiado!",
     bugReportEmail: "Abrir correo",
+    chat: {
+      title: "Chat de lobby",
+      placeholder: "Escribe un mensaje…",
+      send: "Enviar",
+      ttl: "Desaparece en 5 min",
+      empty: "Aún no hay mensajes.",
+    },
     queue: {
       ready: "listo",
     },

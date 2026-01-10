@@ -1,5 +1,5 @@
 // client/src/components/Lobby.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import StartPings from "./StartPings";
 import logo from "../assets/logo.png";
 import LanguageToggle from "../i18n/LanguageToggle.jsx";
@@ -144,6 +144,14 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [bugText, setBugText] = useState("");
   const [bugCopied, setBugCopied] = useState(false);
 
+
+  // Lobby chat (försvinner efter 5 min)
+  const CHAT_TTL_MS = 5 * 60 * 1000;
+  const [chatInput, setChatInput] = useState("");
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const chatListRef = useRef(null);
+
+
   // Leaderboard modal
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
@@ -211,6 +219,59 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       socket.off("auth_error", onAuthError);
     };
   }, [socket, onLogout]);
+
+  // --- Lobbychat: historik + live ---
+  useEffect(() => {
+    if (!socket) return;
+
+    const onHistory = (payload) => {
+      const msgs = Array.isArray(payload?.messages) ? payload.messages : [];
+      setChatMsgs(msgs);
+
+      // scrolla till botten efter första render
+      requestAnimationFrame(() => {
+        const el = chatListRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    };
+
+    const onMessage = (msg) => {
+      if (!msg) return;
+      setChatMsgs((prev) => [...prev, msg].slice(-200));
+    };
+
+    socket.on("lobby_chat_history", onHistory);
+    socket.on("lobby_chat_message", onMessage);
+
+    return () => {
+      socket.off("lobby_chat_history", onHistory);
+      socket.off("lobby_chat_message", onMessage);
+    };
+  }, [socket]);
+
+  // Rensa lokalt för att matcha serverns 5-min TTL (även om tabben står öppen)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const cutoff = Date.now() - CHAT_TTL_MS;
+      setChatMsgs((prev) => prev.filter((m) => (m?.ts ?? 0) >= cutoff));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Auto-scroll när nya meddelanden kommer
+  useEffect(() => {
+    const el = chatListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMsgs.length]);
+
+  const sendChat = () => {
+    if (!socket) return;
+    const text = chatInput.trim();
+    if (!text) return;
+    socket.emit("lobby_chat_send", { text });
+    setChatInput("");
+  };
 
   const closeProgress = () => {
     setProgressOpen(false);
@@ -578,8 +639,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       </div>
 
       {/* ✅ Viktigt: wrappar panel + footer i en egen kolumn-stack så den hamnar UNDER, inte bredvid */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-        <div className="panel">
+      <div className="lobby-layout">
+        <div className="lobby-main">
+          <div className="panel">
           <div className="panel-header">
             <h2>{t("lobby.loggedInAs", { user: session.username })}</h2>
 
@@ -706,7 +768,56 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </form>
         </div>
 
-        {/* ✅ Nu hamnar den här UNDER panelen, centrerat */}
+                  <div className="lobby-chat" aria-label={t("lobby.chat.title")}>
+            <div className="lobby-chat-header">
+              <span className="lobby-chat-title">💬 {t("lobby.chat.title")}</span>
+              <span className="lobby-chat-meta">{t("lobby.chat.ttl")}</span>
+            </div>
+
+            <div className="lobby-chat-messages" ref={chatListRef}>
+              {chatMsgs.length === 0 ? (
+                <div className="lobby-chat-empty">{t("lobby.chat.empty")}</div>
+              ) : (
+                chatMsgs.map((m) => (
+                  <div key={m.id || `${m.user}-${m.ts}`} className="lobby-chat-msg">
+                    <div className="lobby-chat-msg-top">
+                      <span className="lobby-chat-user">{m.user}</span>
+                      <span className="lobby-chat-time">
+                        {new Date(m.ts || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <div className="lobby-chat-text">{m.text}</div>
+                    {m.emojiText && m.emojiText !== m.text && (
+                      <div className="lobby-chat-emoji">{m.emojiText}</div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="lobby-chat-inputrow">
+              <input
+                className="lobby-chat-input"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={t("lobby.chat.placeholder")}
+                maxLength={240}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendChat();
+                  }
+                }}
+              />
+              <button type="button" className="lobby-chat-send" onClick={sendChat} disabled={!socket || !chatInput.trim()}>
+                {t("lobby.chat.send")}
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* ✅ Under panel + chat */}
         <div className="lobby-footer">
           <button type="button" className="bug-report-btn" onClick={openBug}>
             🐞 {t("lobby.bugReport")}

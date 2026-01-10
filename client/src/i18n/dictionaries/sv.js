@@ -60,6 +60,13 @@ export default {
     bugReportCopy: "Kopiera rapport",
     bugReportCopied: "Kopierat!",
     bugReportEmail: "Öppna e‑post",
+    chat: {
+      title: "Lobbychat",
+      placeholder: "Skriv ett meddelande…",
+      send: "Skicka",
+      ttl: "Försvinner efter 5 min",
+      empty: "Inga meddelanden ännu.",
+    },
     queue: {
       ready: "redo",
     },
