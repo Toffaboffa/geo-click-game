@@ -632,52 +632,41 @@ function broadcastLobby() {
 // =====================
 const LOBBY_CHAT_TTL_MS = 5 * 60 * 1000;
 const LOBBY_CHAT_MAX = 200; // säkerhetsgräns i minnet
-const lobbyChat = []; // { id, ts, user, text, emojiText }
+const lobbyChat = []; // { id, ts, user, level, text }
 
-const EMOJI_REPLACEMENTS = new Map([
-  // hälsningar / reaktioner
-  ["hej", "👋"], ["hello", "👋"], ["hi", "👋"],
-  ["gg", "🤝"], ["wp", "👏"], ["nice", "✨"], ["snyggt", "✨"],
-  ["lol", "😂"], ["haha", "😂"], [":)", "🙂"], [":(", "🙁"], ["<3", "❤️"],
-  // tempo / precision
-  ["snabb", "⚡"], ["fast", "⚡"], ["långsam", "🐢"], ["slow", "🐢"],
-  ["nära", "🎯"], ["close", "🎯"], ["långt", "🧭"], ["far", "🧭"],
-  // geografi
-  ["stad", "🏙️"], ["city", "🏙️"], ["huvudstad", "🏛️"], ["capital", "🏛️"],
-  ["världen", "🌍"], ["world", "🌍"],
-  ["norr", "⬆️"], ["north", "⬆️"],
-  ["söder", "⬇️"], ["south", "⬇️"],
-  ["öst", "➡️"], ["east", "➡️"],
-  ["väst", "⬅️"], ["west", "⬅️"],
-  // svårighet
-  ["enkel", "🟢"], ["easy", "🟢"],
-  ["medel", "🟡"], ["medium", "🟡"],
-  ["svår", "🔴"], ["hard", "🔴"],
-]);
+// Minimal level-cache för chatten (undviker DB-hit på varje msg)
+const _userLevelCache = new Map(); // username -> { level, ts }
+const _USER_LEVEL_CACHE_TTL_MS = 60 * 1000;
 
-function emojiifyText(input) {
-  const text = String(input ?? "");
-  // Dela men behåll whitespace så vi inte sabbar spacing
-  const parts = text.split(/(\s+)/);
-  return parts
-    .map((p) => {
-      if (/^\s+$/.test(p)) return p;
+async function getUserLevelSafe(username) {
+  const key = String(username || "");
+  const cached = _userLevelCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.ts < _USER_LEVEL_CACHE_TTL_MS) return cached.level;
 
-      // behåll skiljetecken men matcha "ordkärnan"
-      const m = p.match(/^([\W_]*)([\p{L}\p{N}]+)([\W_]*)$/u);
-      if (!m) {
-        return EMOJI_REPLACEMENTS.get(p.toLowerCase()) || p;
-      }
-      const pre = m[1] || "";
-      const core = m[2] || "";
-      const post = m[3] || "";
-      const repl = EMOJI_REPLACEMENTS.get(core.toLowerCase());
-      return repl ? `${pre}${repl}${post}` : p;
-    })
-    .join("");
+  let level = null;
+  const client = await pool.connect();
+  try {
+    const hasLevel = await hasColumn(client, "users", "level");
+    if (!hasLevel) {
+      level = null;
+    } else {
+      const { rows } = await client.query("select level from users where username=$1 limit 1", [key]);
+      const v = rows?.[0]?.level;
+      const n = Number(v);
+      level = Number.isFinite(n) ? n : null;
+    }
+  } catch {
+    level = null;
+  } finally {
+    client.release();
+  }
+
+  _userLevelCache.set(key, { level, ts: now });
+  return level;
 }
 
-function pruneLobbyChat(now = Date.now()) {
+function pruneLobbyChat(now = Date.now()) {(now = Date.now()) {
   const cutoff = now - LOBBY_CHAT_TTL_MS;
   while (lobbyChat.length && lobbyChat[0].ts < cutoff) lobbyChat.shift();
   // extra safety: håll max storlek även om det blir spam
@@ -1923,7 +1912,7 @@ io.on("connection", (socket) => {
   // =====================
   // Lobbychat
   // =====================
-  socket.on("lobby_chat_send", (payload) => {
+  socket.on("lobby_chat_send", async (payload) => {
     if (!currentUser) return;
 
     let text = String(payload?.text ?? "").trim();
@@ -1932,12 +1921,14 @@ io.on("connection", (socket) => {
     // enkel anti-spam: begränsa längd
     if (text.length > 240) text = text.slice(0, 240);
 
+    const level = await getUserLevelSafe(currentUser);
+
     const msg = {
       id: crypto.randomUUID(),
       ts: Date.now(),
       user: currentUser,
+      level,
       text,
-      emojiText: emojiifyText(text),
     };
 
     lobbyChat.push(msg);

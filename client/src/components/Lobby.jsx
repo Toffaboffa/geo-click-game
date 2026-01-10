@@ -117,6 +117,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
   // Toggle i UI (true = syns i leaderboard)
   const [showMeOnLeaderboard, setShowMeOnLeaderboard] = useState(true);
+  const [meLevel, setMeLevel] = useState(null);
   const [savingVis, setSavingVis] = useState(false);
 
   // leaderboard wide
@@ -163,6 +164,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       try {
         const me = await getMe(session.sessionId);
         if (cancelled) return;
+        if (me && me.level != null) setMeLevel(Number(me.level));
 
         if (typeof me?.showOnLeaderboard === "boolean") {
           setShowMeOnLeaderboard(me.showOnLeaderboard);
@@ -643,7 +645,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="lobby-main">
           <div className="panel">
           <div className="panel-header">
-            <h2>{t("lobby.loggedInAs", { user: session.username })}</h2>
+            <h2>{t("lobby.loggedInAs", { user: session.username })}{meLevel != null && Number.isFinite(Number(meLevel)) ? ` . L${Math.round(Number(meLevel))}` : ""}</h2>
 
             <div className="panel-header-actions">
               <button
@@ -781,15 +783,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 chatMsgs.map((m) => (
                   <div key={m.id || `${m.user}-${m.ts}`} className="lobby-chat-msg">
                     <div className="lobby-chat-msg-top">
-                      <span className="lobby-chat-user">{m.user}</span>
+                      <span className="lobby-chat-user">{m.user}{Number.isFinite(Number(m.level)) ? ` · L${Number(m.level)}` : ""}</span>
                       <span className="lobby-chat-time">
                         {new Date(m.ts || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
                     <div className="lobby-chat-text">{m.text}</div>
-                    {m.emojiText && m.emojiText !== m.text && (
-                      <div className="lobby-chat-emoji">{m.emojiText}</div>
-                    )}
                   </div>
                 ))
               )}

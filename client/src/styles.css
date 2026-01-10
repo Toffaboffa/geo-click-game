@@ -364,11 +364,6 @@ button:disabled {
   word-break: break-word;
 }
 
-.lobby-chat-emoji {
-  margin-top: 6px;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-}
 
 .lobby-chat-inputrow {
   display: flex;
