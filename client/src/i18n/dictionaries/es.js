@@ -33,7 +33,7 @@ export default {
   login: {
     headline: "GeoSense",
     blurb:
-      "Un juego 1v1 rápido y tenso: te sale una ciudad, haces clic en el mapa y compites en precisión (km) y velocidad.",
+      "Una batalla de mapas rápida: recibes una ciudad, haces clic en el mapa y compites por ser el más cercano y el más rápido.",
     username: "Usuario",
     password: "Contraseña",
     loginBtn: "Entrar",
