@@ -96,7 +96,7 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
               : t("login.registerBtn")}
           </button>
 
-          <div className="hint" style="display: Hidden;">{authHint ? authHint : t("login.hint")}</div>
+          <div className="hint">{authHint ? authHint : t("login.hint")}</div>
         </form>
 
         <div className="footer">{t("login.copy", { year })}</div>
