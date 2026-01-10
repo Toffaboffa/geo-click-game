@@ -3,7 +3,7 @@ export default {
     appName: "GeoSense",
     language: "Idioma",
     other: "Otros",
-    loading: "Cargando…",
+    loading: "Iniciando sesión. Espera…",
     close: "Cerrar",
     logout: "Cerrar sesión",
     leave: "Salir",
