@@ -328,7 +328,7 @@ button:disabled {
 }
 
 .lobby-chat-messages {
-  height: 420px;
+  height: 330px;
   overflow: auto;
   padding-right: 4px;
 }
