@@ -54,6 +54,15 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+function antipodeLonLat(lon, lat) {
+  let aLon = (Number(lon) || 0) + 180;
+  // normalisera till [-180, 180]
+  if (aLon > 180) aLon -= 360;
+  if (aLon < -180) aLon += 360;
+  const aLat = -(Number(lat) || 0);
+  return [aLon, aLat];
+}
+
 // ---------- Local scoring (must match server) ----------
 // Server: SCORER_MAX_DISTANCE_KM = 20_000, SCORER_MAX_TIME_MS = 20_000
 const SCORER_MAX_TIME_MS = 20_000;
@@ -188,6 +197,9 @@ export default function Game({
   const [pointer, setPointer] = useState({ x: 0, y: 0, inside: false });
   const rafRef = useRef(null);
 
+  // ✅ Auto-submit när tiden går ut (förhindra dubbel-emits)
+  const autoSubmittedRef = useRef(false);
+
   // ✅ Lens gate (Punkt 3)
   // Efter att du klickat: göm linsen tills 1s kvar på countdown, sedan får den synas igen.
   const [lensUnlocked, setLensUnlocked] = useState(false);
@@ -280,6 +292,10 @@ export default function Game({
 
     // ✅ Ny runda: linsen ska vara normal igen
     setLensUnlocked(false);
+
+
+    // ✅ Ny runda: reset auto-submit gate
+    autoSubmittedRef.current = false;
   }, [gameState.currentRound]);
 
   // -------- rapportera kartans storlek ----------
@@ -309,6 +325,64 @@ export default function Game({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [timerRunning, roundStartPerf]);
+
+// ✅ Auto-klick när tiden tar slut (20s) om spelaren inte klickat
+useEffect(() => {
+  if (!timerRunning) return;
+  if (hasClickedThisRound) return;
+    if (autoSubmittedRef.current) return;
+  if (!socket || !match) return;
+  if (gameState.currentRound < 0) return;
+  if (showReadyButton || countdown !== null) return;
+
+  if (elapsedMs < SCORER_MAX_TIME_MS) return;
+  if (autoSubmittedRef.current) return;
+  autoSubmittedRef.current = true;
+
+  const c = gameState.city;
+  if (!c || !Number.isFinite(c.lat) || !Number.isFinite(c.lon)) return;
+
+  // Antipod => ~maxdistans => 2000p när time=20s
+  const [lon, lat] = antipodeLonLat(c.lon, c.lat);
+  const timeMs = SCORER_MAX_TIME_MS;
+
+  setTimerRunning(false);
+    autoSubmittedRef.current = true;
+
+  const dKm = haversineKm(lat, lon, c.lat, c.lon);
+  setMyDistanceKm(Number.isFinite(dKm) ? dKm : null);
+
+  // ⚠️ Detta är bara UI-feedback. Servern är fortfarande “source of truth”.
+  setMyPendingScore(scoreLocal(dKm, timeMs));
+  setMyPendingRoundIndex(gameState.currentRound);
+
+  // Visa “mitt klick” på kartan om vi kan projicera
+  if (mapProject) {
+    try {
+      const px = mapProject(lon, lat);
+      if (px) setMyClickPx(px);
+    } catch (_) {}
+  }
+
+  setMyLastClickLL({ lon, lat, timeMs });
+  setHasClickedThisRound(true);
+
+  // ✅ Direkt efter klick: göm linsen tills sista sekunden innan nästa stad
+  setLensUnlocked(false);
+
+  socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
+}, [
+  elapsedMs,
+  timerRunning,
+  hasClickedThisRound,
+  socket,
+  match,
+  gameState.currentRound,
+  gameState.city,
+  showReadyButton,
+  countdown,
+  mapProject,
+]);
 
   // -------- score ----------
   const myScoreSoFar = useMemo(() => {
