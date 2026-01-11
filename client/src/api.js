@@ -211,3 +211,21 @@ export async function getMyProgress(sessionId) {
     headers: authHeaders(sessionId),
   });
 }
+// ---------- Feedback (Bug report / Feature request) ----------
+export async function createFeedback(sessionId, { kind, message, pageUrl, userAgent, lang, meta } = {}) {
+  return apiFetch("/api/feedback", {
+    method: "POST",
+    headers: authHeaders(sessionId, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ kind, message, pageUrl, userAgent, lang, meta }),
+  });
+}
+
+export async function getFeedbackList(sessionId, { kind = null, limit = 200 } = {}) {
+  const qs = new URLSearchParams();
+  if (kind) qs.set("kind", kind);
+  if (limit != null) qs.set("limit", String(limit));
+  const q = qs.toString();
+  return apiFetch(`/api/feedback${q ? `?${q}` : ""}`, {
+    headers: authHeaders(sessionId),
+  });
+}

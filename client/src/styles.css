@@ -2125,3 +2125,73 @@ select:focus-visible {
   justify-content: center;
   width: 100%;
 }
+/* ===== Feedback (Bug report / Feature request) ===== */
+.feedback-tabs{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  align-items:center;
+  flex-wrap:wrap;
+  margin: 6px 0 10px;
+}
+
+.feedback-tab{
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.88);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.feedback-tab:hover{
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.feedback-tab.active{
+  background: rgba(37, 99, 235, 0.22);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.feedback-admin-top{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.feedback-ok{
+  margin-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.feedback-details{
+  padding: 10px 12px !important;
+  background: rgba(0,0,0,0.18);
+}
+
+.feedback-details-msg{
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.feedback-details-meta{
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.muted{ opacity: 0.75; }
+.mono{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+}

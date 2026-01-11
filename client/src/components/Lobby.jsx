@@ -11,6 +11,8 @@ import {
   getUserProgress,
   getMyProgress,
   getLeaderboardWide,
+  createFeedback,
+  getFeedbackList,
 } from "../api";
 
 function fmtIntOrDash(v) {
@@ -160,10 +162,24 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
 
-  // Bug report (discreet link under lobby panel)
+  // Feedback (Bug report / Feature request)
+  const FEEDBACK_ADMIN_USERNAME = "Toffaboffa";
+  const isFeedbackAdmin = session?.username === FEEDBACK_ADMIN_USERNAME;
+
   const [bugOpen, setBugOpen] = useState(false);
-  const [bugText, setBugText] = useState("");
-  const [bugCopied, setBugCopied] = useState(false);
+  const [bugMode, setBugMode] = useState("submit"); // "submit" | "admin"
+  const [feedbackKind, setFeedbackKind] = useState("bug"); // "bug" | "feature"
+  const [feedbackText, setFeedbackText] = useState("");
+
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+
+  // Admin listing
+  const [feedbackFilter, setFeedbackFilter] = useState("all"); // "all" | "bug" | "feature"
+  const [feedbackRows, setFeedbackRows] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSelectedId, setFeedbackSelectedId] = useState(null);
 
 
   // Lobby chat (försvinner efter 5 min)
@@ -305,75 +321,87 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const openAbout = () => setAboutOpen(true);
 
   const closeBug = () => setBugOpen(false);
-  const openBug = () => {
-    setBugCopied(false);
+  const openBug = async () => {
+    setFeedbackError("");
+    setFeedbackSent(false);
+    setFeedbackSelectedId(null);
+
+    const admin = isFeedbackAdmin;
+    setBugMode(admin ? "admin" : "submit");
     setBugOpen(true);
-  };
 
-  const buildBugReport = () => {
-    const nowIso = new Date().toISOString();
-    const info = {
-      user: session?.username ?? "",
-      time: nowIso,
-      url: typeof window !== "undefined" ? window.location?.href : "",
-      ua: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      lang: typeof navigator !== "undefined" ? navigator.language : "",
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      screen:
-        typeof window !== "undefined"
-          ? `${window.screen?.width ?? "?"}x${window.screen?.height ?? "?"}`
-          : "",
-      onlineCount,
-      queueCounts,
-      queueState,
-    };
-
-    return [
-      "GeoSense – Bug Report",
-      "",
-      "Describe what happened (steps, expected vs actual):",
-      bugText || "",
-      "",
-      "Diagnostics:",
-      JSON.stringify(info, null, 2),
-      "",
-    ].join("\n");
-  };
-
-  const copyBugReport = async () => {
-    const text = buildBugReport();
-    try {
-      await navigator.clipboard.writeText(text);
-      setBugCopied(true);
-      setTimeout(() => setBugCopied(false), 1400);
-    } catch {
-      // Fallback: old browsers
+    if (admin && session?.sessionId) {
+      // Load latest feedback immediately
       try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        setBugCopied(true);
-        setTimeout(() => setBugCopied(false), 1400);
-      } catch {
-        // If all else fails, do nothing.
+        setFeedbackLoading(true);
+        setFeedbackRows([]);
+        const res = await getFeedbackList(session.sessionId, { kind: null, limit: 200 });
+        const rows = res?.rows || res?.data?.rows || res?.data || [];
+        setFeedbackRows(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setFeedbackError(e?.message || String(e));
+      } finally {
+        setFeedbackLoading(false);
       }
     }
   };
 
-  const BUG_REPORT_EMAIL = "kristoffer.aberg81@gmail.com";
+  const closeBug = () => setBugOpen(false);
 
-  const emailBugReport = () => {
-    const subject = "GeoSense – Bug Report";
-    const body = encodeURIComponent(buildBugReport());
-    window.location.href = `mailto:${encodeURIComponent(BUG_REPORT_EMAIL)}?subject=${encodeURIComponent(
-      subject
-    )}&body=${body}`;
+  const loadFeedbackList = async (filter = "all") => {
+    if (!session?.sessionId) return;
+    if (!isFeedbackAdmin) return;
+
+    const kind = filter === "bug" || filter === "feature" ? filter : null;
+
+    try {
+      setFeedbackLoading(true);
+      setFeedbackError("");
+      const res = await getFeedbackList(session.sessionId, { kind, limit: 200 });
+      const rows = res?.rows || res?.data?.rows || res?.data || [];
+      setFeedbackRows(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setFeedbackError(e?.message || String(e));
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    if (!session?.sessionId) return;
+    if (feedbackSending) return;
+
+    const kind = feedbackKind === "feature" ? "feature" : "bug";
+    const message = String(feedbackText || "").trim();
+    if (!message) {
+      setFeedbackError(t("lobby.feedback.errorEmpty"));
+      return;
+    }
+
+    setFeedbackSending(true);
+    setFeedbackError("");
+    setFeedbackSent(false);
+
+    try {
+      await createFeedback(session.sessionId, {
+        kind,
+        message,
+        pageUrl: typeof window !== "undefined" ? window.location?.href : "",
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+        lang: typeof navigator !== "undefined" ? navigator.language : "",
+        meta: {
+          clientTime: new Date().toISOString(),
+        },
+      });
+
+      setFeedbackText("");
+      setFeedbackSent(true);
+      setTimeout(() => setFeedbackSent(false), 1600);
+    } catch (e) {
+      setFeedbackError(e?.message || String(e));
+    } finally {
+      setFeedbackSending(false);
+    }
   };
 
   const closeAbout = () => setAboutOpen(false);
@@ -1184,34 +1212,177 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         </div>
       )}
 
-      {/* Bug report modal */}
+      {/* Feedback modal */}
       {bugOpen && (
         <div className="finish-overlay" onClick={closeBug}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
-            <div className="finish-title">{t("lobby.bugReportTitle")}</div>
-
-            <div className="about-content">
-              <p>{t("lobby.bugReportHint")}</p>
-
-              <textarea
-                className="bug-report-text"
-                value={bugText}
-                onChange={(e) => setBugText(e.target.value)}
-                placeholder={t("lobby.bugReportPlaceholder")}
-              />
-
-              <div className="bug-report-actions">
-                <button type="button" className="hud-btn" onClick={copyBugReport}>
-                  {bugCopied ? `✅ ${t("lobby.bugReportCopied")}` : t("lobby.bugReportCopy")}
-                </button>
-                <button type="button" className="hud-btn" onClick={emailBugReport}>
-                  ✉️ {t("lobby.bugReportEmail")}
-                </button>
-                <button type="button" className="hud-btn" onClick={closeBug}>
-                  {t("common.close")}
-                </button>
-              </div>
+            <div className="finish-title">
+              {bugMode === "admin" ? t("lobby.feedback.adminTitle") : t("lobby.feedback.title")}
             </div>
+
+            {bugMode !== "admin" && (
+              <div className="about-content">
+                <div className="feedback-tabs">
+                  <button
+                    type="button"
+                    className={`feedback-tab ${feedbackKind === "bug" ? "active" : ""}`}
+                    onClick={() => setFeedbackKind("bug")}
+                  >
+                    🐞 {t("lobby.feedback.kindBug")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`feedback-tab ${feedbackKind === "feature" ? "active" : ""}`}
+                    onClick={() => setFeedbackKind("feature")}
+                  >
+                    ✨ {t("lobby.feedback.kindFeature")}
+                  </button>
+                </div>
+
+                <textarea
+                  className="bug-report-text"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder={
+                    feedbackKind === "feature"
+                      ? t("lobby.feedback.placeholderFeature")
+                      : t("lobby.feedback.placeholderBug")
+                  }
+                />
+
+                {feedbackError && <div className="progress-error">{feedbackError}</div>}
+                {feedbackSent && <div className="feedback-ok">✅ {t("lobby.feedback.sent")}</div>}
+
+                <div className="bug-report-actions">
+                  <button
+                    type="button"
+                    className="hud-btn"
+                    onClick={submitFeedback}
+                    disabled={feedbackSending || !feedbackText.trim()}
+                  >
+                    {feedbackSending ? t("lobby.feedback.sending") : t("lobby.feedback.send")}
+                  </button>
+                  <button type="button" className="hud-btn" onClick={closeBug}>
+                    {t("common.close")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {bugMode === "admin" && (
+              <div className="about-content">
+                <div className="feedback-admin-top">
+                  <div className="feedback-tabs">
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "all" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("all");
+                        loadFeedbackList("all");
+                      }}
+                    >
+                      {t("lobby.feedback.filterAll")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "bug" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("bug");
+                        loadFeedbackList("bug");
+                      }}
+                    >
+                      {t("lobby.feedback.filterBug")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "feature" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("feature");
+                        loadFeedbackList("feature");
+                      }}
+                    >
+                      {t("lobby.feedback.filterFeature")}
+                    </button>
+                  </div>
+
+                  <button type="button" className="hud-btn" onClick={() => loadFeedbackList(feedbackFilter)}>
+                    ↻ {t("lobby.feedback.refresh")}
+                  </button>
+                </div>
+
+                {feedbackLoading && <div className="progress-loading">{t("common.loading")}</div>}
+                {feedbackError && <div className="progress-error">{feedbackError}</div>}
+
+                {!feedbackLoading && !feedbackError && (
+                  <>
+                    {(!feedbackRows || feedbackRows.length === 0) ? (
+                      <div className="about-content">{t("lobby.feedback.empty")}</div>
+                    ) : (
+                      <table className="leaderboard leaderboard-wide feedback-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 140 }}>{t("lobby.feedback.colTime")}</th>
+                            <th style={{ width: 110 }}>{t("lobby.feedback.colKind")}</th>
+                            <th style={{ width: 140 }}>{t("lobby.feedback.colUser")}</th>
+                            <th>{t("lobby.feedback.colMessage")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {feedbackRows.map((r) => {
+                            const isSel = feedbackSelectedId === r.id;
+                            const msg = String(r.message || "");
+                            const short = msg.length > 90 ? `${msg.slice(0, 90)}…` : msg;
+                            const time = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+                            return (
+                              <React.Fragment key={r.id}>
+                                <tr
+                                  className={isSel ? "is-me" : ""}
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => setFeedbackSelectedId(isSel ? null : r.id)}
+                                >
+                                  <td>{time}</td>
+                                  <td>{r.kind}</td>
+                                  <td>{r.username}</td>
+                                  <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 420 }}>
+                                    {short}
+                                  </td>
+                                </tr>
+
+                                {isSel && (
+                                  <tr>
+                                    <td colSpan={4} className="feedback-details">
+                                      <div className="feedback-details-msg">{msg}</div>
+                                      {r.page_url && (
+                                        <div className="feedback-details-meta">
+                                          <span className="muted">{t("lobby.feedback.colUrl")}: </span>
+                                          <span className="mono">{r.page_url}</span>
+                                        </div>
+                                      )}
+                                      {r.lang && (
+                                        <div className="feedback-details-meta">
+                                          <span className="muted">{t("lobby.feedback.colLang")}: </span>
+                                          <span className="mono">{r.lang}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+
+                <div className="bug-report-actions">
+                  <button type="button" className="hud-btn" onClick={closeBug}>
+                    {t("common.close")}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

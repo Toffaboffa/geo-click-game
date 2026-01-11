@@ -584,6 +584,88 @@ app.get("/api/leaderboard-wide", async (req, res) => {
 });
 
 // =====================
+// Feedback (Bug report / Feature request) -> public.feedback_reports
+// =====================
+const FEEDBACK_ADMIN_USERNAME = "Toffaboffa";
+
+function normalizeFeedbackKind(v) {
+  const s = String(v || "").toLowerCase().trim();
+  if (s === "bug" || s === "feature") return s;
+  return null;
+}
+
+app.post("/api/feedback", authMiddleware, async (req, res) => {
+  const username = req.username;
+  const kind = normalizeFeedbackKind(req.body?.kind);
+  const message = String(req.body?.message || "").trim();
+
+  const pageUrl = req.body?.pageUrl ? String(req.body.pageUrl).slice(0, 1000) : null;
+  const userAgent = req.body?.userAgent ? String(req.body.userAgent).slice(0, 1000) : null;
+  const lang = req.body?.lang ? String(req.body.lang).slice(0, 32) : null;
+
+  let meta = req.body?.meta ?? {};
+  if (meta && typeof meta !== "object") meta = { value: meta };
+
+  if (!kind) return res.status(400).json({ error: "Ogiltig typ" });
+  if (!message) return res.status(400).json({ error: "Meddelande saknas" });
+  if (message.length > 8000) return res.status(400).json({ error: "Meddelandet är för långt" });
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `insert into public.feedback_reports
+        (username, kind, message, page_url, user_agent, lang, meta)
+       values ($1,$2,$3,$4,$5,$6,$7::jsonb)
+       returning id, created_at`,
+      [username, kind, message, pageUrl, userAgent, lang, JSON.stringify(meta || {})]
+    );
+
+    res.json({ ok: true, item: rows?.[0] ?? null });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/api/feedback", authMiddleware, async (req, res) => {
+  if (req.username !== FEEDBACK_ADMIN_USERNAME) return res.status(403).json({ error: "Forbidden" });
+
+  const kind = normalizeFeedbackKind(req.query?.kind);
+  const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 200) || 200));
+
+  const client = await pool.connect();
+  try {
+    if (kind) {
+      const { rows } = await client.query(
+        `select id, created_at, username, kind, message, page_url, lang
+         from public.feedback_reports
+         where kind=$1
+         order by created_at desc
+         limit $2`,
+        [kind, limit]
+      );
+      return res.json({ ok: true, rows });
+    }
+
+    const { rows } = await client.query(
+      `select id, created_at, username, kind, message, page_url, lang
+       from public.feedback_reports
+       order by created_at desc
+       limit $1`,
+      [limit]
+    );
+    res.json({ ok: true, rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
+// =====================
 // Lobby & matchning (Socket.io)
 // =====================
 const lobby = {
