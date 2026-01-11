@@ -171,6 +171,21 @@ export default function Game({
   // Practice = solo/övning
   const isPractice = !!match?.isPractice || !!match?.isSolo;
 
+  // Debug: endast för Toffaboffa i Öva-läge (practice/solo)
+  const canUseDebug = isPractice && String(myName) === "Toffaboffa";
+
+  // Stöd både "kontrollerad" debug via props och fallback lokalt state
+  const [debugLocal, setDebugLocal] = useState(false);
+  const effectiveDebugShowTarget =
+    typeof debugShowTarget === "boolean" ? debugShowTarget : debugLocal;
+
+  const toggleDebug =
+    typeof onToggleDebugShowTarget === "function"
+      ? onToggleDebugShowTarget
+      : () => setDebugLocal((v) => !v);
+
+  const debugEnabled = canUseDebug && effectiveDebugShowTarget;
+
   const opponentName = useMemo(() => {
     const players = Array.isArray(match?.players) ? match.players : [];
     return players.find((p) => p !== myName) || t("game.opponent");
@@ -483,11 +498,11 @@ useEffect(() => {
 
   const shouldShowTarget = useMemo(() => {
     // practice: visa target när DU klickat (eller debug)
-    if (isPractice) return !!hasClickedThisRound || !!debugShowTarget;
+    if (isPractice) return !!hasClickedThisRound || !!debugEnabled;
 
     // multiplayer: visa target först när servern skickat round_result (eller debug)
-    return !!roundResultReceived || !!debugShowTarget;
-  }, [hasClickedThisRound, debugShowTarget, isPractice, roundResultReceived]);
+    return !!roundResultReceived || !!debugEnabled;
+  }, [hasClickedThisRound, debugEnabled, isPractice, roundResultReceived]);
 
   // -------- socket events ----------
   useEffect(() => {
@@ -765,7 +780,7 @@ useEffect(() => {
   return (
     <div className="game-root">
       <div
-        className={`world-map-full ${debugShowTarget ? "is-debug" : ""}`}
+        className={`world-map-full ${debugEnabled ? "is-debug" : ""}`}
         ref={mapRef}
         onClick={onMapClick}
         onMouseMove={onPointerMove}
@@ -824,10 +839,13 @@ useEffect(() => {
           onMouseEnter={() => setHoveringUiSafe(true)}
           onMouseLeave={() => setHoveringUiSafe(false)}
         >
-          <button className="hud-btn" onClick={stop(onToggleDebugShowTarget)}>
-            {debugShowTarget ? t("game.debugOn") : t("game.debug")}
+          {canUseDebug && (
+
+          <button className="hud-btn" onClick={stop(toggleDebug)}>
+            {debugEnabled ? t("game.debugOn") : t("game.debug")}
           </button>
-          <button className="hud-btn" onClick={stop(onLeaveMatch)}>{t("common.leave")}</button>
+          )}
+<button className="hud-btn" onClick={stop(onLeaveMatch)}>{t("common.leave")}</button>
           <button className="hud-btn" onClick={stop(onLogout)}>
             {t("common.logout")}
           </button>
@@ -905,13 +923,13 @@ useEffect(() => {
         )}
 
         {/* Debug target + debug click */}
-        {debugShowTarget && targetPx && (
+        {debugEnabled && targetPx && (
           <div
             className="debug-dot debug-dot-target"
             style={{ left: targetPx.x, top: targetPx.y }}
           />
         )}
-        {debugShowTarget && myClickPx && (
+        {debugEnabled && myClickPx && (
           <div
             className="debug-dot debug-dot-click"
             style={{ left: myClickPx.x, top: myClickPx.y }}
