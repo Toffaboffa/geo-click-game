@@ -346,8 +346,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     }
   };
 
-  const closeBug = () => setBugOpen(false);
-
   const loadFeedbackList = async (filter = "all") => {
     if (!session?.sessionId) return;
     if (!isFeedbackAdmin) return;
