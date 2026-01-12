@@ -681,7 +681,8 @@ const socketsByUser = new Map(); // username -> socket.id
 const matches = new Map(); // matchId -> match
 
 const activeMatchByUser = new Map(); // username -> matchId
-const disconnectGrace = new Map(); // username -> timeoutId
+// username -> { timeoutId, untilMs, matchId }
+const disconnectGrace = new Map();
 const pendingChallengesById = new Map(); // challengeId -> { id, from, to, difficulty, expiresAt }
 const pendingChallengeByPair = new Map(); // `${from}->${to}` -> challengeId
 
@@ -767,14 +768,43 @@ function getLobbyChatSnapshot() {
 setInterval(() => pruneLobbyChat(), 30 * 1000);
 
 
-function isUserInActiveMatch(username) {
-  return activeMatchByUser.has(username);
+function clearDisconnectGrace(username) {
+  const entry = disconnectGrace.get(username);
+  const timeoutId = entry && typeof entry === "object" ? entry.timeoutId : entry;
+  if (timeoutId) clearTimeout(timeoutId);
+  disconnectGrace.delete(username);
 }
 
-function clearDisconnectGrace(username) {
-  const t = disconnectGrace.get(username);
-  if (t) clearTimeout(t);
-  disconnectGrace.delete(username);
+function getRetryAfterMs(username) {
+  const entry = disconnectGrace.get(username);
+  const untilMs = entry && typeof entry === "object" ? Number(entry.untilMs) : null;
+  if (!Number.isFinite(untilMs)) return 0;
+  return Math.max(0, untilMs - nowMs());
+}
+
+function getActiveMatchIdSafe(username) {
+  const matchId = activeMatchByUser.get(username);
+  if (!matchId) return null;
+  const match = matches.get(matchId);
+  if (!match || match.finished) {
+    activeMatchByUser.delete(username);
+    clearDisconnectGrace(username);
+    return null;
+  }
+  return matchId;
+}
+
+function isUserInActiveMatch(username) {
+  return !!getActiveMatchIdSafe(username);
+}
+
+function emitAlreadyInMatch(socket, eventName, username) {
+  const retryAfterMs = getRetryAfterMs(username);
+  if (retryAfterMs > 0) {
+    socket.emit(eventName, { message: "Du är redan i en match.", retryAfterMs });
+  } else {
+    socket.emit(eventName, "Du är redan i en match.");
+  }
 }
 
 function createMatch(playerA, playerB, opts = {}) {
@@ -1935,6 +1965,13 @@ setInterval(() => {
 
     if (shouldDelete) {
       clearAllMatchTimers(match);
+      // Ensure no one gets stuck in "active match" due to sweep deletion
+      try {
+        clearActiveMatchForPlayers(match);
+      } catch (_) {}
+      for (const p of match.players || []) {
+        if (p && p !== BOT_NAME) clearDisconnectGrace(p);
+      }
       matches.delete(id);
     }
   }
@@ -2027,7 +2064,7 @@ io.on("connection", (socket) => {
       payload && typeof payload === "object" ? normalizeDifficulty(payload.difficulty) : DEFAULT_DIFFICULTY;
 
     if (isUserInActiveMatch(currentUser)) {
-      socket.emit("match_error", "Du är redan i en match.");
+      emitAlreadyInMatch(socket, "match_error", currentUser);
       return;
     }
 
@@ -2046,7 +2083,7 @@ io.on("connection", (socket) => {
     const difficulty = normalizeDifficulty(payload?.difficulty);
 
     if (isUserInActiveMatch(currentUser)) {
-      socket.emit("match_error", "Du är redan i en match.");
+      emitAlreadyInMatch(socket, "match_error", currentUser);
       return;
     }
 
@@ -2077,7 +2114,7 @@ io.on("connection", (socket) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
-      socket.emit("match_error", "Du är redan i en match.");
+      emitAlreadyInMatch(socket, "match_error", currentUser);
       return;
     }
 
@@ -2100,7 +2137,7 @@ io.on("connection", (socket) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
-      socket.emit("challenge_error", "Du är redan i en match.");
+      emitAlreadyInMatch(socket, "challenge_error", currentUser);
       return;
     }
 
@@ -2169,7 +2206,7 @@ io.on("connection", (socket) => {
     if (!currentUser) return;
 
     if (isUserInActiveMatch(currentUser)) {
-      socket.emit("challenge_error", "Du är redan i en match.");
+      emitAlreadyInMatch(socket, "challenge_error", currentUser);
       return;
     }
 
@@ -2344,14 +2381,20 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
 
     broadcastLobby();
 
-    const matchId = activeMatchByUser.get(currentUser);
+    const matchId = getActiveMatchIdSafe(currentUser);
     if (!matchId) return;
 
     const match = matches.get(matchId);
     if (!match || match.finished) return;
 
+    // Practice/solo/bot: end immediately on disconnect so the user never gets stuck.
+    const hasBot = (match.players || []).includes(BOT_NAME);
+    if (hasBot || match.isPractice || match.isSolo) {
+      finishMatch(match, { reason: "disconnect" }).catch((e) => console.error("finish practice on disconnect", e));
+      return;
+    }
+
     const [pA, pB] = match.players;
-    if (pA === BOT_NAME || pB === BOT_NAME) return;
 
     if (disconnectGrace.has(currentUser)) return;
 
@@ -2379,7 +2422,7 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
       }
     }, DISCONNECT_GRACE_MS);
 
-    disconnectGrace.set(currentUser, t);
+    disconnectGrace.set(currentUser, { timeoutId: t, untilMs: nowMs() + DISCONNECT_GRACE_MS, matchId });
   });
 });
 
