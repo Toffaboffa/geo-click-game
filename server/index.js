@@ -1782,8 +1782,8 @@ async function applyXpOnceTx(dbClient, { username, matchId, reason, amount, meta
   const hasAmount = await hasColCached(dbClient, "xp_events", "amount");
   const hasXpAmount = !hasAmount && (await hasColCached(dbClient, "xp_events", "xp_amount"));
 
-  const hasMode = await hasColCached(dbClient, \"xp_events\", \"mode\");
-  const hasDifficulty = await hasColCached(dbClient, \"xp_events\", \"difficulty\");
+  const hasMode = await hasColCached(dbClient, "xp_events", "mode");
+  const hasDifficulty = await hasColCached(dbClient, "xp_events", "difficulty");
 
   const amountCol = hasAmount ? "amount" : hasXpAmount ? "xp_amount" : null;
   if (!amountCol) {
