@@ -787,11 +787,33 @@ button:disabled {
 }
 
 .city-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   font-size: 28px;
   font-weight: 900;
   letter-spacing: 0.02em;
   color: rgba(255, 255, 255, 0.96);
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+.city-label-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.city-country {
+  display:block;  
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.city-name {
+  /* medvetet tom: behåller nuvarande styling */
 }
 
 .city-timer {
