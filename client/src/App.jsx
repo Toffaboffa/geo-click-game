@@ -301,13 +301,21 @@ const DIFFS = useMemo(
           hardLogout(translateServerMessage(message, t), s);
         });
 
-        s.on("match_error", (message) => {
-          alert(translateServerMessage(message, t));
-        });
+        const showError = (payload) => {
+          const isObj = payload && typeof payload === "object";
+          const message = isObj ? String(payload.message || "") : String(payload || "");
+          const retryAfterMs = isObj ? Number(payload.retryAfterMs) : NaN;
 
-        s.on("challenge_error", (message) => {
-          alert(translateServerMessage(message, t));
-        });
+          let text = translateServerMessage(message, t);
+          if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+            const seconds = Math.ceil(retryAfterMs / 1000);
+            text += `\n${t("game.waiting")} (${seconds}s)`;
+          }
+          alert(text);
+        };
+
+        s.on("match_error", showError);
+        s.on("challenge_error", showError);
 
         s.on("challenge_received", (payload) => {
           const from = payload?.from;
@@ -385,6 +393,15 @@ const DIFFS = useMemo(
 
     // If match is already finished locally, just go back.
     if (gameState?.finalResult) {
+      resetToLobbyState();
+      return;
+    }
+
+    // Practice/solo: leave immediately (no confirm)
+    if (match?.isPractice || match?.isSolo) {
+      try {
+        socket?.emit("leave_match", { matchId: match.matchId });
+      } catch (_) {}
       resetToLobbyState();
       return;
     }
