@@ -21,9 +21,7 @@ import {
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
-
-app.use(cors());
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, pingInterval: 10000, pingTimeout: 20000 });app.use(cors());
 app.use(express.json());
 
 // =====================
@@ -728,6 +726,40 @@ function broadcastLobby() {
   io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() });
 }
 
+
+
+function pruneLobbyPresence() {
+  let changed = false;
+
+  // Prune users that claim to be online but no longer have a live socket.
+  for (const user of Array.from(lobby.onlineUsers)) {
+    const sid = socketsByUser.get(user);
+    const s = sid ? io.sockets.sockets.get(sid) : null;
+    if (!s || s.disconnected) {
+      lobby.onlineUsers.delete(user);
+      socketsByUser.delete(user);
+      removeUserFromAllQueues(user);
+      changed = true;
+    }
+  }
+
+  // Prune orphan socket mappings too (defensive).
+  for (const [user, sid] of Array.from(socketsByUser.entries())) {
+    const s = sid ? io.sockets.sockets.get(sid) : null;
+    if (!s || s.disconnected) {
+      socketsByUser.delete(user);
+      lobby.onlineUsers.delete(user);
+      removeUserFromAllQueues(user);
+      changed = true;
+    }
+  }
+
+  if (changed) broadcastLobby();
+}
+
+// Socket.io will usually detect disconnects on its own, but real networks are weird.
+// This sweep keeps lobby online-count honest even if a client disappears without a clean disconnect.
+setInterval(pruneLobbyPresence, 15000);
 // =====================
 // Lobby chat (ephemeral, 5 min TTL)
 // =====================
@@ -2983,7 +3015,21 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     if (bothReady) startNextRoundCountdown(match);
   });
 
-  socket.on("disconnect", () => {
+  
+
+  socket.on("logout", () => {
+    if (!currentUser) return;
+
+    lobby.onlineUsers.delete(currentUser);
+    removeUserFromAllQueues(currentUser);
+
+    const mapped = socketsByUser.get(currentUser);
+    if (mapped === socket.id) socketsByUser.delete(currentUser);
+
+    currentUser = null;
+    broadcastLobby();
+  });
+socket.on("disconnect", () => {
     if (!currentUser) return;
 
     lobby.onlineUsers.delete(currentUser);

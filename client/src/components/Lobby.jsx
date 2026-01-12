@@ -109,7 +109,15 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
-  // Lobby chat toggle (persisted in localStorage)
+  
+
+  const handleLogout = () => {
+    try {
+      socket?.emit("logout");
+    } catch {}
+    onLogout?.();
+  };
+// Lobby chat toggle (persisted in localStorage)
   const [chatOpen, setChatOpen] = useState(() => {
     try {
       const v = localStorage.getItem("geosense:lobbyChatOpen");
@@ -763,7 +771,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               >
                 ?
               </button>
-              <button className="logout-btn" onClick={onLogout}>
+              <button className="logout-btn" onClick={handleLogout}>
                 {t("common.logout")}
               </button>
             </div>
