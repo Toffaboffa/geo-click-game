@@ -1278,6 +1278,47 @@ button:disabled {
   margin-top: 8px;
 }
 
+/* ----- XP (progression) ----- */
+.xp-block {
+  margin-top: 10px;
+}
+
+.xp-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.xp-total {
+  font-weight: 900;
+}
+
+.xp-subtext {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.xp-bar {
+  margin-top: 6px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.xp-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: rgba(37, 99, 235, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: width 220ms ease;
+}
+
 /* ===== Progression modal: Emoji overview + grupp-tabs ===== */
 
 .badge-overview-wrap {

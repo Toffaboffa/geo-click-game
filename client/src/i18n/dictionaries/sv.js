@@ -14,6 +14,7 @@ export default {
     desc: "Fallande",
     level: "Level",
     badges: "Badges",
+    xp: "XP",
     hoverForInfo: "Hovra för info",
     difficulty: {
       easy: "Enkel",
@@ -155,6 +156,7 @@ export default {
 
     progress: {
       title: "{user} • {levelLabel} {level}",
+      xpToNext: "{n} XP till nästa level",
       statsPlayed: "Spelade",
       statsWins: "Vinster",
       statsLosses: "Förluster",
@@ -164,6 +166,7 @@ export default {
       statsBestWin: "Största vinst",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
   },
 
   game: {
@@ -202,6 +205,13 @@ export default {
 
     flag: "Flagga",
     youMarkerTitle: "Du: lon {lon}, lat {lat}, t {t}s",
+
+    matchEnd: {
+      xpGained: "XP",
+      badgeXp: "Badge-XP",
+      levelUp: "Level up",
+    },
+
   },
 
   dialogs: {

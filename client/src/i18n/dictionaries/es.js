@@ -14,6 +14,7 @@ export default {
     desc: "Descendente",
     level: "Nivel",
     badges: "Insignias",
+    xp: "XP",
     hoverForInfo: "Pasa el cursor para info",
     difficulty: {
       easy: "Fácil",
@@ -153,6 +154,7 @@ export default {
 
     progress: {
       title: "{user} • {levelLabel} {level}",
+      xpToNext: "{n} XP para el siguiente nivel",
       statsPlayed: "Jugadas",
       statsWins: "Victorias",
       statsLosses: "Derrotas",
@@ -162,6 +164,7 @@ export default {
       statsBestWin: "Mejor victoria",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
   },
 
   game: {
@@ -200,6 +203,13 @@ export default {
 
     flag: "Bandera",
     youMarkerTitle: "Tú: lon {lon}, lat {lat}, t {t}s",
+
+    matchEnd: {
+      xpGained: "XP ganado",
+      badgeXp: "XP de insignias",
+      levelUp: "Subes de nivel",
+    },
+
   },
 
   dialogs: {

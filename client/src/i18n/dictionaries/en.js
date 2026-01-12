@@ -14,6 +14,7 @@ export default {
     desc: "Descending",
     level: "Level",
     badges: "Badges",
+    xp: "XP",
     hoverForInfo: "Hover for info",
     difficulty: {
       easy: "Easy",
@@ -152,6 +153,7 @@ export default {
 
     progress: {
       title: "{user} • {levelLabel} {level}",
+      xpToNext: "{n} XP to next level",
       statsPlayed: "Played",
       statsWins: "Wins",
       statsLosses: "Losses",
@@ -161,6 +163,7 @@ export default {
       statsBestWin: "Biggest win",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
   },
 
   game: {
@@ -199,6 +202,13 @@ export default {
 
     flag: "Flag",
     youMarkerTitle: "You: lon {lon}, lat {lat}, t {t}s",
+
+    matchEnd: {
+      xpGained: "XP gained",
+      badgeXp: "Badge XP",
+      levelUp: "Level up",
+    },
+
   },
 
   dialogs: {

@@ -158,13 +158,32 @@ function normalizeDelta(d) {
   const o = safeObj(d);
   return {
     username: o.username,
+
+    // Levels (legacy fields may exist in payloads)
     oldLevel: numOr(o.oldLevel ?? o.old_level, 0),
     newLevel: numOr(o.newLevel ?? o.new_level, 0),
+
+    // Badges (existing UI)
     oldBadgesCount: numOr(o.oldBadgesCount ?? o.old_badges_count ?? o.badgesCountOld, 0),
     newBadgesCount: numOr(o.newBadgesCount ?? o.new_badges_count ?? o.badgesCountNew, 0),
     newBadges: safeArr(o.newBadges || o.new_badges)
       .map(normalizeBadge)
       .filter((x) => !!x.code),
+
+    // XP (new)
+    xpGained: numOr(o.xpGained ?? o.xp_gained ?? o.xpDelta ?? o.xp_delta, 0),
+    xpMatch: numOr(o.xpMatch ?? o.xp_match, 0),
+    xpBadges: numOr(o.xpBadges ?? o.xp_badges ?? o.badgeBonusXp ?? o.badge_bonus_xp, 0),
+
+    oldXpTotal: numOr(o.oldXpTotal ?? o.old_xp_total, 0),
+    newXpTotal: numOr(o.newXpTotal ?? o.new_xp_total, 0),
+
+    xpIntoLevel: numOr(o.xpIntoLevel ?? o.xp_into_level, 0),
+    xpToNext: numOr(o.xpToNext ?? o.xp_to_next, 0),
+    xpPctToNext: numOr(o.xpPctToNext ?? o.xp_pct_to_next, 0),
+
+    xpLevelBase: numOr(o.xpLevelBase ?? o.xp_level_base, 0),
+    xpNextLevelAt: numOr(o.xpNextLevelAt ?? o.xp_next_level_at, 0),
   };
 }
 
@@ -779,6 +798,12 @@ useEffect(() => {
     const myBadgesCountUp = !!myDelta && myDelta.newBadgesCount > myDelta.oldBadgesCount;
     const oppBadgesCountUp = !!oppDelta && oppDelta.newBadgesCount > oppDelta.oldBadgesCount;
 
+    const myXpGained = numOr(myDelta?.xpGained, 0);
+    const oppXpGained = numOr(oppDelta?.xpGained, 0);
+    const myBadgeXp = numOr(myDelta?.xpBadges, 0);
+    const oppBadgeXp = numOr(oppDelta?.xpBadges, 0);
+    const hasXp = myXpGained > 0 || oppXpGained > 0;
+
     return {
       myDelta,
       oppDelta,
@@ -786,13 +811,19 @@ useEffect(() => {
       oppLevelUp,
       myNewBadges,
       oppNewBadges,
+      myXpGained,
+      oppXpGained,
+      myBadgeXp,
+      oppBadgeXp,
+      hasXp,
       hasAnything:
         myNewBadges.length > 0 ||
         oppNewBadges.length > 0 ||
         myLevelUp ||
         oppLevelUp ||
         myBadgesCountUp ||
-        oppBadgesCountUp,
+        oppBadgesCountUp ||
+        hasXp,
     };
   }, [gameState.finalResult, myName, opponentName]);
 
@@ -1022,7 +1053,39 @@ useEffect(() => {
                 </div>
               )}
 
-			 {/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}
+			 
+              {/* XP (finish overlay) */}
+              {progression.myDelta &&
+                (progression.myDelta.xpGained > 0 ||
+                  progression.myDelta.xpMatch > 0 ||
+                  progression.myDelta.xpBadges > 0) && (
+                  <div className="finish-xp">
+                    <div className="finish-xp-row">
+                      <span className="finish-xp-label">{t("game.matchEnd.xpGained")}</span>
+                      <span className="finish-xp-val">
+                        +{Math.round(progression.myDelta.xpGained)} {t("common.xp")}
+                      </span>
+                    </div>
+
+                    {progression.myDelta.xpBadges > 0 && (
+                      <div className="finish-xp-sub">
+                        {t("game.matchEnd.badgeXp")} +{Math.round(progression.myDelta.xpBadges)}{" "}
+                        {t("common.xp")}
+                      </div>
+                    )}
+
+                    {/* I Öva-läge visar vi level-up här (i 1v1 visas den i progression-raden). */}
+                    {isPractice && progression.myLevelUp ? (
+                      <div className="finish-xp-sub">
+                        <span className="level-up-chip">
+                          ⬆️ {t("game.matchEnd.levelUp")} {progression.myDelta.oldLevel} →{" "}
+                          {progression.myDelta.newLevel}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+{/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}
 			{!isPractice && progression.hasAnything && (
 			  <div className="finish-progression">
 				{/* Jag */}

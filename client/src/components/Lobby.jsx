@@ -626,9 +626,69 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     return s;
   }, [progressData]);
 
+  const xpUi = useMemo(() => {
+    const xpTotal = Number(progressData?.xp_total ?? progressData?.xpTotal ?? progressData?.xp ?? NaN);
+    if (!Number.isFinite(xpTotal)) return null;
+
+    // Prefer server-provided level/progress fields if present
+    const lvlFromServer = Number(progressData?.level ?? NaN);
+    const direct = {
+      xpLevelBase: Number(progressData?.xpLevelBase ?? progressData?.xp_level_base ?? NaN),
+      xpNextLevelAt: Number(progressData?.xpNextLevelAt ?? progressData?.xp_next_level_at ?? NaN),
+      xpIntoLevel: Number(progressData?.xpIntoLevel ?? progressData?.xp_into_level ?? NaN),
+      xpToNext: Number(progressData?.xpToNext ?? progressData?.xp_to_next ?? NaN),
+      xpPctToNext: Number(progressData?.xpPctToNext ?? progressData?.xp_pct_to_next ?? NaN),
+    };
+
+    const hasDirect =
+      Number.isFinite(direct.xpLevelBase) &&
+      Number.isFinite(direct.xpNextLevelAt) &&
+      Number.isFinite(direct.xpIntoLevel) &&
+      Number.isFinite(direct.xpToNext) &&
+      Number.isFinite(direct.xpPctToNext);
+
+    if (hasDirect) {
+      return {
+        xpTotal,
+        level: Number.isFinite(lvlFromServer) ? Math.max(0, Math.floor(lvlFromServer)) : null,
+        ...direct,
+      };
+    }
+
+    // Fallback: compute level/progress client-side from xp_total (same curve as server spec)
+    const need = (L) => 180 + 40 * L + 6 * L * L;
+
+    let level = 0;
+    let base = 0;
+    // Loop is cheap; levels won't be huge.
+    while (xpTotal >= base + need(level)) {
+      base += need(level);
+      level += 1;
+      if (level > 100000) break; // safety
+    }
+
+    const nextAt = base + need(level);
+    const into = xpTotal - base;
+    const toNext = Math.max(0, nextAt - xpTotal);
+    const denom = Math.max(1, nextAt - base);
+    const pct = Math.max(0, Math.min(100, (into / denom) * 100));
+
+    return {
+      xpTotal,
+      level: Number.isFinite(lvlFromServer) ? Math.max(0, Math.floor(lvlFromServer)) : level,
+      xpLevelBase: base,
+      xpNextLevelAt: nextAt,
+      xpIntoLevel: into,
+      xpToNext: toNext,
+      xpPctToNext: pct,
+    };
+  }, [progressData]);
+
   const levelValue =
     typeof progressData?.level === "number"
       ? progressData.level
+      : typeof xpUi?.level === "number"
+      ? xpUi.level
       : typeof progressData?.badges_count === "number"
       ? progressData.badges_count
       : typeof progressData?.badgesCount === "number"
@@ -1399,6 +1459,29 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             {!progressLoading && !progressError && (
               <>
                 <div className="progress-summary">
+                  {xpUi && (
+                    <div className="progress-xp">
+                      <div className="progress-xp-row">
+                        <div className="ps-label">{t("common.xp")}</div>
+                        <div className="ps-value">{fmtIntOrDash(xpUi.xpTotal)}</div>
+                      </div>
+
+                      <div
+                        className="xp-bar"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(Number(xpUi.xpPctToNext ?? 0))}
+                      >
+                        <div className="xp-bar-fill" style={{ width: `${xpUi.xpPctToNext}%` }} />
+                      </div>
+
+                      <div className="xp-subtext">
+                        {t("lobby.progress.xpToNext", { n: fmtIntOrDash(xpUi.xpToNext) })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="progress-stats-grid">
                     <div className="ps-item">
                       <div className="ps-label">{t("lobby.progress.statsPlayed")}</div>

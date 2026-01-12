@@ -375,7 +375,7 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
   try {
     const username = req.username;
 
-    const optional = ["level", "badges_count", "best_match_score",
+    const optional = ["level", "xp_total", "xp_updated_at", "badges_count", "best_match_score",
       "played_challenges_total",
       "wins_challenges_total",
       "started_matches_via_queue", "best_win_margin"];
@@ -398,6 +398,11 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
 
     const u = rows[0];
+    const xpTotalRaw = Object.prototype.hasOwnProperty.call(u, "xp_total") ? u.xp_total : null;
+    const xpTotal =
+      xpTotalRaw == null ? null : typeof xpTotalRaw === "number" ? xpTotalRaw : Number(xpTotalRaw);
+    const xpUpdatedAt = Object.prototype.hasOwnProperty.call(u, "xp_updated_at") ? u.xp_updated_at : null;
+
 
     const { rows: earned } = await client.query(
       `select badge_code, earned_at, match_id, meta
@@ -410,6 +415,10 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
     res.json({
       username,
       level: typeof u.level === "number" ? u.level : null,
+      xp_total: Number.isFinite(xpTotal) ? xpTotal : null,
+      xpTotal: Number.isFinite(xpTotal) ? xpTotal : null,
+      xp_updated_at: xpUpdatedAt ?? null,
+      xpUpdatedAt: xpUpdatedAt ?? null,
       badges_count: typeof u.badges_count === "number" ? u.badges_count : null,
       badgesCount: typeof u.badges_count === "number" ? u.badges_count : null, // extra kompat
       earnedBadges: earned,
@@ -438,7 +447,7 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
     const username = String(req.params.username || "").trim();
     if (!username) return res.status(400).json({ error: "Saknar username" });
 
-    const optional = ["level", "badges_count", "best_match_score",
+    const optional = ["level", "xp_total", "xp_updated_at", "badges_count", "best_match_score",
       "played_challenges_total",
       "wins_challenges_total",
       "started_matches_via_queue", "best_win_margin"];
@@ -461,6 +470,11 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
     if (!rows[0]) return res.status(404).json({ error: "Hittade inte användare" });
 
     const u = rows[0];
+    const xpTotalRaw = Object.prototype.hasOwnProperty.call(u, "xp_total") ? u.xp_total : null;
+    const xpTotal =
+      xpTotalRaw == null ? null : typeof xpTotalRaw === "number" ? xpTotalRaw : Number(xpTotalRaw);
+    const xpUpdatedAt = Object.prototype.hasOwnProperty.call(u, "xp_updated_at") ? u.xp_updated_at : null;
+
 
     const { rows: earned } = await client.query(
       `select badge_code, earned_at, match_id, meta
@@ -473,6 +487,10 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
     res.json({
       username,
       level: typeof u.level === "number" ? u.level : null,
+      xp_total: Number.isFinite(xpTotal) ? xpTotal : null,
+      xpTotal: Number.isFinite(xpTotal) ? xpTotal : null,
+      xp_updated_at: xpUpdatedAt ?? null,
+      xpUpdatedAt: xpUpdatedAt ?? null,
       badges_count: typeof u.badges_count === "number" ? u.badges_count : null,
       badgesCount: typeof u.badges_count === "number" ? u.badges_count : null,
       earnedBadges: earned,
@@ -1503,47 +1521,60 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       earnedByUser.set(username, earnedSet);
     }
 
-    // badges_count / level sync (om kolumner finns)
-    let newBadgesCount = oldBadgesCount;
-    if (newlyInsertedCodes.length) {
-      // snabb variant: old + delta
-      newBadgesCount = oldBadgesCount + newlyInsertedCodes.length;
-    } else {
-      newBadgesCount = oldBadgesCount;
-    }
+// badges_count sync (om kolumn finns)
+let newBadgesCount = oldBadgesCount;
+if (newlyInsertedCodes.length) {
+  // snabb variant: old + delta
+  newBadgesCount = oldBadgesCount + newlyInsertedCodes.length;
+} else {
+  newBadgesCount = oldBadgesCount;
+}
 
-    // Om badges_count-kolumnen finns, ta hellre “sanning” från DB-count (tål parallella insertions bättre)
-    if (hasBadgesCount) {
-      const { rows: cntRows } = await dbClient.query(
-        `select count(*)::int as c from public.user_badges where username = $1`,
-        [username]
-      );
-      newBadgesCount = cntRows[0]?.c ?? newBadgesCount;
-    }
+// Om badges_count-kolumnen finns, ta hellre “sanning” från DB-count (tål parallella insertions bättre)
+if (hasBadgesCount) {
+  const { rows: cntRows } = await dbClient.query(
+    `select count(*)::int as c from public.user_badges where username = $1`,
+    [username]
+  );
+  newBadgesCount = cntRows[0]?.c ?? newBadgesCount;
+}
 
-    const matchesLevel = Math.floor(Number(user.played ?? 0) / 20);
-    const newLevel = matchesLevel + newBadgesCount;
+// Uppdatera endast badges_count här.
+// Level ska framöver baseras ENDAST på XP (users.xp_total) och uppdateras i XP-flödet.
+if (hasBadgesCount) {
+  await dbClient.query(`update users set badges_count = $2 where username = $1`, [username, newBadgesCount]);
+}
 
-    if (hasBadgesCount || hasLevel) {
-      const sets = [];
-      const params = [username];
-      let i = 2;
+// Level hanteras inte längre här (XP-systemet är källan till sanning)
+const newLevel = oldLevel;
 
-      if (hasBadgesCount) {
-        sets.push(`badges_count = $${i++}`);
-        params.push(newBadgesCount);
-      }
-      if (hasLevel) {
-        sets.push(`level = $${i++}`);
-        params.push(newLevel);
-      }
+// Badge bonus XP: summa xp_bonus för badges som låstes upp i denna match.
+// (Skrivs inte här – bara beräknas och returneras till finishMatch/XP-flödet.)
+let badgeBonusXp = 0;
+if (newlyInsertedCodes.length) {
+  let sum = 0;
+  let missing = false;
+  for (const c of newlyInsertedCodes) {
+    const b = byCode.get(c);
+    const x = Number(b?.xpBonus);
+    if (Number.isFinite(x)) sum += x;
+    else missing = true;
+  }
+  if (!missing) {
+    badgeBonusXp = Math.round(sum);
+  } else {
+    // Fallback om katalogen inte innehåller xpBonus
+    const { rows: bonusRows } = await dbClient.query(
+      `select coalesce(sum(coalesce(xp_bonus,0)),0)::int as s
+       from public.badges
+       where code = any($1::text[])`,
+      [newlyInsertedCodes]
+    );
+    badgeBonusXp = Number(bonusRows?.[0]?.s ?? 0);
+  }
+}
 
-      if (sets.length) {
-        await dbClient.query(`update users set ${sets.join(", ")} where username = $1`, params);
-      }
-    }
-
-    const newBadges = newlyInsertedCodes
+const newBadges = newlyInsertedCodes
       .map((code) => byCode.get(code))
       .filter(Boolean)
       .map((b) => ({
@@ -1558,13 +1589,15 @@ async function awardBadgesAndLevelAfterMatchTx(dbClient, match, winner, totalSco
       }));
 
     progressionDelta[username] = {
-      username,
-      oldLevel,
-      newLevel,
-      oldBadgesCount,
-      newBadgesCount,
-      newBadges,
-    };
+  username,
+  oldLevel,
+  newLevel,
+  oldBadgesCount,
+  newBadgesCount,
+  newBadges,
+  newBadgeCodes: newlyInsertedCodes,
+  badgeBonusXp,
+};
   }
 
   return progressionDelta;
@@ -1630,6 +1663,480 @@ async function updatePersonalRecordsTx(dbClient, match, total, winner, opts = {}
       );
     }
   }
+}
+
+
+
+// =====================
+// XP + Level (Steg 2: practice XP)
+// =====================
+const XP_P = 40; // spelad-bas (P), justerbart
+const XP_MAX_PERF = 0.5; // upp till +50%
+const XP_PRACTICE_MULT = 0.07; // 7% för öva/solo
+
+function clamp01(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function difficultyFactor(difficulty) {
+  const d = String(difficulty || "").toLowerCase();
+  if (d === "easy") return 1;
+  if (d === "medium") return 2;
+  if (d === "hard") return 4;
+  return 1;
+}
+
+function computePerfMult(totalScore, roundsCount) {
+  const rc = Math.max(1, Number(roundsCount || 1));
+  const scoreMax = 2000 * rc;
+  const q = clamp01(1 - Number(totalScore || 0) / scoreMax); // lägre score = bättre
+  return 1 + XP_MAX_PERF * (q * q);
+}
+
+// Level-kurva: need(L) = 180 + 40L + 6L^2
+function xpNeedForNextLevel(L) {
+  const l = Math.max(0, Math.floor(Number(L || 0)));
+  return 180 + 40 * l + 6 * l * l;
+}
+
+function levelFromXpTotal(xpTotal) {
+  const total = Math.max(0, Math.floor(Number(xpTotal || 0)));
+  let level = 0;
+  let base = 0;
+
+  while (true) {
+    const need = xpNeedForNextLevel(level);
+    if (total < base + need) break;
+    base += need;
+    level += 1;
+    if (level > 10_000) break; // skydd
+  }
+
+  const nextNeed = xpNeedForNextLevel(level);
+  const nextAt = base + nextNeed;
+  const into = total - base;
+  const toNext = Math.max(0, nextAt - total);
+  const pct = nextNeed > 0 ? (into / nextNeed) * 100 : 0;
+
+  return {
+    level,
+    xpLevelBase: base,
+    xpNextLevelAt: nextAt,
+    xpIntoLevel: into,
+    xpToNext: toNext,
+    xpPctToNext: Math.max(0, Math.min(100, pct)),
+  };
+}
+
+// Liten kolumn-cache (minskar hasColumn-spam)
+const _xpColCache = new Map(); // key: "table.col" -> boolean
+async function hasColCached(dbClient, table, col) {
+  const k = `${table}.${col}`;
+  if (_xpColCache.has(k)) return _xpColCache.get(k);
+  const v = await hasColumn(dbClient, table, col);
+  _xpColCache.set(k, v);
+  return v;
+}
+
+// Idempotent XP-write (ON CONFLICT) + users.xp_total (+level)
+async function applyXpOnceTx(dbClient, { username, matchId, reason, amount, meta }) {
+  const u = String(username || "").trim();
+  const mId = String(matchId || "").trim();
+  const r = String(reason || "").trim();
+  const amt = Math.max(0, Math.floor(Number(amount || 0)));
+
+  if (!u || !mId || !r || amt <= 0) {
+    return { inserted: false, oldXpTotal: null, newXpTotal: null, oldLevel: null, newLevel: null };
+  }
+
+  const hasXpTotal = await hasColCached(dbClient, "users", "xp_total");
+  if (!hasXpTotal) {
+    // DB saknar XP-kolumner → gör inget (men krascha inte servern)
+    return { inserted: false, oldXpTotal: null, newXpTotal: null, oldLevel: null, newLevel: null };
+  }
+
+  const hasLevel = await hasColCached(dbClient, "users", "level");
+  const hasXpUpdatedAt = await hasColCached(dbClient, "users", "xp_updated_at");
+
+  // Läs "före" (för UI delta)
+  let oldXpTotal = 0;
+  let oldLevel = 0;
+  try {
+    const selCols = ["coalesce(xp_total,0)::bigint as xp_total"];
+    if (hasLevel) selCols.push("coalesce(level,0)::int as level");
+    const { rows } = await dbClient.query(
+      `select ${selCols.join(", ")} from users where username = $1 for update`,
+      [u]
+    );
+    oldXpTotal = Number(rows?.[0]?.xp_total ?? 0);
+    oldLevel = hasLevel ? Number(rows?.[0]?.level ?? 0) : 0;
+  } catch (e) {
+    console.error("applyXpOnceTx select users failed", e);
+  }
+
+  // Bygg INSERT dynamiskt så vi inte kräver meta/created_at-kolumner
+  const hasMeta = await hasColCached(dbClient, "xp_events", "meta");
+  const hasCreatedAt = await hasColCached(dbClient, "xp_events", "created_at");
+  const hasAmount = await hasColCached(dbClient, "xp_events", "amount");
+  const hasXpAmount = !hasAmount && (await hasColCached(dbClient, "xp_events", "xp_amount"));
+
+  const hasMode = await hasColCached(dbClient, \"xp_events\", \"mode\");
+  const hasDifficulty = await hasColCached(dbClient, \"xp_events\", \"difficulty\");
+
+  const amountCol = hasAmount ? "amount" : hasXpAmount ? "xp_amount" : null;
+  if (!amountCol) {
+    console.error("xp_events saknar amount/xp_amount kolumn – kan inte skriva XP");
+    return { inserted: false, oldXpTotal, newXpTotal: oldXpTotal, oldLevel, newLevel: oldLevel };
+  }
+
+  const cols = ["username", "match_id", "reason", amountCol];
+  const vals = ["$1", "$2", "$3", "$4"];
+  const params = [u, mId, r, amt];
+  let p = 5;
+
+  if (hasMeta) {
+    cols.push("meta");
+    vals.push(`$${p++}::jsonb`);
+    params.push(JSON.stringify(meta || {}));
+  }
+
+if (hasMode) {
+  cols.push("mode");
+  vals.push(`$${p++}`);
+  const m = meta && typeof meta === "object" ? meta.mode : null;
+  params.push(m != null ? String(m) : "unknown");
+}
+if (hasDifficulty) {
+  cols.push("difficulty");
+  vals.push(`$${p++}`);
+  const d = meta && typeof meta === "object" ? meta.difficulty : null;
+  params.push(d != null ? String(d) : DEFAULT_DIFFICULTY);
+}
+  if (hasCreatedAt) {
+    cols.push("created_at");
+    vals.push("now()");
+  }
+
+  let inserted = false;
+  try {
+    const q = `
+      insert into public.xp_events (${cols.join(", ")})
+      values (${vals.join(", ")})
+      on conflict (username, match_id, reason) do nothing
+      returning 1 as ok
+    `;
+    const { rows } = await dbClient.query(q, params);
+    inserted = !!rows?.length;
+  } catch (e) {
+    console.error("applyXpOnceTx insert xp_events failed", e);
+    inserted = false;
+  }
+
+  let newXpTotal = oldXpTotal;
+  let newLevel = oldLevel;
+
+  if (inserted) {
+    try {
+      const sets = [`xp_total = coalesce(xp_total,0) + $2`];
+      const upParams = [u, amt];
+      if (hasXpUpdatedAt) sets.push(`xp_updated_at = now()`);
+
+      const retCols = ["coalesce(xp_total,0)::bigint as xp_total"];
+      if (hasLevel) retCols.push("coalesce(level,0)::int as level");
+
+      const { rows } = await dbClient.query(
+        `update users set ${sets.join(", ")} where username = $1 returning ${retCols.join(", ")}`,
+        upParams
+      );
+
+      newXpTotal = Number(rows?.[0]?.xp_total ?? (oldXpTotal + amt));
+      newLevel = hasLevel ? Number(rows?.[0]?.level ?? oldLevel) : oldLevel;
+
+      // Räkna level från XP och uppdatera users.level om kolumn finns och den ändras
+      if (hasLevel) {
+        const lvl = levelFromXpTotal(newXpTotal);
+        if (Number.isFinite(lvl.level) && lvl.level !== newLevel) {
+          await dbClient.query(`update users set level = $2 where username = $1`, [u, lvl.level]);
+          newLevel = lvl.level;
+        }
+      }
+    } catch (e) {
+      console.error("applyXpOnceTx update users failed", e);
+    }
+  }
+
+  return { inserted, oldXpTotal, newXpTotal, oldLevel, newLevel };
+}
+
+async function applyPracticeXpForUserTx(dbClient, match, username, totalScore) {
+  const roundsCount = Number(match?.totalRounds ?? (match?.rounds?.length ?? 1));
+  const diff = difficultyFactor(match?.difficulty);
+  const playedBase = XP_P * diff;
+  const perfMult = computePerfMult(totalScore, roundsCount);
+
+  const xpRaw = playedBase * perfMult * XP_PRACTICE_MULT;
+  const xpAmount = Math.max(0, Math.round(xpRaw));
+
+  const meta = {
+    mode: "practice",
+    difficulty: match?.difficulty ?? DEFAULT_DIFFICULTY,
+    roundsCount,
+    totalScore: Math.round(Number(totalScore || 0)),
+    playedBase,
+    perfMult,
+    practiceMult: XP_PRACTICE_MULT,
+  };
+
+  const res = await applyXpOnceTx(dbClient, {
+    username,
+    matchId: match.id,
+    reason: "practice_xp",
+    amount: xpAmount,
+    meta,
+  });
+
+  const newXpTotal = Number(res.newXpTotal ?? res.oldXpTotal ?? 0);
+  const oldXpTotal = Number(res.oldXpTotal ?? 0);
+
+  const oldLevel = Number(res.oldLevel ?? 0);
+  const newLevel = Number(res.newLevel ?? oldLevel);
+
+  const lvlInfo = levelFromXpTotal(newXpTotal);
+
+  return {
+    username,
+    xpGained: res.inserted ? xpAmount : 0,
+    xpMatch: res.inserted ? xpAmount : 0,
+    xpBadges: 0,
+    oldXpTotal,
+    newXpTotal,
+    oldLevel,
+    newLevel,
+    ...lvlInfo,
+  };
+}
+
+// Normal match XP (Steg 3): 1v1 riktiga matcher (ej walkover, ej öva)
+async function applyMatchXpForUserTx(dbClient, match, username, totalScore, winner) {
+  const roundsCount = Number(match?.totalRounds ?? (match?.rounds?.length ?? 1));
+  const diff = difficultyFactor(match?.difficulty);
+  const playedBase = XP_P * diff;
+
+  const isWinner = !!winner && String(username) === String(winner);
+  const winBase = isWinner ? 4 * playedBase : 0;
+
+  const isQueue = String(match?.source || "").toLowerCase() === "queue";
+  const queueMult = isQueue ? 1.25 : 1.0;
+
+  const perfMult = computePerfMult(totalScore, roundsCount);
+
+  const xpRaw = (playedBase + winBase) * queueMult * perfMult;
+  const xpAmount = Math.max(0, Math.round(xpRaw));
+
+  const meta = {
+    mode: "match",
+    difficulty: match?.difficulty ?? DEFAULT_DIFFICULTY,
+    roundsCount,
+    totalScore: Math.round(Number(totalScore || 0)),
+    playedBase,
+    winBase,
+    queueMult,
+    isQueue,
+    perfMult,
+  };
+
+  const res = await applyXpOnceTx(dbClient, {
+    username,
+    matchId: match.id,
+    reason: "match_xp",
+    amount: xpAmount,
+    meta,
+  });
+
+  const newXpTotal = Number(res.newXpTotal ?? res.oldXpTotal ?? 0);
+  const oldXpTotal = Number(res.oldXpTotal ?? 0);
+  const oldLevel = Number(res.oldLevel ?? 0);
+  const newLevel = Number(res.newLevel ?? oldLevel);
+
+  const lvlInfo = levelFromXpTotal(newXpTotal);
+
+  return {
+    username,
+    xpGained: res.inserted ? xpAmount : 0,
+    xpMatch: res.inserted ? xpAmount : 0,
+    xpBadges: 0,
+    oldXpTotal,
+    newXpTotal,
+    oldLevel,
+    newLevel,
+    ...lvlInfo,
+  };
+}
+
+// Walkover XP (Steg 5): vinnaren får 50% av playedBase, quitter får 0 (ingen perf, ingen queue, inga badges)
+async function getXpSnapshotForUserTx(dbClient, username) {
+  const u = String(username || "").trim();
+  if (!u) {
+    return {
+      username: u,
+      xpGained: 0,
+      xpMatch: 0,
+      xpBadges: 0,
+      oldXpTotal: 0,
+      newXpTotal: 0,
+      oldLevel: 0,
+      newLevel: 0,
+      ...levelFromXpTotal(0),
+    };
+  }
+
+  const hasXpTotal = await hasColCached(dbClient, "users", "xp_total");
+  const hasLevel = await hasColCached(dbClient, "users", "level");
+
+  if (!hasXpTotal) {
+    return {
+      username: u,
+      xpGained: 0,
+      xpMatch: 0,
+      xpBadges: 0,
+      oldXpTotal: null,
+      newXpTotal: null,
+      oldLevel: null,
+      newLevel: null,
+      ...levelFromXpTotal(0),
+    };
+  }
+
+  const selCols = ["coalesce(xp_total,0)::bigint as xp_total"];
+  if (hasLevel) selCols.push("coalesce(level,0)::int as level");
+
+  const { rows } = await dbClient.query(`select ${selCols.join(", ")} from users where username=$1`, [u]);
+  const xpTotal = Number(rows?.[0]?.xp_total ?? 0);
+  const level = hasLevel ? Number(rows?.[0]?.level ?? 0) : 0;
+
+  const lvlInfo = levelFromXpTotal(xpTotal);
+
+  return {
+    username: u,
+    xpGained: 0,
+    xpMatch: 0,
+    xpBadges: 0,
+    oldXpTotal: xpTotal,
+    newXpTotal: xpTotal,
+    oldLevel: level,
+    newLevel: level,
+    ...lvlInfo,
+  };
+}
+
+async function applyWalkoverWinXpForUserTx(dbClient, match, username) {
+  const diff = difficultyFactor(match?.difficulty);
+  const playedBase = XP_P * diff;
+
+  const xpRaw = 0.5 * playedBase;
+  const xpAmount = Math.max(0, Math.round(xpRaw));
+
+  // Om det blir 0 (bör inte hända), returnera snapshot
+  if (xpAmount <= 0) return getXpSnapshotForUserTx(dbClient, username);
+
+  const meta = {
+    mode: "walkover",
+    difficulty: match?.difficulty ?? DEFAULT_DIFFICULTY,
+    playedBase,
+    mult: 0.5,
+  };
+
+  const res = await applyXpOnceTx(dbClient, {
+    username,
+    matchId: match.id,
+    reason: "walkover_win",
+    amount: xpAmount,
+    meta,
+  });
+
+  const newXpTotal = Number(res.newXpTotal ?? res.oldXpTotal ?? 0);
+  const oldXpTotal = Number(res.oldXpTotal ?? 0);
+  const oldLevel = Number(res.oldLevel ?? 0);
+  const newLevel = Number(res.newLevel ?? oldLevel);
+  const lvlInfo = levelFromXpTotal(newXpTotal);
+
+  return {
+    username,
+    xpGained: res.inserted ? xpAmount : 0,
+    xpMatch: res.inserted ? xpAmount : 0,
+    xpBadges: 0,
+    oldXpTotal,
+    newXpTotal,
+    oldLevel,
+    newLevel,
+    ...lvlInfo,
+  };
+}
+
+
+// Badge bonus XP (Steg 4): XP från nyupplåsta badges i matchen (idempotent per match)
+async function applyBadgeBonusXpForUserTx(dbClient, match, username, badgeBonusXp, newBadgeCodes = []) {
+  const bonus = Math.max(0, Math.round(Number(badgeBonusXp || 0)));
+  // Ingen bonus att ge
+  if (!bonus) {
+    // Returnera basinfo så vi kan visa korrekt progress även om ingen XP gavs
+    // (hämtas från users om kolumner finns)
+    const hasLevel = await hasColumn(dbClient, "users", "level");
+    const { rows } = await dbClient.query(
+      `select coalesce(xp_total,0)::bigint as xp_total${hasLevel ? ", coalesce(level,0)::int as level" : ""}
+       from users where username=$1`,
+      [username]
+    );
+    const xpTotal = Number(rows?.[0]?.xp_total ?? 0);
+    const lvlInfo = levelFromXpTotal(xpTotal);
+    return {
+      username,
+      xpGained: 0,
+      xpMatch: 0,
+      xpBadges: 0,
+      oldXpTotal: xpTotal,
+      newXpTotal: xpTotal,
+      oldLevel: Number(rows?.[0]?.level ?? 0),
+      newLevel: Number(rows?.[0]?.level ?? 0),
+      ...lvlInfo,
+    };
+  }
+
+  const meta = {
+    mode: "badge_bonus",
+    difficulty: match?.difficulty ?? DEFAULT_DIFFICULTY,
+    badgeCodes: Array.isArray(newBadgeCodes) ? newBadgeCodes : [],
+    badgeBonusXp: bonus,
+  };
+
+  const res = await applyXpOnceTx(dbClient, {
+    username,
+    matchId: match.id,
+    reason: "badge_bonus",
+    amount: bonus,
+    meta,
+  });
+
+  const newXpTotal = Number(res.newXpTotal ?? res.oldXpTotal ?? 0);
+  const oldXpTotal = Number(res.oldXpTotal ?? 0);
+  const oldLevel = Number(res.oldLevel ?? 0);
+  const newLevel = Number(res.newLevel ?? oldLevel);
+
+  const lvlInfo = levelFromXpTotal(newXpTotal);
+
+  return {
+    username,
+    xpGained: res.inserted ? bonus : 0,
+    xpMatch: 0,
+    xpBadges: res.inserted ? bonus : 0,
+    oldXpTotal,
+    newXpTotal,
+    oldLevel,
+    newLevel,
+    ...lvlInfo,
+  };
 }
 
 async function finishMatch(match, opts = {}) {
@@ -1759,7 +2266,39 @@ async function finishMatch(match, opts = {}) {
           [[walkoverWinner, walkoverLoser]]
         );
 
+
+
+        // Steg 5: Walkover XP (vinnare 50% playedBase, quitter 0). Inga badges.
+
+
         progressionDelta = {};
+
+
+        try {
+
+
+          const dWinner = await applyWalkoverWinXpForUserTx(client, match, walkoverWinner);
+
+
+          const dLoser = await getXpSnapshotForUserTx(client, walkoverLoser);
+
+
+          progressionDelta[walkoverWinner] = dWinner;
+
+
+          progressionDelta[walkoverLoser] = dLoser;
+
+
+        } catch (e) {
+
+
+          console.error("walkover XP error", e);
+
+
+        }
+
+
+        
       } else {
         for (const u of realPlayers) {
           await client.query(
@@ -1863,7 +2402,59 @@ async function finishMatch(match, opts = {}) {
         );
 
         await updatePersonalRecordsTx(client, match, total, winner, { walkover: false });
-        progressionDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
+
+        // Badges delas ut som vanligt (men level skrivs inte längre här)
+        const badgeDelta = await awardBadgesAndLevelAfterMatchTx(client, match, winner, total);
+
+        // Steg 3+4: ge idempotent match-XP + badge-bonus-XP för riktiga 1v1-matcher (båda spelare riktiga, ej walkover).
+if (bothReal) {
+  const xpMatchDelta = {};
+  for (const u of realPlayers) {
+    const myTotal = Number(total?.[u] ?? 0);
+    xpMatchDelta[u] = await applyMatchXpForUserTx(client, match, u, myTotal, winner);
+  }
+
+  const xpBadgeDelta = {};
+  for (const u of realPlayers) {
+    const bonus = Number(badgeDelta?.[u]?.badgeBonusXp ?? 0);
+    const codes = badgeDelta?.[u]?.newBadgeCodes ?? [];
+    if (bonus > 0) {
+      xpBadgeDelta[u] = await applyBadgeBonusXpForUserTx(client, match, u, bonus, codes);
+    }
+  }
+
+  // Merge: badgeDelta (newBadges etc) + XP-delta. XP-data ska reflektera slutläget efter både match_xp och ev badge_bonus.
+  progressionDelta = {};
+  for (const u of realPlayers) {
+    const b = badgeDelta?.[u] || {};
+    const m = xpMatchDelta?.[u] || {};
+    const bx = xpBadgeDelta?.[u] || null;
+
+    if (bx) {
+      progressionDelta[u] = {
+        ...b,
+        ...m,
+        // Slutläge från badge-bonus (om den sattes denna gång)
+        ...bx,
+        // Aggregerad XP
+        xpMatch: Number(m.xpMatch ?? 0),
+        xpBadges: Number(bx.xpBadges ?? 0),
+        xpGained: Number(m.xpGained ?? 0) + Number(bx.xpGained ?? 0),
+        // oldXp/oldLevel ska komma från match-deltat (första steget i kedjan)
+        oldXpTotal: Number(m.oldXpTotal ?? bx.oldXpTotal ?? 0),
+        oldLevel: Number(m.oldLevel ?? bx.oldLevel ?? 0),
+      };
+    } else {
+      progressionDelta[u] = {
+        ...b,
+        ...m,
+      };
+    }
+  }
+} else {
+  // Bot/ensam-spelare i icke-öva: behåll endast badgeDelta (vanligen tomt)
+  progressionDelta = badgeDelta || {};
+}
       }
 
       await client.query("commit");
@@ -1874,6 +2465,28 @@ async function finishMatch(match, opts = {}) {
       client.release();
     }
   }
+  else if (match.isPractice && realPlayers.length > 0) {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+
+      // Öva/solo: ge endast "spelad + performance" (7%), inga badges, ingen vinst/queue.
+      const deltas = {};
+      for (const u of realPlayers) {
+        const myTotal = Number(total?.[u] ?? 0);
+        deltas[u] = await applyPracticeXpForUserTx(client, match, u, myTotal);
+      }
+      progressionDelta = deltas;
+
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      console.error("finishMatch practice tx error", e);
+    } finally {
+      client.release();
+    }
+  }
+
 
   io.to(getRoomName(match.id)).emit("match_finished", {
     totalScores: total,

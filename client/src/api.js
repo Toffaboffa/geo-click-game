@@ -87,6 +87,44 @@ function authHeaders(sessionId, extra = {}) {
   };
 }
 
+// ---------- Progress normalization ----------
+// Server/DB may return snake_case, camelCase, strings for bigint, etc.
+// We keep original fields but add safe numeric/camel aliases so UI can be simple.
+function toNumOrUndef(v) {
+  if (v == null) return undefined;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizeProgress(p) {
+  if (!p || typeof p !== "object") return p;
+
+  const xpTotal = toNumOrUndef(p.xp_total ?? p.xpTotal);
+  const level = toNumOrUndef(p.level);
+  const xpLevelBase = toNumOrUndef(p.xpLevelBase);
+  const xpNextLevelAt = toNumOrUndef(p.xpNextLevelAt);
+  const xpIntoLevel = toNumOrUndef(p.xpIntoLevel);
+  const xpToNext = toNumOrUndef(p.xpToNext);
+  const xpPctToNext = toNumOrUndef(p.xpPctToNext);
+
+  return {
+    ...p,
+
+    // snake_case preserved, but add/update consistent aliases
+    xp_total: xpTotal ?? p.xp_total,
+    xpTotal: xpTotal ?? p.xpTotal,
+    xp_updated_at: p.xp_updated_at ?? p.xpUpdatedAt,
+    xpUpdatedAt: p.xpUpdatedAt ?? p.xp_updated_at,
+
+    level: level ?? p.level,
+    xpLevelBase: xpLevelBase ?? p.xpLevelBase,
+    xpNextLevelAt: xpNextLevelAt ?? p.xpNextLevelAt,
+    xpIntoLevel: xpIntoLevel ?? p.xpIntoLevel,
+    xpToNext: xpToNext ?? p.xpToNext,
+    xpPctToNext: xpPctToNext ?? p.xpPctToNext,
+  };
+}
+
 async function apiFetch(path, opts = {}) {
   const url = `${API_BASE}${path}`;
 
@@ -201,15 +239,17 @@ export async function getBadgesCatalog(sessionId) {
 }
 
 export async function getUserProgress(sessionId, username) {
-  return apiFetch(`/api/users/${encodeURIComponent(username)}/progression`, {
+  const p = await apiFetch(`/api/users/${encodeURIComponent(username)}/progression`, {
     headers: authHeaders(sessionId),
   });
+  return normalizeProgress(p);
 }
 
 export async function getMyProgress(sessionId) {
-  return apiFetch("/api/me/progression", {
+  const p = await apiFetch("/api/me/progression", {
     headers: authHeaders(sessionId),
   });
+  return normalizeProgress(p);
 }
 // ---------- Feedback (Bug report / Feature request) ----------
 export async function createFeedback(sessionId, { kind, message, pageUrl, userAgent, lang, meta } = {}) {
