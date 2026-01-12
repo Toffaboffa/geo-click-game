@@ -693,7 +693,8 @@ const lobby = {
   },
 };
 
-const socketsByUser = new Map(); // username -> socket.id
+const socketsByUser = new Map(); // username -> Set(socket.id)
+const userBySocket = new Map(); // socket.id -> username
 const matches = new Map(); // matchId -> match
 
 const activeMatchByUser = new Map(); // username -> matchId
@@ -722,6 +723,45 @@ function removeUserFromAllQueues(username) {
   for (const d of DIFFICULTIES) lobby.queues[d].delete(username);
 }
 
+function getAnySocketId(username) {
+  const set = socketsByUser.get(username);
+  if (!set || set.size === 0) return null;
+  return set.values().next().value;
+}
+
+function addSocketForUser(username, socketId) {
+  const u = String(username || '').trim();
+  if (!u) return;
+  let set = socketsByUser.get(u);
+  if (!set) {
+    set = new Set();
+    socketsByUser.set(u, set);
+  }
+  const wasEmpty = set.size === 0;
+  set.add(socketId);
+  userBySocket.set(socketId, u);
+  if (wasEmpty) lobby.onlineUsers.add(u);
+}
+
+function removeSocketForUser(username, socketId) {
+  const u = String(username || '').trim();
+  if (!u) return;
+  const set = socketsByUser.get(u);
+  if (set) set.delete(socketId);
+  userBySocket.delete(socketId);
+  if (set && set.size === 0) {
+    socketsByUser.delete(u);
+    lobby.onlineUsers.delete(u);
+    removeUserFromAllQueues(u);
+  }
+}
+
+function removeSocket(socketId) {
+  const u = userBySocket.get(socketId);
+  if (!u) return;
+  removeSocketForUser(u, socketId);
+}
+
 function broadcastLobby() {
   io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() });
 }
@@ -731,25 +771,38 @@ function broadcastLobby() {
 function pruneLobbyPresence() {
   let changed = false;
 
-  // Prune users that claim to be online but no longer have a live socket.
-  for (const user of Array.from(lobby.onlineUsers)) {
-    const sid = socketsByUser.get(user);
-    const s = sid ? io.sockets.sockets.get(sid) : null;
-    if (!s || s.disconnected) {
-      lobby.onlineUsers.delete(user);
+  // Prune socketIds that are no longer live, and collapse empty users.
+  for (const [user, set] of Array.from(socketsByUser.entries())) {
+    for (const sid of Array.from(set)) {
+      const s = sid ? io.sockets.sockets.get(sid) : null;
+      if (!s || s.disconnected) {
+        set.delete(sid);
+        userBySocket.delete(sid);
+        changed = true;
+      }
+    }
+    if (set.size === 0) {
       socketsByUser.delete(user);
+      lobby.onlineUsers.delete(user);
       removeUserFromAllQueues(user);
       changed = true;
     }
   }
 
-  // Prune orphan socket mappings too (defensive).
-  for (const [user, sid] of Array.from(socketsByUser.entries())) {
+  // Prune orphan reverse mappings too (defensive).
+  for (const [sid, user] of Array.from(userBySocket.entries())) {
     const s = sid ? io.sockets.sockets.get(sid) : null;
     if (!s || s.disconnected) {
-      socketsByUser.delete(user);
-      lobby.onlineUsers.delete(user);
-      removeUserFromAllQueues(user);
+      userBySocket.delete(sid);
+      const set = socketsByUser.get(user);
+      if (set) {
+        set.delete(sid);
+        if (set.size === 0) {
+          socketsByUser.delete(user);
+          lobby.onlineUsers.delete(user);
+          removeUserFromAllQueues(user);
+        }
+      }
       changed = true;
     }
   }
@@ -984,8 +1037,8 @@ function startMatch(match) {
 
   const room = getRoomName(match.id);
 
-  const sA = socketsByUser.get(pA);
-  const sB = socketsByUser.get(pB);
+  const sA = getAnySocketId(pA);
+  const sB = getAnySocketId(pB);
   if (sA) io.sockets.sockets.get(sA)?.join(room);
   if (sB) io.sockets.sockets.get(sB)?.join(room);
 
@@ -2635,18 +2688,22 @@ io.on("connection", (socket) => {
         socket.emit("auth_error", "Ogiltig session, logga in igen.");
         return;
       }
-
-      const oldSocketId = socketsByUser.get(username);
-      if (oldSocketId && oldSocketId !== socket.id) {
-        const oldSocket = io.sockets.sockets.get(oldSocketId);
-        if (oldSocket) {
-          oldSocket.emit("forced_logout", "Du blev utloggad eftersom du loggade in i en annan flik.");
-          oldSocket.disconnect(true);
+      const oldIds = socketsByUser.get(username);
+      if (oldIds && oldIds.size) {
+        for (const oldSocketId of Array.from(oldIds)) {
+          if (oldSocketId === socket.id) continue;
+          const oldSocket = io.sockets.sockets.get(oldSocketId);
+          if (oldSocket) {
+            oldSocket.emit("forced_logout", "Du blev utloggad eftersom du loggade in i en annan flik.");
+            oldSocket.disconnect(true);
+          }
+          // Defensive: ensure stale mappings don't survive if disconnect doesn't fire for some reason.
+          removeSocket(oldSocketId);
         }
       }
 
       currentUser = username;
-      socketsByUser.set(username, socket.id);
+      addSocketForUser(username, socket.id);
 
       clearDisconnectGrace(username);
 
@@ -2802,7 +2859,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const targetSocketId = socketsByUser.get(target);
+    const targetSocketId = getAnySocketId(target);
     if (!targetSocketId) {
       socket.emit("challenge_error", "Spelaren är inte online");
       return;
@@ -2836,7 +2893,7 @@ io.on("connection", (socket) => {
     if (!entry) return;
     if (entry.to !== currentUser) return;
 
-    const fromSocketId = socketsByUser.get(entry.from);
+    const fromSocketId = getAnySocketId(entry.from);
     clearChallengeById(entry.id);
 
     if (fromSocketId) {
@@ -2880,7 +2937,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const fromSocketId = socketsByUser.get(from);
+    const fromSocketId = getAnySocketId(from);
     if (!fromSocketId) {
       socket.emit("challenge_error", "Utmanaren är inte längre online");
       clearChallengeById(entry.id);
@@ -3017,14 +3074,10 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
 
   
 
-  socket.on("logout", () => {
+    socket.on("logout", () => {
     if (!currentUser) return;
 
-    lobby.onlineUsers.delete(currentUser);
-    removeUserFromAllQueues(currentUser);
-
-    const mapped = socketsByUser.get(currentUser);
-    if (mapped === socket.id) socketsByUser.delete(currentUser);
+    removeSocketForUser(currentUser, socket.id);
 
     currentUser = null;
     broadcastLobby();
@@ -3032,11 +3085,7 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
 socket.on("disconnect", () => {
     if (!currentUser) return;
 
-    lobby.onlineUsers.delete(currentUser);
-    removeUserFromAllQueues(currentUser);
-
-    const mapped = socketsByUser.get(currentUser);
-    if (mapped === socket.id) socketsByUser.delete(currentUser);
+    removeSocketForUser(currentUser, socket.id);
 
     broadcastLobby();
 
