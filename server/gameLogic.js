@@ -18,12 +18,23 @@ export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Skapar en scorer för en match
-// Normaliserar avstånd & tid till poäng där lägre är bättre
-export function createRoundScorer(maxDistanceKm = 20000, maxTimeMs = 20000) {
+// server/gameLogic.js
+export function createRoundScorer(
+  maxDistanceKm = 20000,
+  maxTimeMs = 20000,
+  { distW = 1.0, timeW = 0.30, timeGamma = 1.0 } = {}
+) {
   return function score(distanceKm, timeMs) {
     const distPenalty = Math.min(distanceKm / maxDistanceKm, 1);
-    const timePenalty = Math.min(timeMs / maxTimeMs, 1);
-    return distPenalty * 1000 + timePenalty * 1000;
+
+    // timeGamma: 1.0 = linjärt, >1 gör att tid straffar mindre tidigt (och mer sent)
+    const tNorm = Math.min(timeMs / maxTimeMs, 1);
+    const timePenalty = Math.pow(tNorm, timeGamma);
+
+    // viktad medelpoäng, normaliserad så max fortfarande blir 2000
+    const weighted = (distW * distPenalty + timeW * timePenalty) / (distW + timeW);
+    return weighted * 2000;
   };
 }
+
+
