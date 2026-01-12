@@ -42,6 +42,23 @@ function isoToFlagTwemojiUrl(cc) {
   return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${hex1}-${hex2}.svg`;
 }
 
+function isoToCountryName(iso2, lang) {
+  const code = String(iso2 || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+
+  try {
+    const locale =
+      lang === "sv" ? "sv-SE" : lang === "en" ? "en-US" : lang === "es" ? "es-ES" : undefined;
+
+    const dn = new Intl.DisplayNames(locale ? [locale] : undefined, { type: "region" });
+    const name = dn.of(code);
+    return typeof name === "string" ? name : code;
+  } catch {
+    return code;
+  }
+}
+
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -164,7 +181,7 @@ export default function Game({
   debugShowTarget,
   onToggleDebugShowTarget,
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const mapRef = useRef(null);
   const myName = session.username;
 
@@ -245,6 +262,8 @@ export default function Game({
   const cityLabel = shortCityName(cityNameRaw);
   const countryCode = gameState.city?.countryCode || null;
   const flagUrl = isoToFlagTwemojiUrl(countryCode);
+  const isEasy = String(match?.difficulty || "").toLowerCase() === "easy";
+  const countryName = isEasy ? isoToCountryName(countryCode, lang) : null;
   const pop = gameState.city?.population ? String(gameState.city.population) : null;
 
   const matchFinished = !!gameState.finalResult;
@@ -854,18 +873,23 @@ useEffect(() => {
         {/* Bottom strip */}
         <div className="city-bottom">
           <div className="city-bar">
-            <div className="city-label">
-              {cityLabel || "…"}
-              {flagUrl ? (
-                <img
-                  className="city-flag-img"
-                  src={flagUrl}
-                  alt={countryCode ? `Flagga ${countryCode}` : "Flagga"}
-                  title={countryCode || ""}
-                  draggable={false}
-                />
-              ) : null}
-            </div>
+<div className="city-label">
+  <span className="city-label-row">
+    <span className="city-name">{cityLabel || "…"}</span>
+    {flagUrl ? (
+      <img
+        className="city-flag-img"
+        src={flagUrl}
+        alt={countryCode ? `Flagga ${countryCode}` : "Flagga"}
+        title={countryCode || ""}
+        draggable={false}
+      />
+    ) : null}
+  </span>
+
+  {/* Enkel: visa även land */}
+  {countryName ? <span className="city-country">{countryName}</span> : null}
+</div>
             {pop ? <div className="city-pop">{t("game.pop")}: {pop}</div> : null}
             <div className="city-timer">{fmtMs(elapsedMs)}s</div>
             {countdown !== null && countdown > 0 && (
