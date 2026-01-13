@@ -630,6 +630,23 @@ useEffect(() => {
     return !!roundResultReceived || !!debugEnabled;
   }, [hasClickedThisRound, debugEnabled, isPractice, roundResultReceived]);
 
+
+// Punkt 6 (justering): Låt facit-markern använda exakt StartPings-animationen.
+// Vi "respawnar" samma ping vid samma position genom att remounta den med en ny key.
+const TARGET_PING_LIFE_MS = 2100;
+const [targetPingTick, setTargetPingTick] = useState(0);
+
+useEffect(() => {
+  if (!shouldShowTarget) {
+    setTargetPingTick(0);
+    return;
+  }
+  // Starta en ny ping direkt och därefter en ny när livet tar slut.
+  setTargetPingTick((v) => v + 1);
+  const id = setInterval(() => setTargetPingTick((v) => v + 1), TARGET_PING_LIFE_MS);
+  return () => clearInterval(id);
+}, [shouldShowTarget, gameState.currentRound]);
+
   // -------- socket events ----------
   useEffect(() => {
     if (!socket) return;
@@ -1060,14 +1077,23 @@ useEffect(() => {
 
         {/* Target marker */}
         {shouldShowTarget && targetPx && (
-          <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }}>
-            <div className="ping-core" />
-            <div className="ping-ring ring1" />
-            <div className="ping-ring ring2" />
-            <div className="ping-ring ring3" />
+          <div
+            key={`targetping_${gameState.currentRound ?? 0}_${targetPingTick}`}
+            className="start-ping target-marker target-green"
+            style={{
+              "--ping-life": `${TARGET_PING_LIFE_MS}ms`,
+              left: targetPx.x,
+              top: targetPx.y,
+              width: "18px",
+              height: "18px",
+            }}
+          >
+            <span className="ping-core" />
+            <span className="ping-ring ring1" />
+            <span className="ping-ring ring2" />
+            <span className="ping-ring ring3" />
           </div>
         )}
-
         {/* Click markers (endast din i Öva) */}
         {myClickPx && (
           <>

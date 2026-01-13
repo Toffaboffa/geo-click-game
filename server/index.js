@@ -2727,6 +2727,43 @@ function getValidChallengeByPair(from, to) {
   return getValidChallengeById(id);
 }
 
+function cancelPendingChallengesForUser(username, reason = "offline") {
+  const u = String(username || "").trim();
+  if (!u) return;
+
+  // Cancel *all* pending challenges involving this user.
+  // This prevents the other party from being "stuck" waiting on an accept/decline
+  // that will never arrive.
+  for (const [id, entry] of pendingChallengesById.entries()) {
+    if (!entry) continue;
+    if (entry.from !== u && entry.to !== u) continue;
+
+    const other = entry.from === u ? entry.to : entry.from;
+    const otherSocketId = other ? getAnySocketId(other) : null;
+
+    // Reuse existing event where possible.
+    // - If the challenged user goes offline, the challenger gets "challenge_declined".
+    // - If the challenger goes offline, the challenged user gets "challenge_cancelled".
+    if (otherSocketId) {
+      if (entry.to === u) {
+        io.to(otherSocketId).emit("challenge_declined", {
+          to: u,
+          challengeId: entry.id,
+          reason,
+        });
+      } else {
+        io.to(otherSocketId).emit("challenge_cancelled", {
+          from: u,
+          challengeId: entry.id,
+          reason,
+        });
+      }
+    }
+
+    clearChallengeById(id);
+  }
+}
+
 // =====================
 // Sweep
 // =====================
@@ -2793,6 +2830,32 @@ io.on("connection", (socket) => {
       addSocketForUser(username, socket.id);
 
       clearDisconnectGrace(username);
+
+      // Defensive: if there is a stale active match where the opponent vanished
+      // (most commonly when the opponent pressed Logout mid-match), immediately
+      // resolve it so the connected player never gets stuck as "already in match".
+      try {
+        const mid = getActiveMatchIdSafe(username);
+        if (mid) {
+          const m = matches.get(mid);
+          if (m && !m.finished) {
+            const hasBot = (m.players || []).includes(BOT_NAME);
+            const [pA, pB] = m.players || [];
+            const other = username === pA ? pB : pA;
+            const otherSocketId = other && other !== BOT_NAME ? getAnySocketId(other) : null;
+
+            if (hasBot || m.isPractice || m.isSolo) {
+              finishMatch(m, { reason: "cleanup" }).catch((e) => console.error("finish stale practice on auth", e));
+            } else if (other && other !== BOT_NAME && !otherSocketId) {
+              finishMatchAsWalkover(m, username, other, "cleanup").catch((e) =>
+                console.error("walkover stale match on auth", e)
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.error("auth stale-match cleanup error", e);
+      }
 
       lobby.onlineUsers.add(username);
       broadcastLobby();
@@ -3159,66 +3222,83 @@ socket.on("player_click", ({ matchId, lon, lat, timeMs }) => {
     if (bothReady) startNextRoundCountdown(match);
   });
 
-  
 
-    socket.on("logout", () => {
+  function handleDeparture(kind) {
     if (!currentUser) return;
 
-    removeSocketForUser(currentUser, socket.id);
+    const u = currentUser;
 
-    currentUser = null;
-    broadcastLobby();
-  });
-socket.on("disconnect", () => {
-    if (!currentUser) return;
-
-    removeSocketForUser(currentUser, socket.id);
-
+    // Remove presence + cancel pending challenges first.
+    removeSocketForUser(u, socket.id);
+    cancelPendingChallengesForUser(u, kind);
     broadcastLobby();
 
-    const matchId = getActiveMatchIdSafe(currentUser);
-    if (!matchId) return;
+    // If the user is in a match, make sure we NEVER leave the opponent stuck.
+    const matchId = getActiveMatchIdSafe(u);
+    if (!matchId) {
+      if (kind === "logout") currentUser = null;
+      return;
+    }
 
     const match = matches.get(matchId);
-    if (!match || match.finished) return;
+    if (!match || match.finished) {
+      if (kind === "logout") currentUser = null;
+      return;
+    }
 
-    // Practice/solo/bot: end immediately on disconnect so the user never gets stuck.
     const hasBot = (match.players || []).includes(BOT_NAME);
+
+    // Practice/solo/bot: end immediately so the user never gets stuck.
     if (hasBot || match.isPractice || match.isSolo) {
-      finishMatch(match, { reason: "disconnect" }).catch((e) => console.error("finish practice on disconnect", e));
+      finishMatch(match, { reason: kind }).catch((e) => console.error("finish practice on departure", e));
+      if (kind === "logout") currentUser = null;
       return;
     }
 
     const [pA, pB] = match.players;
 
-    if (disconnectGrace.has(currentUser)) return;
+    // Logout is an explicit leave: forfeit immediately.
+    if (kind === "logout") {
+      const loser = u;
+      const winner = loser === pA ? pB : pA;
+      finishMatchAsWalkover(match, winner, loser, "logout").catch((e) => console.error("walkover on logout", e));
+      currentUser = null;
+      return;
+    }
+
+    // Disconnect: allow a short grace window in case the player reconnects.
+    if (disconnectGrace.has(u)) return;
 
     const t = setTimeout(async () => {
       try {
-        if (socketsByUser.has(currentUser) && lobby.onlineUsers.has(currentUser)) {
-          clearDisconnectGrace(currentUser);
+        if (socketsByUser.has(u) && lobby.onlineUsers.has(u)) {
+          clearDisconnectGrace(u);
           return;
         }
 
         const m = matches.get(matchId);
         if (!m || m.finished) {
-          clearDisconnectGrace(currentUser);
+          clearDisconnectGrace(u);
           return;
         }
 
-        const loser = currentUser;
+        const loser = u;
         const winner = loser === pA ? pB : pA;
 
         await finishMatchAsWalkover(m, winner, loser, "disconnect");
       } catch (e) {
         console.error("disconnect grace walkover error", e);
       } finally {
-        clearDisconnectGrace(currentUser);
+        clearDisconnectGrace(u);
       }
     }, DISCONNECT_GRACE_MS);
 
-    disconnectGrace.set(currentUser, { timeoutId: t, untilMs: nowMs() + DISCONNECT_GRACE_MS, matchId });
-  });
+    disconnectGrace.set(u, { timeoutId: t, untilMs: nowMs() + DISCONNECT_GRACE_MS, matchId });
+  }
+
+  socket.on("logout", () => handleDeparture("logout"));
+
+  socket.on("disconnect", () => handleDeparture("disconnect"));
 });
 
 // =====================
