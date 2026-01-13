@@ -1768,8 +1768,8 @@ function clamp01(x) {
 function difficultyFactor(difficulty) {
   const d = String(difficulty || "").toLowerCase();
   if (d === "easy") return 1;
-  if (d === "medium") return 2;
-  if (d === "hard") return 4;
+  if (d === "medium") return 1.8;
+  if (d === "hard") return 3;
   return 1;
 }
 
