@@ -35,6 +35,12 @@ export default {
     headline: "GeoSense",
     blurb:
       "A fast map battle: you get a city, click on the map, and compete to be both closest and fastest.",
+    noEmailTitle: "No email needed.",
+    noEmailBody: "Choose a username (your in-game nickname) and a password. We only store username + password so we can save your progression.",
+    usernamePlaceholder: "e.g. SpaceFox (not an email)",
+    usernameHelp: "Don’t enter your email. Your username is visible to other players.",
+    emailDetected: "That looks like an email address. Use a nickname instead.",
+
     username: "Username",
     password: "Password",
     loginBtn: "Log in",
