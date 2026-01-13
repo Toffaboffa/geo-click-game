@@ -35,6 +35,12 @@ export default {
     headline: "GeoSense",
     blurb:
       "En snabb kartbattle: du får en stad, klickar på kartan och tävlar om att vara både närmast och snabbast.",
+    noEmailTitle: "Ingen e-post behövs.",
+    noEmailBody: "Välj ett användarnamn (det blir ditt smeknamn i spelet) och ett lösenord. Vi sparar bara användarnamn + lösenord för att kunna spara din progression.",
+    usernamePlaceholder: "t.ex. RymdRäven (inte e-post)",
+    usernameHelp: "Skriv inte din e-post. Användarnamnet syns för andra i spelet.",
+    emailDetected: "Det där ser ut som en e-postadress. Använd ett smeknamn i stället.",
+
     username: "Användarnamn",
     password: "Lösenord",
     loginBtn: "Logga in",
