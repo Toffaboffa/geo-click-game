@@ -1,2315 +1,1584 @@
-/* client/src/styles.css */
-:root {
-  --map-image: url("/world.png");
-  --map-debug-image: url("/world_debug.png");
-  --start-bg-image: url("./assets/bg_start.png");
-  --panel-w: 630px;
-  --chat-w: 320px;
-  --lobby-gap: 18px;
+// client/src/components/Lobby.jsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import StartPings from "./StartPings";
+import logo from "../assets/logo.png";
+import LanguageToggle from "../i18n/LanguageToggle.jsx";
+import { useI18n } from "../i18n/LanguageProvider.jsx";
+import {
+  getMe,
+  setLeaderboardVisibility,
+  getBadgesCatalog,
+  getUserProgress,
+  getMyProgress,
+  getLeaderboardWide,
+  createFeedback,
+  getFeedbackList,
+} from "../api";
+
+function fmtIntOrDash(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return String(Math.round(n));
+}
+function fmtPctOrDash(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(1);
 }
 
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  background: #000;
+const DIFFS = ["easy", "medium", "hard"];
+const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
+
+const SORT_KEYS = [
+  { key: "ppm", label: "PPM" },
+  { key: "pct", label: "PCT" },
+  { key: "sp", label: "SP" },
+  { key: "vm", label: "VM" },
+  { key: "fm", label: "FM" },
+];
+
+function safeDiff(d) {
+  const v = String(d || "").trim().toLowerCase();
+  if (v === "easy" || v === "medium" || v === "hard") return v;
+  return "medium";
 }
 
-/* ---------- Shared UI (login/lobby panels) ---------- */
-.screen {
-  min-height: 100vh;
-  display: flex;
-
-  /* ✅ centrerad horisontellt */
-  justify-content: center;
-
-  /* ✅ INTE vertikalt centrerad – vi lägger panelen på fast avstånd från toppen */
-  align-items: flex-start;
-
-  /* ✅ fast avstånd från toppen */
-  padding-top: 232px;
-
-  /* ✅ lite marginal så den inte klistrar i kanterna på små skärmar */
-  padding-left: 16px;
-  padding-right: 16px;
-
-  box-sizing: border-box;
-
-  background-color: #0f172a;
-  background-image:
-    var(--start-bg-image),
-    radial-gradient(1200px 700px at 50% 15%, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0) 60%);
-  background-repeat: no-repeat, no-repeat;
-  background-position: top center, center;
-  background-size: min(1920px, 100%) auto, cover;
-  background-attachment: scroll, scroll;
-  color: #e5e7eb;
-  position: relative;
-  overflow: hidden;
-    --panel-top: 232px;       /* ✅ en enda källa till sanningen */
-  padding-top: var(--panel-top);
-
-  position: relative;
-  overflow: hidden;
+function safeLbMode(m) {
+  const v = String(m || "").trim().toLowerCase();
+  if (v === "easy" || v === "medium" || v === "hard" || v === "total" || v === "all") return v;
+  return "total";
 }
 
-/* ---------- Screen logo (login + lobby) ---------- */
-.screen-logo {
-  position: absolute;
-  left: 50%;
-  top: calc(var(--panel-top) / 2);  /* ✅ mitt emellan toppen och panelen */
-  transform: translate(-50%, -50%);
-  width: min(520px, calc(100vw - 32px)); /* tak så den inte blir absurd på stora skärmar */
-  max-width: 200px;
-  height: auto;
-  z-index: 1;                      /* bakom panel (panel har z-index:2), men ovanpå bakgrunden */
-  pointer-events: none;
-  user-select: none;
-  filter: drop-shadow(0 14px 40px rgba(0,0,0,0.55));
+function getCell(row, prefix, key) {
+  const v = row?.[`${prefix}${key}`];
+  if (key === "pct") return Number.isFinite(Number(v)) ? `${Number(v).toFixed(1)}` : "—";
+  if (key === "ppm") return Number.isFinite(Number(v)) ? `${Math.round(Number(v))}` : "—";
+  return fmtIntOrDash(v);
 }
 
-/* mobil: om du ändå blockar appen under 900px, men detta ger snygg fallback */
-@media (max-width: 900px) {
-  .screen-logo { display: none; }
+// ✅ “0 matcher syns inte”: dölj om ALLA sp (spelade) är 0
+function hasAnyMatches(row) {
+  const keys = ["e_sp", "m_sp", "s_sp", "t_sp"];
+  return keys.some((k) => Number(row?.[k] ?? 0) > 0);
 }
 
+// --- Emoji helpers: render flag emojis as deterministic SVGs (Twemoji) ---
+const TWEMOJI_SVG_BASE = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg";
 
-.panel {
-  background: #020617;
-  padding: 24px;
-  border-radius: 16px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  width: var(--panel-w);
-  max-width: calc(100vw - 32px);
-  box-sizing: border-box;
-  position: relative;
-  z-index: 2;
+function isRegionalIndicator(cp) {
+  return cp >= 0x1f1e6 && cp <= 0x1f1ff;
 }
 
-.panel h1,
-.panel h2,
-.panel h3 {
-  margin-top: 0;
+// Detect standard country flag emojis (two Regional Indicator symbols, e.g. 🇸🇪).
+function isFlagEmoji(emoji) {
+  if (!emoji) return false;
+  const parts = Array.from(String(emoji).trim());
+  if (parts.length !== 2) return false;
+  const [a, b] = parts;
+  const cp1 = a.codePointAt(0);
+  const cp2 = b.codePointAt(0);
+  return isRegionalIndicator(cp1) && isRegionalIndicator(cp2);
 }
 
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+function flagEmojiToTwemojiUrl(emoji) {
+  if (!isFlagEmoji(emoji)) return null;
+  const parts = Array.from(String(emoji).trim());
+  const hex = parts.map((ch) => ch.codePointAt(0).toString(16)).join("-");
+  return `${TWEMOJI_SVG_BASE}/${hex}.svg`;
 }
 
-.tabs {
-  display: flex;
-  gap: 8px;
-  margin: 10px 0 6px;
-}
-
-.tabs button {
-  margin-top: 0;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(37, 99, 235, 0.25);
-}
-
-.tabs button.active {
-  background: #2563eb;
-}
-
-input {
-  width: 120px;
-  padding: 8px 10px;
-  margin: 6px 0;
-  border-radius: 8px;
-  border: 1px solid #475569;
-  background: #020617;
-  color: #e5e7eb;
-}
-
-button {
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  background: #2563eb;
-  color: white;
-  font-weight: 500;
-  margin-top: 0px;
-}
-
-button:hover {
-  opacity: 0.9;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ---------- Login layout tweaks (mode buttons + form grid) ---------- */
-/* 1) Mindre text på blurb/undertitel */
-.subtitle {
-  font-size: 13px;
-  line-height: 1.35;
-  opacity: 0.9;
-  margin-top: 6px;
-}
-
-/* 2) Mode-knappar (Logga in / Skapa konto) ska inte se ut som primär-knappen */
-.mode-toggle {
-  display: inline-flex;
-  gap: 8px;
-  margin: 10px 100px 14px 180px;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-}
-
-.mode-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.20);
-  color: #e5e7eb;
-  padding: 7px 14px;
-  font-weight: 700;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.mode-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.mode-btn.is-active {
-  background: rgba(37, 99, 235, 0.25);
-  border-color: rgba(37, 99, 235, 0.55);
-}
-
-/* 3) Form: fält under varandra, labels högerjusterade mot inputs */
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  align-items: center;
-  column-gap: 10px;
-}
-
-.form-label {
-  text-align: right;
-  font-size: 13px;
-  opacity: 0.95;
-  white-space: nowrap;
-}
-
-.form .input {
-  width: 150px;
-  margin: 0;
-}
-
-.field-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.field-help {
-  font-size: 12px;
-  opacity: 0.8;
-  line-height: 1.25;
-}
-
-.field-warn {
-  font-size: 12px;
-  line-height: 1.25;
-  color: #fca5a5;
-}
-
-.privacy-note {
-  margin: 10px 0 6px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-/* liten spacing mellan raderna på små skärmar */
-@media (max-width: 420px) {
-  .form-row {
-    grid-template-columns: 1fr;
-    row-gap: 6px;
+function FlagOrEmoji({ emoji, alt, className }) {
+  const url = flagEmojiToTwemojiUrl(emoji);
+  if (url) {
+    return (
+      <img
+        className={className}
+        src={url}
+        alt={alt || ""}
+        draggable="false"
+        loading="lazy"
+        style={{ width: "1em", height: "1em", verticalAlign: "-0.12em" }}
+        referrerPolicy="no-referrer"
+      />
+    );
   }
-  .form-label {
-    text-align: left;
-  }
-}
-
-/* 4) Footer centrerad */
-.footer {
-  margin-top: 14px;
-  text-align: center;
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-/* Gör primärknappen explicit (om global button-stil ändras senare) */
-.primary-btn {
-  background: #2563eb;
-  width: 115px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.primary-btn:hover {
-  opacity: 0.92;
-}
-.login-loading-hint {
-  margin-top: 10px;
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.auth-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.auth-copyright {
-  margin-top: 14px;
-  font-size: 12px;
-  opacity: 0.7;
-  text-align: center;
-  color: #e5e7eb;
-}
-
-.lobby-layout {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-}
-
-.lobby-main {
-  position: relative;
-  width: 100%;
-  padding: 0 16px;
-  box-sizing: border-box;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-
-/* Placera elementen i rätt kolumner */
-.lobby-main > .panel {
-  margin: 0 auto;
-}
-
-.lobby-main > .lobby-chat {
-  position: absolute;
-  top: 0;
-  left: calc(50% + (var(--panel-w) / 2) + var(--lobby-gap));
-  width: var(--chat-w);
-  max-width: calc(100vw - 32px);
-}
-
-.lobby-chat {
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  background: #02061791;
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-sizing: border-box;
-}
-
-.lobby-chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.lobby-chat-title {
-  font-weight: 800;
-  font-size: 14px;
-  color: rgba(229, 231, 235, 0.96);
-}
-
-.lobby-chat-meta {
-  font-size: 11px;
-  opacity: 0.75;
-  white-space: nowrap;
-}
-
-.lobby-chat-messages {
-  height: 330px;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.lobby-chat-empty {
-  font-size: 12px;
-  opacity: 0.7;
-  padding: 14px;
-  text-align: center;
-}
-
-.lobby-chat-msg {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-
-.lobby-chat-msg-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11px;
-  opacity: 0.82;
-}
-
-.lobby-chat-user {
-  font-weight: 800;
-}
-
-.lobby-chat-time {
-  white-space: nowrap;
-}
-
-.lobby-chat-text {
-  margin-top: 6px;
-  font-size: 13px;
-  color: rgba(229, 231, 235, 0.96);
-  line-height: 1.25;
-  word-break: break-word;
-}
-
-
-.lobby-chat-inputrow {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.lobby-chat-input {
-  flex: 1;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  padding: 10px 12px;
-  color: rgba(229, 231, 235, 0.96);
-  outline: none;
-  font-size: 13px;
-}
-
-.lobby-chat-input:focus {
-  border-color: rgba(59, 130, 246, 0.65);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
-}
-
-.lobby-chat-send {
-  border-radius: 999px;
-  padding: 10px 12px;
-  font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(37, 99, 235, 0.9);
-  color: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.lobby-chat-send:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-@media (max-width: 980px) {
-  .lobby-main {
-    position: static;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .lobby-main > .lobby-chat {
-    position: static;
-    width: var(--panel-w);
-    max-width: calc(100vw - 32px);
-    margin-top: 18px;
-  }
-
-  .lobby-chat-messages {
-    height: 260px;
-  }
-}
-
-.lobby-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 10px 0 8px;
-}
-
-.challenge-form {
-  margin-top: 10px;
-  margin-bottom: 16px;
-}
-
-/* ---------- Leaderboard ---------- */
-.leaderboard {
-  margin-left: auto;
-  margin-right: auto;
-  width: 480px;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin-top: 10px;
-  font-size: 14px;
-  overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.leaderboard thead th {
-  padding: 10px 10px;
-  text-align: left;
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(229, 231, 235, 0.92);
-  background: rgba(2, 6, 23, 0.85);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* ✅ PATCH: centrera bara sifferkolumner (från kolumn 3 och framåt: efter # + Spelare) */
-.leaderboard th:nth-child(n + 3),
-.leaderboard td:nth-child(n + 3) {
-  text-align: center;
-}
-
-.leaderboard tbody td {
-  padding: 10px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* ✅ zebra-ränder */
-.leaderboard tbody tr:nth-child(odd) {
-  background: rgba(15, 23, 42, 0.35);
-}
-
-.leaderboard tbody tr:nth-child(even) {
-  background: rgba(15, 23, 42, 0.55);
-}
-
-.leaderboard tbody tr:hover {
-  background: rgba(37, 99, 235, 0.14);
-}
-
-/* ✅ highlight “du själv” */
-.leaderboard tbody tr.is-me {
-  background: rgba(37, 99, 235, 0.22) !important;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.35);
-}
-
-.leaderboard tbody tr:last-child td {
-  border-bottom: none;
-}
-
-/* ===== NYTT: Rank + Top 3 styling ===== */
-/* Rank-cellen (första kolumnen) */
-.leaderboard td.lb-rank,
-.leaderboard th.lb-rank {
-  width: 70px;
-  text-align: center !important;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-/* Lite “badge”-känsla runt rank-numret */
-.leaderboard td.lb-rank > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
-}
-
-/* TOP 3: generellt lite mer “premium” */
-.leaderboard tbody tr.lb-top1,
-.leaderboard tbody tr.lb-top2,
-.leaderboard tbody tr.lb-top3 {
-  position: relative;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
-}
-
-/* Plats 1: extra fin + glow */
-.leaderboard tbody tr.lb-top1 {
-  background: linear-gradient(
-    90deg,
-    rgba(245, 158, 11, 0.18),
-    rgba(37, 99, 235, 0.12)
-  ) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(245, 158, 11, 0.25),
-    0 18px 36px rgba(0, 0, 0, 0.25);
-}
-
-/* Plats 2: silver-ish */
-.leaderboard tbody tr.lb-top2 {
-  background: linear-gradient(
-    90deg,
-    rgba(148, 163, 184, 0.16),
-    rgba(37, 99, 235, 0.10)
-  ) !important;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.20);
-}
-
-/* Plats 3: bronze-ish */
-.leaderboard tbody tr.lb-top3 {
-  background: linear-gradient(
-    90deg,
-    rgba(217, 119, 6, 0.14),
-    rgba(37, 99, 235, 0.08)
-  ) !important;
-  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.18);
-}
-
-/* Krona för plats 1 (läggs efter rank-badgen) */
-.leaderboard tbody tr.lb-top1 td.lb-rank > span::after {
-  content: " 👑";
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-}
-
-/* Medaljer för plats 2 och 3 */
-.leaderboard tbody tr.lb-top2 td.lb-rank > span::after {
-  content: " 🥈";
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-}
-
-.leaderboard tbody tr.lb-top3 td.lb-rank > span::after {
-  content: " 🥉";
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-}
-
-/* ✅ PATCH: spelarnamn som “text-länk-knapp” (Lobby använder .lb-name-btn) */
-.lb-name-btn {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  color: rgba(229, 231, 235, 0.95);
-  font: inherit;
-  font-weight: inherit;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.lb-name-btn:hover {
-  text-decoration: underline;
-  opacity: 0.95;
-}
-
-/* ✅ PATCH: små kolumnbreddar för lvl/badges */
-.leaderboard th.lb-lvl,
-.leaderboard td.lb-lvl {
-  width: 70px;
-}
-.leaderboard th.lb-badges,
-.leaderboard td.lb-badges {
-  width: 82px;
-}
-
-/* ✅ NYTT: nertonad/grå badges-kolumn (läsbar men tydligt “disabled”) */
-.leaderboard td.lb-badges-muted {
-  color: rgba(229, 231, 235, 0.60);
-  font-weight: 800;
-  filter: grayscale(1);
-}
-
-/* ---------- GAME ---------- */
-.game-root {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.world-map-full {
-  width: 100vw;
-  height: 100vh;
-  position: relative;
-  cursor: crosshair;
-  overflow: hidden;
-  background-image: var(--map-image);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 100% 100%;
-}
-
-/* Debug-läge: byt till world_debug.png */
-.world-map-full.is-debug {
-  background-image: var(--map-debug-image);
-}
-
-/* ---------- HUD ---------- */
-.hud {
-  position: absolute;
-  top: 14px;
-  z-index: 5;
-  color: rgba(255, 255, 255, 0.92);
-  letter-spacing: 0.2px;
-  user-select: none;
-  pointer-events: none;
-}
-
-.hud-left {
-  left: 14px;
-  text-align: left;
-}
-
-.hud-right {
-  right: 14px;
-  text-align: right;
-}
-
-.hud-name {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.hud-score {
-  margin-top: 2px;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.hud-score-line {
-  margin-top: 2px;
-}
-
-.hud-score-label {
-  font-size: 14px;
-  opacity: 0.85;
-  letter-spacing: 0.15px;
-}
-
-.hud-rounds {
-  margin-top: 8px;
-  padding: 6px 8px;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  max-width: 1700px;
-}
-
-.hud-round {
-  display: grid;
-  grid-template-columns: 14px 46px 46px 38px;
-  column-gap: 6px;
-  align-items: center;
-  font-size: 10px;
-  line-height: 1.35;
-  opacity: 0.88;
-}
-
-.hud-right .hud-round {
-  justify-items: end;
-}
-
-.hud-round + .hud-round {
-  margin-top: 4px;
-}
-
-.hud-round-idx {
-  opacity: 0.65;
-}
-
-/* ---------- Actions ---------- */
-.hud-actions {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
-  z-index: 6;
-}
-
-.hud-actions .hud-btn {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 12px;
-  font-weight: 600;
-  backdrop-filter: blur(6px);
-  opacity: 1;
-}
-
-.hud-actions .hud-btn:hover {
-  opacity: 1;
-}
-
-/* ---------- Bottom city bar ---------- */
-.city-bottom {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 12;
-  pointer-events: none;
-  user-select: none;
-}
-
-.city-bar,
-.city-strip {
-  width: 100%;
-  padding: 16px 14px 18px;
-  text-align: center;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.80),
-    rgba(0, 0, 0, 0.55),
-    rgba(0, 0, 0, 0.0)
+  return <>{emoji}</>;
+}
+
+export default function Lobby({ session, socket, lobbyState, onLogout }) {
+  const { t } = useI18n();
+  const [challengeName, setChallengeName] = useState("");
+
+  
+
+  const handleLogout = () => {
+    try {
+      socket?.emit("logout");
+    } catch {}
+    onLogout?.();
+  };
+// Lobby chat toggle (persisted in localStorage)
+  const [chatOpen, setChatOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem("geosense:lobbyChatOpen");
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch {
+      // ignore
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("geosense:lobbyChatOpen", chatOpen ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [chatOpen]);
+
+  // difficulty val
+  const [queueDifficulty, setQueueDifficulty] = useState("medium");
+  const [challengeDifficulty, setChallengeDifficulty] = useState("medium");
+  const [practiceDifficulty, setPracticeDifficulty] = useState("hard");
+
+  // queue state från servern
+  const [queueState, setQueueState] = useState({ queued: false, difficulty: null });
+
+  // Toggle i UI (true = syns i leaderboard)
+  const [showMeOnLeaderboard, setShowMeOnLeaderboard] = useState(true);
+  const [meLevel, setMeLevel] = useState(null);
+  const [savingVis, setSavingVis] = useState(false);
+
+  // leaderboard wide
+  const [lbView, setLbView] = useState("all"); // easy|medium|hard|total|all
+  const [lbSort, setLbSort] = useState("ppm"); // ppm|pct|sp|vm|fm
+  const [lbDir, setLbDir] = useState(""); // "" => server default
+  const [lbAllSortMode, setLbAllSortMode] = useState("total"); // när view=all: vilken grupp sorterar vi på
+  const [lbRows, setLbRows] = useState([]);
+  const [lbLoading, setLbLoading] = useState(false);
+  const [lbError, setLbError] = useState("");
+
+  // Progression modal
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [progressUser, setProgressUser] = useState(null); // username
+  const [badgesCatalog, setBadgesCatalog] = useState([]); // all badge defs
+  const [progressData, setProgressData] = useState(null); // user progress
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
+
+  // About/info modal ( ? )
+  const [aboutOpen, setAboutOpen] = useState(false);
+
+  // Feedback (Bug report / Feature request)
+  const FEEDBACK_ADMIN_USERNAME = "Toffaboffa";
+  const isFeedbackAdmin = session?.username === FEEDBACK_ADMIN_USERNAME;
+
+  const [bugOpen, setBugOpen] = useState(false);
+  const [bugMode, setBugMode] = useState("submit"); // "submit" | "admin"
+  const [feedbackKind, setFeedbackKind] = useState("bug"); // "bug" | "feature"
+  const [feedbackText, setFeedbackText] = useState("");
+
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackError, setFeedbackError] = useState("");
+
+  // Admin listing
+  const [feedbackFilter, setFeedbackFilter] = useState("all"); // "all" | "bug" | "feature"
+  const [feedbackRows, setFeedbackRows] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSelectedId, setFeedbackSelectedId] = useState(null);
+
+
+  // Lobby chat (försvinner efter 5 min)
+  const CHAT_TTL_MS = 5 * 60 * 1000;
+  const [chatInput, setChatInput] = useState("");
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const chatListRef = useRef(null);
+
+
+  // Leaderboard modal
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+
+  // --- Hämta sparat leaderboard-visibility från servern ---
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const me = await getMe(session.sessionId);
+        if (cancelled) return;
+        if (me && me.level != null) setMeLevel(Number(me.level));
+
+        if (typeof me?.showOnLeaderboard === "boolean") {
+          setShowMeOnLeaderboard(me.showOnLeaderboard);
+          return;
+        }
+        if (typeof me?.hidden === "boolean") {
+          setShowMeOnLeaderboard(!me.hidden);
+        }
+      } catch {
+        // ignorera
+      }
+    }
+
+    if (session?.sessionId) load();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.sessionId]);
+
+  // --- Socket: queue_state ---
+  useEffect(() => {
+    if (!socket) return;
+
+    const onQueueState = (s) => {
+      const queued = !!s?.queued;
+      const difficulty = s?.difficulty ? safeDiff(s.difficulty) : null;
+      setQueueState({ queued, difficulty });
+      if (difficulty) setQueueDifficulty(difficulty);
+    };
+
+    socket.on("queue_state", onQueueState);
+    return () => socket.off("queue_state", onQueueState);
+  }, [socket]);
+
+  // --- Socket safety: forced logout / auth error ---
+  useEffect(() => {
+    if (!socket) return;
+
+    const onForcedLogout = (msg) => {
+      window.alert(msg || t("errors.forcedLogout"));
+      onLogout?.();
+    };
+
+    const onAuthError = (msg) => {
+      window.alert(msg || t("errors.sessionInvalid"));
+      onLogout?.();
+    };
+
+    socket.on("forced_logout", onForcedLogout);
+    socket.on("auth_error", onAuthError);
+
+    return () => {
+      socket.off("forced_logout", onForcedLogout);
+      socket.off("auth_error", onAuthError);
+    };
+  }, [socket, onLogout]);
+
+  // --- Lobbychat: historik + live ---
+  useEffect(() => {
+    if (!socket) return;
+
+    const onHistory = (payload) => {
+      const msgs = Array.isArray(payload?.messages) ? payload.messages : [];
+      setChatMsgs(msgs);
+
+      // scrolla till botten efter första render
+      requestAnimationFrame(() => {
+        const el = chatListRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    };
+
+    const onMessage = (msg) => {
+      if (!msg) return;
+      setChatMsgs((prev) => [...prev, msg].slice(-200));
+    };
+
+    socket.on("lobby_chat_history", onHistory);
+    socket.on("lobby_chat_message", onMessage);
+
+    return () => {
+      socket.off("lobby_chat_history", onHistory);
+      socket.off("lobby_chat_message", onMessage);
+    };
+  }, [socket]);
+
+  // Rensa lokalt för att matcha serverns 5-min TTL (även om tabben står öppen)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const cutoff = Date.now() - CHAT_TTL_MS;
+      setChatMsgs((prev) => prev.filter((m) => (m?.ts ?? 0) >= cutoff));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Auto-scroll när nya meddelanden kommer
+  useEffect(() => {
+    const el = chatListRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMsgs.length]);
+
+  const sendChat = () => {
+    if (!socket) return;
+    const text = chatInput.trim();
+    if (!text) return;
+    socket.emit("lobby_chat_send", { text });
+    setChatInput("");
+  };
+
+  const closeProgress = () => {
+    setProgressOpen(false);
+    setProgressUser(null);
+    setProgressData(null);
+    setProgressError("");
+  };
+
+  const openAbout = () => setAboutOpen(true);
+
+  const closeBug = () => setBugOpen(false);
+  const openBug = async () => {
+    setFeedbackError("");
+    setFeedbackSent(false);
+    setFeedbackSelectedId(null);
+
+    const admin = isFeedbackAdmin;
+    setBugMode(admin ? "admin" : "submit");
+    setBugOpen(true);
+
+    if (admin && session?.sessionId) {
+      // Load latest feedback immediately
+      try {
+        setFeedbackLoading(true);
+        setFeedbackRows([]);
+        const res = await getFeedbackList(session.sessionId, { kind: null, limit: 200 });
+        const rows = res?.rows || res?.data?.rows || res?.data || [];
+        setFeedbackRows(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setFeedbackError(e?.message || String(e));
+      } finally {
+        setFeedbackLoading(false);
+      }
+    }
+  };
+
+  const loadFeedbackList = async (filter = "all") => {
+    if (!session?.sessionId) return;
+    if (!isFeedbackAdmin) return;
+
+    const kind = filter === "bug" || filter === "feature" ? filter : null;
+
+    try {
+      setFeedbackLoading(true);
+      setFeedbackError("");
+      const res = await getFeedbackList(session.sessionId, { kind, limit: 200 });
+      const rows = res?.rows || res?.data?.rows || res?.data || [];
+      setFeedbackRows(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setFeedbackError(e?.message || String(e));
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    if (!session?.sessionId) return;
+    if (feedbackSending) return;
+
+    const kind = feedbackKind === "feature" ? "feature" : "bug";
+    const message = String(feedbackText || "").trim();
+    if (!message) {
+      setFeedbackError(t("lobby.feedback.errorEmpty"));
+      return;
+    }
+
+    setFeedbackSending(true);
+    setFeedbackError("");
+    setFeedbackSent(false);
+
+    try {
+      await createFeedback(session.sessionId, {
+        kind,
+        message,
+        pageUrl: typeof window !== "undefined" ? window.location?.href : "",
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+        lang: typeof navigator !== "undefined" ? navigator.language : "",
+        meta: {
+          clientTime: new Date().toISOString(),
+        },
+      });
+
+      setFeedbackText("");
+      setFeedbackSent(true);
+      setTimeout(() => setFeedbackSent(false), 1600);
+    } catch (e) {
+      setFeedbackError(e?.message || String(e));
+    } finally {
+      setFeedbackSending(false);
+    }
+  };
+
+  const closeAbout = () => setAboutOpen(false);
+
+  const openLeaderboard = () => setLeaderboardOpen(true);
+  const closeLeaderboard = () => setLeaderboardOpen(false);
+
+  // ESC stänger modaler
+  useEffect(() => {
+    if (!progressOpen && !aboutOpen && !leaderboardOpen && !bugOpen) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (progressOpen) closeProgress();
+        if (aboutOpen) closeAbout();
+        if (leaderboardOpen) closeLeaderboard();
+        if (bugOpen) closeBug();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressOpen, aboutOpen, leaderboardOpen, bugOpen]);
+
+  const setShowMe = async (next) => {
+    const val = !!next;
+    const prev = showMeOnLeaderboard;
+    setShowMeOnLeaderboard(val);
+    setSavingVis(true);
+    try {
+      await setLeaderboardVisibility(session.sessionId, val);
+    } catch {
+      setShowMeOnLeaderboard(prev);
+    } finally {
+      setSavingVis(false);
+    }
+  };
+
+  // Queue start/stop
+  const startQueue = () => {
+    if (!socket) return;
+    const d = safeDiff(queueDifficulty);
+    socket.emit("set_queue", { queued: true, difficulty: d });
+  };
+  const leaveQueue = () => {
+    if (!socket) return;
+    socket.emit("leave_queue");
+  };
+
+  // Övning
+  const startSolo = () => {
+    if (!socket) return;
+    socket.emit("start_solo_match", { difficulty: safeDiff(practiceDifficulty) });
+  };
+
+  // Challenge med difficulty
+  const challenge = (e) => {
+    e.preventDefault();
+    if (!socket || !challengeName) return;
+    socket.emit("challenge_player", {
+      targetUsername: challengeName.trim(),
+      difficulty: safeDiff(challengeDifficulty),
+    });
+    setChallengeName("");
+  };
+
+  // =========================
+  // Leaderboard wide fetch
+  // =========================
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWide() {
+      setLbError("");
+      setLbLoading(true);
+
+      try {
+        const view = safeLbMode(lbView);
+
+        const modeForQuery = view === "all" ? safeLbMode(lbAllSortMode) : view;
+        const mode = modeForQuery === "all" ? "total" : modeForQuery;
+
+        const j = await getLeaderboardWide({
+          sessionId: session.sessionId,
+          mode,
+          sort: String(lbSort || "ppm"),
+          dir: lbDir,
+          limit: 50,
+        });
+
+        const rows = Array.isArray(j?.rows) ? j.rows : [];
+        if (cancelled) return;
+
+        // ✅ dölj “0 matcher”
+        const nonZero = rows.filter(hasAnyMatches);
+
+        // privacy-toggle (lokal filtrering)
+        const filtered = showMeOnLeaderboard ? nonZero : nonZero.filter((u) => u.namn !== session.username);
+
+        setLbRows(filtered);
+      } catch (e) {
+        if (!cancelled)
+          setLbError(
+            e?.message
+              ? String(e.message).startsWith("errors.")
+                ? t(e.message)
+                : e.message
+              : t("errors.leaderboardLoadFailed")
+          );
+        if (!cancelled) setLbRows([]);
+      } finally {
+        if (!cancelled) setLbLoading(false);
+      }
+    }
+
+    loadWide();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lbView, lbSort, lbDir, lbAllSortMode, showMeOnLeaderboard, session.sessionId, session.username]);
+
+  // UI helper för top3 highlight
+  const getRowClass = (rank, usernameOrNamn) => {
+    const u = String(usernameOrNamn || "");
+    const classes = [];
+    if (u === session.username) classes.push("is-me");
+    if (rank === 1) classes.push("lb-top1");
+    else if (rank === 2) classes.push("lb-top2");
+    else if (rank === 3) classes.push("lb-top3");
+    return classes.join(" ");
+  };
+
+  // Progression helpers
+  const ensureCatalogLoaded = async () => {
+    let catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
+    if (catalog.length > 0) return catalog;
+
+    const res = await getBadgesCatalog(session.sessionId);
+    catalog = Array.isArray(res) ? res : Array.isArray(res?.badges) ? res.badges : [];
+    setBadgesCatalog(catalog);
+    return catalog;
+  };
+
+  const openProgressFor = async (username) => {
+    setProgressError("");
+    setProgressUser(username);
+    setProgressOpen(true);
+    setProgressLoading(true);
+    setProgressData(null);
+
+    try {
+      await ensureCatalogLoaded();
+
+      const p =
+        username === session.username
+          ? await getMyProgress(session.sessionId)
+          : await getUserProgress(session.sessionId, username);
+
+      setProgressData(p || null);
+    } catch (e) {
+      setProgressError(
+        e?.message
+          ? String(e.message).startsWith("errors.")
+            ? t(e.message)
+            : e.message
+          : t("errors.progressionLoadFailed")
+      );
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
+  const groupedBadges = useMemo(() => {
+    const catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
+    const map = new Map();
+
+    for (const b of catalog) {
+      const groupName = b.groupName ?? b.group_name ?? b.group ?? t("common.other");
+      const groupKey = b.groupKey ?? b.group_key ?? null;
+
+      if (!map.has(groupName)) map.set(groupName, { groupKey, items: [] });
+      map.get(groupName).items.push(b);
+    }
+
+    const groups = Array.from(map.entries()).map(([groupName, { groupKey, items }]) => {
+      const sorted = [...items].sort((a, b) => {
+        const ak = Number(a.sortInGroup ?? a.sort_in_group ?? a.order_index ?? 0);
+        const bk = Number(b.sortInGroup ?? b.sort_in_group ?? b.order_index ?? 0);
+        return ak - bk;
+      });
+      return { groupName, groupKey, items: sorted };
+    });
+
+    const groupKeyToNum = (gk) => {
+      if (!gk) return Number.POSITIVE_INFINITY;
+      const m = String(gk).match(/(\d+)/);
+      return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+    };
+
+    groups.sort((a, b) => {
+      const an = groupKeyToNum(a.groupKey);
+      const bn = groupKeyToNum(b.groupKey);
+      if (an !== bn) return an - bn;
+      return a.groupName.localeCompare(b.groupName, "sv");
+    });
+
+    return groups;
+  }, [badgesCatalog]);
+
+  const earnedSet = useMemo(() => {
+    const earned =
+      progressData?.earnedBadges ||
+      progressData?.earned ||
+      progressData?.badges ||
+      progressData?.user_badges ||
+      [];
+    const s = new Set();
+    for (const e of earned) {
+      const code = e?.badge_code || e?.code || e?.badgeCode || e?.badge;
+      if (code) s.add(code);
+    }
+    return s;
+  }, [progressData]);
+
+  const xpUi = useMemo(() => {
+    const xpTotal = Number(progressData?.xp_total ?? progressData?.xpTotal ?? progressData?.xp ?? NaN);
+    if (!Number.isFinite(xpTotal)) return null;
+
+    // Prefer server-provided level/progress fields if present
+    const lvlFromServer = Number(progressData?.level ?? NaN);
+    const direct = {
+      xpLevelBase: Number(progressData?.xpLevelBase ?? progressData?.xp_level_base ?? NaN),
+      xpNextLevelAt: Number(progressData?.xpNextLevelAt ?? progressData?.xp_next_level_at ?? NaN),
+      xpIntoLevel: Number(progressData?.xpIntoLevel ?? progressData?.xp_into_level ?? NaN),
+      xpToNext: Number(progressData?.xpToNext ?? progressData?.xp_to_next ?? NaN),
+      xpPctToNext: Number(progressData?.xpPctToNext ?? progressData?.xp_pct_to_next ?? NaN),
+    };
+
+    const hasDirect =
+      Number.isFinite(direct.xpLevelBase) &&
+      Number.isFinite(direct.xpNextLevelAt) &&
+      Number.isFinite(direct.xpIntoLevel) &&
+      Number.isFinite(direct.xpToNext) &&
+      Number.isFinite(direct.xpPctToNext);
+
+    if (hasDirect) {
+      return {
+        xpTotal,
+        level: Number.isFinite(lvlFromServer) ? Math.max(0, Math.floor(lvlFromServer)) : null,
+        ...direct,
+      };
+    }
+
+    // Fallback: compute level/progress client-side from xp_total (same curve as server spec)
+    const need = (L) => 180 + 40 * L + 6 * L * L;
+
+    let level = 0;
+    let base = 0;
+    // Loop is cheap; levels won't be huge.
+    while (xpTotal >= base + need(level)) {
+      base += need(level);
+      level += 1;
+      if (level > 100000) break; // safety
+    }
+
+    const nextAt = base + need(level);
+    const into = xpTotal - base;
+    const toNext = Math.max(0, nextAt - xpTotal);
+    const denom = Math.max(1, nextAt - base);
+    const pct = Math.max(0, Math.min(100, (into / denom) * 100));
+
+    return {
+      xpTotal,
+      level: Number.isFinite(lvlFromServer) ? Math.max(0, Math.floor(lvlFromServer)) : level,
+      xpLevelBase: base,
+      xpNextLevelAt: nextAt,
+      xpIntoLevel: into,
+      xpToNext: toNext,
+      xpPctToNext: pct,
+    };
+  }, [progressData]);
+
+  const levelValue =
+    typeof progressData?.level === "number"
+      ? progressData.level
+      : typeof xpUi?.level === "number"
+      ? xpUi.level
+      : typeof progressData?.badges_count === "number"
+      ? progressData.badges_count
+      : typeof progressData?.badgesCount === "number"
+      ? progressData.badgesCount
+      : earnedSet.size;
+
+  const totalBadges = Array.isArray(badgesCatalog) ? badgesCatalog.length : 0;
+
+  const getBadgeCode = (b) => b?.badge_code || b?.code || b?.key || b?.badgeCode || b?.badge;
+
+  // Stats i progression (inkl records)
+  const progStats = useMemo(() => {
+    const s = progressData?.stats || {};
+    return {
+      played: s.played ?? progressData?.played ?? 0,
+      wins: s.wins ?? progressData?.wins ?? 0,
+      losses: s.losses ?? progressData?.losses ?? 0,
+      avgScore: s.avgScore ?? progressData?.avgScore ?? progressData?.avg_score ?? null,
+      pct: s.pct ?? progressData?.pct ?? null,
+
+      bestMatchScore: s.bestMatchScore ?? progressData?.bestMatchScore ?? progressData?.best_match_score ?? null,
+      bestWinMargin: s.bestWinMargin ?? progressData?.bestWinMargin ?? progressData?.best_win_margin ?? null,
+    };
+  }, [progressData]);
+
+  // Derived: queue counts
+  const queueCounts = useMemo(() => {
+    const qc = lobbyState?.queueCounts || {};
+    return {
+      easy: Number(qc.easy ?? 0) || 0,
+      medium: Number(qc.medium ?? 0) || 0,
+      hard: Number(qc.hard ?? 0) || 0,
+    };
+  }, [lobbyState?.queueCounts]);
+
+  const onlineCount = Number(lobbyState?.onlineCount ?? 0) || 0;
+
+  // Leaderboard columns config
+  const viewMode = safeLbMode(lbView);
+  const showAllGroups = viewMode === "all";
+
+  const groupsToShow = useMemo(() => {
+    if (showAllGroups) return ["easy", "medium", "hard", "total"];
+    return [viewMode];
+  }, [showAllGroups, viewMode]);
+
+  const wideRows = useMemo(() => lbRows, [lbRows]);
+
+  // ---------- UI ----------
+  return (
+    <div className="screen">
+      <StartPings />
+      <img className="screen-logo" src={logo} alt={t("common.appName")} />
+      <div className="screen-topbar">
+        <LanguageToggle />
+      </div>
+
+      {/* ✅ Viktigt: wrappar panel + footer i en egen kolumn-stack så den hamnar UNDER, inte bredvid */}
+      <div className="lobby-layout">
+        <div className="lobby-main">
+          <div className="panel">
+          <div className="panel-header">
+            <h2>{t("lobby.loggedInAs", { user: session.username })}{meLevel != null && Number.isFinite(Number(meLevel)) ? ` · L${Math.round(Number(meLevel))}` : ""}</h2>
+
+            <div className="panel-header-actions">
+              <button
+                type="button"
+                className="help-btn"
+                onClick={openAbout}
+                title={t("lobby.aboutTitle")}
+                aria-label={t("lobby.aboutTitle")}
+              >
+                ?
+              </button>
+              <button className="logout-btn" onClick={handleLogout}>
+                {t("common.logout")}
+              </button>
+            </div>
+          </div>
+
+          <div className="panel-sub-actions">
+            <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
+              🏆 {t("lobby.leaderboard")}
+            </button>
+            <button
+              type="button"
+              className="sub-action-btn"
+              onClick={() => openProgressFor(session.username)}
+              disabled={!session?.sessionId}
+            >
+              ⭐ {t("lobby.myProgress")}
+            </button>
+            <button
+              type="button"
+              className={`sub-action-btn ${chatOpen ? "" : "is-off"}`}
+              onClick={() => setChatOpen((v) => !v)}
+              aria-pressed={chatOpen}
+              title={chatOpen ? t("lobby.chat.toggleHide") : t("lobby.chat.toggleShow")}
+            >
+              💬 {chatOpen ? t("lobby.chat.toggleHide") : t("lobby.chat.toggleShow")}
+            </button>
+          </div>
+
+          <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
+
+          {/* Queue status cards */}
+          <div className="queue-cards">
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "easy" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.easy")}</div>
+              <div className="queue-card-count">{queueCounts.easy}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "medium" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.medium")}</div>
+              <div className="queue-card-count">{queueCounts.medium}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+            <div className={`queue-card ${queueState.queued && queueState.difficulty === "hard" ? "is-me" : ""}`}>
+              <div className="queue-card-title">{t("common.difficulty.hard")}</div>
+              <div className="queue-card-count">{queueCounts.hard}</div>
+              <div className="queue-card-sub">{t("lobby.queue.ready")}</div>
+            </div>
+          </div>
+
+          {/* Matchmaking */}
+          <div className="lobby-actions">
+            <div className="lobby-action-block">
+              <div className="lobby-action-title">{t("lobby.matchRandom.title")}</div>
+              <div className="lobby-action-row">
+                <select
+                  value={queueDifficulty}
+                  onChange={(e) => setQueueDifficulty(safeDiff(e.target.value))}
+                  disabled={!socket || queueState.queued}
+                >
+                  {DIFFS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`common.difficulty.${d}`)}
+                    </option>
+                  ))}
+                </select>
+
+                {!queueState.queued ? (
+                  <button onClick={startQueue} disabled={!socket}>
+                    {t("lobby.matchRandom.readyUp")}
+                  </button>
+                ) : (
+                  <button onClick={leaveQueue} disabled={!socket}>
+                    {t("lobby.matchRandom.leaveQueue")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="lobby-action-block">
+              <div className="lobby-action-title">{t("common.modes.practice")}</div>
+              <div className="lobby-action-row">
+                <select
+                  value={practiceDifficulty}
+                  onChange={(e) => setPracticeDifficulty(safeDiff(e.target.value))}
+                  disabled={!socket}
+                >
+                  {DIFFS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`common.difficulty.${d}`)}
+                    </option>
+                  ))}
+                </select>
+                <button onClick={startSolo} disabled={!socket}>
+                  {t("lobby.practice.start")}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Challenge */}
+          <form onSubmit={challenge} className="challenge-form">
+            <input
+              placeholder={t("lobby.challenge.placeholder")}
+              value={challengeName}
+              onChange={(e) => setChallengeName(e.target.value)}
+            />
+
+            <select value={challengeDifficulty} onChange={(e) => setChallengeDifficulty(safeDiff(e.target.value))}>
+              {DIFFS.map((d) => (
+                <option key={d} value={d}>
+                  {t(`common.difficulty.${d}`)}
+                </option>
+              ))}
+            </select>
+
+            <button type="submit" disabled={!socket || !challengeName.trim()}>
+              {t("lobby.challenge.btn")}
+            </button>
+          </form>
+        </div>
+
+          {chatOpen && (
+            <div className="lobby-chat" aria-label={t("lobby.chat.title")}>
+            <div className="lobby-chat-header">
+              <span className="lobby-chat-title">💬 {t("lobby.chat.title")}</span>
+              <span className="lobby-chat-meta">{t("lobby.chat.ttl")}</span>
+            </div>
+
+            <div className="lobby-chat-messages" ref={chatListRef}>
+              {chatMsgs.length === 0 ? (
+                <div className="lobby-chat-empty">{t("lobby.chat.empty")}</div>
+              ) : (
+                chatMsgs.map((m) => (
+                  <div key={m.id || `${m.user}-${m.ts}`} className="lobby-chat-msg">
+                    <div className="lobby-chat-msg-top">
+                      <span className="lobby-chat-user">{m.user}{Number.isFinite(Number(m.level)) ? ` · L${Number(m.level)}` : ""}</span>
+                      <span className="lobby-chat-time">
+                        {new Date(m.ts || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <div className="lobby-chat-text">{m.text}</div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="lobby-chat-inputrow">
+              <input
+                className="lobby-chat-input"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={t("lobby.chat.placeholder")}
+                maxLength={240}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    sendChat();
+                  }
+                }}
+              />
+              <button type="button" className="lobby-chat-send" onClick={sendChat} disabled={!socket || !chatInput.trim()}>
+                {t("lobby.chat.send")}
+              </button>
+            </div>
+          </div>
+          )}
+
+        </div>
+
+        {/* ✅ Under panel + chat */}
+        <div className="lobby-footer">
+          <button type="button" className="bug-report-btn" onClick={openBug}>
+            🐞 {t("lobby.bugReport")}
+          </button>
+        </div>
+      </div>
+
+      {/* Topplista modal */}
+      {leaderboardOpen && (
+        <div className="finish-overlay" onClick={closeLeaderboard}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="lb-modal-head">
+              <div className="finish-title">{t("lobby.leaderboard")}</div>
+
+              <div className="lb-modal-actions">
+                <label className="lb-visibility">
+                  <input
+                    type="checkbox"
+                    checked={showMeOnLeaderboard}
+                    onChange={(e) => setShowMe(e.target.checked)}
+                    disabled={savingVis}
+                  />
+                  <span>{showMeOnLeaderboard ? t("lobby.lb.visible") : t("lobby.lb.hidden")}</span>
+                </label>
+
+                <button className="hud-btn" onClick={closeLeaderboard} type="button">
+                  {t("common.close")}
+                </button>
+              </div>
+            </div>
+
+            <div className="lb-controls lb-controls-modal">
+              <div className="lb-tabs">
+                {LB_VIEWS.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`lb-tab ${lbView === v ? "is-active" : ""}`}
+                    onClick={() => setLbView(v)}
+                  >
+                    {v === "all" ? t("lobby.lb.view.all") : t(`lobby.lb.groups.${v}`)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="lb-sort-row">
+                {lbView === "all" && (
+                  <select value={lbAllSortMode} onChange={(e) => setLbAllSortMode(safeLbMode(e.target.value))}>
+                    <option value="easy">{t("lobby.lb.sortOption", { mode: t("common.difficulty.easy") })}</option>
+                    <option value="medium">{t("lobby.lb.sortOption", { mode: t("common.difficulty.medium") })}</option>
+                    <option value="hard">{t("lobby.lb.sortOption", { mode: t("common.difficulty.hard") })}</option>
+                    <option value="total">{t("lobby.lb.sortOption", { mode: t("common.difficulty.total") })}</option>
+                  </select>
+                )}
+
+                <select value={lbSort} onChange={(e) => setLbSort(String(e.target.value || "ppm"))}>
+                  {SORT_KEYS.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select value={lbDir} onChange={(e) => setLbDir(String(e.target.value || ""))}>
+                  <option value="">{t("common.auto")}</option>
+                  <option value="asc">{t("common.asc")}</option>
+                  <option value="desc">{t("common.desc")}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* ✅ Wide leaderboard output states */}
+            {lbLoading ? (
+              <div className="lb-loading">{t("lobby.lb.loading")}</div>
+            ) : lbError ? (
+              <div className="lb-error">{lbError}</div>
+            ) : wideRows.length === 0 ? (
+              <div className="lb-empty">{t("lobby.lb.empty")}</div>
+            ) : (
+              <div className="lb-wide-wrap">
+                <table className="leaderboard leaderboard-wide">
+                  <thead>
+                    {showAllGroups ? (
+                      <>
+                        <tr>
+                          <th className="lb-left-spacer" colSpan={3} />
+
+                          {groupsToShow.includes("easy") && (
+                            <th className="lb-group-head lb-easy lb-gstart" colSpan={5}>
+                              {t("lobby.lb.groups.easy")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <th className="lb-group-head lb-medium lb-gstart" colSpan={5}>
+                              {t("lobby.lb.groups.medium")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <th className="lb-group-head lb-hard lb-gstart" colSpan={5}>
+                              {t("lobby.lb.groups.hard")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <th className="lb-group-head lb-total lb-gstart" colSpan={5}>
+                              {t("lobby.lb.groups.total")}
+                            </th>
+                          )}
+                        </tr>
+
+                        <tr>
+                          <th className="lb-rank">#</th>
+                          <th className="lb-name">{t("lobby.lb.player")}</th>
+                          <th className="lb-lvl">LVL</th>
+
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <th className="lb-sub lb-easy lb-gstart">VM</th>
+                              <th className="lb-sub lb-easy">FM</th>
+                              <th className="lb-sub lb-easy">SP</th>
+                              <th className="lb-sub lb-easy">PCT</th>
+                              <th className="lb-sub lb-easy">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <th className="lb-sub lb-medium lb-gstart">VM</th>
+                              <th className="lb-sub lb-medium">FM</th>
+                              <th className="lb-sub lb-medium">SP</th>
+                              <th className="lb-sub lb-medium">PCT</th>
+                              <th className="lb-sub lb-medium">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <th className="lb-sub lb-hard lb-gstart">VM</th>
+                              <th className="lb-sub lb-hard">FM</th>
+                              <th className="lb-sub lb-hard">SP</th>
+                              <th className="lb-sub lb-hard">PCT</th>
+                              <th className="lb-sub lb-hard">PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <th className="lb-sub lb-total lb-gstart">VM</th>
+                              <th className="lb-sub lb-total">FM</th>
+                              <th className="lb-sub lb-total">SP</th>
+                              <th className="lb-sub lb-total">PCT</th>
+                              <th className="lb-sub lb-total">PPM</th>
+                            </>
+                          )}
+                        </tr>
+                      </>
+                    ) : (
+                      <>
+                        <tr>
+                          <th className="lb-rank">#</th>
+                          <th className="lb-name">{t("lobby.lb.player")}</th>
+                          <th className="lb-lvl">LVL</th>
+
+                          {groupsToShow.includes("easy") && (
+                            <th className="lb-group" colSpan={5}>
+                              {t("lobby.lb.groups.easy")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <th className="lb-group" colSpan={5}>
+                              {t("lobby.lb.groups.medium")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <th className="lb-group" colSpan={5}>
+                              {t("lobby.lb.groups.hard")}
+                            </th>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <th className="lb-group" colSpan={5}>
+                              {t("lobby.lb.groups.total")}
+                            </th>
+                          )}
+                        </tr>
+
+                        <tr>
+                          <th className="lb-rank" />
+                          <th />
+                          <th className="lb-lvl" />
+
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <th>VM</th>
+                              <th>FM</th>
+                              <th>SP</th>
+                              <th>PCT</th>
+                              <th>PPM</th>
+                            </>
+                          )}
+                        </tr>
+                      </>
+                    )}
+                  </thead>
+
+                  <tbody>
+                    {wideRows.slice(0, 50).map((u, idx) => {
+                      const rank = idx + 1;
+                      const name = u?.namn || "—";
+                      const lvl = Number(u?.lvl ?? 0);
+
+                      return (
+                        <tr key={`${name}-${idx}`} className={getRowClass(rank, name)}>
+                          <td className="lb-rank">
+                            <span>{rank}</span>
+                          </td>
+
+                          <td className="lb-name-cell" style={{ fontWeight: rank <= 3 ? 900 : undefined }}>
+                            <button
+                              className="lb-name-btn"
+                              onClick={() => openProgressFor(name)}
+                              title="Visa progression"
+                              type="button"
+                            >
+                              {name}
+                            </button>
+                          </td>
+
+                          <td className="lb-lvl">{lvl}</td>
+
+                          {groupsToShow.includes("easy") && (
+                            <>
+                              <td>{getCell(u, "e_", "vm")}</td>
+                              <td>{getCell(u, "e_", "fm")}</td>
+                              <td>{getCell(u, "e_", "sp")}</td>
+                              <td>{getCell(u, "e_", "pct")}</td>
+                              <td>{getCell(u, "e_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("medium") && (
+                            <>
+                              <td>{getCell(u, "m_", "vm")}</td>
+                              <td>{getCell(u, "m_", "fm")}</td>
+                              <td>{getCell(u, "m_", "sp")}</td>
+                              <td>{getCell(u, "m_", "pct")}</td>
+                              <td>{getCell(u, "m_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("hard") && (
+                            <>
+                              <td>{getCell(u, "s_", "vm")}</td>
+                              <td>{getCell(u, "s_", "fm")}</td>
+                              <td>{getCell(u, "s_", "sp")}</td>
+                              <td>{getCell(u, "s_", "pct")}</td>
+                              <td>{getCell(u, "s_", "ppm")}</td>
+                            </>
+                          )}
+
+                          {groupsToShow.includes("total") && (
+                            <>
+                              <td>{getCell(u, "t_", "vm")}</td>
+                              <td>{getCell(u, "t_", "fm")}</td>
+                              <td>{getCell(u, "t_", "sp")}</td>
+                              <td>{getCell(u, "t_", "pct")}</td>
+                              <td>{getCell(u, "t_", "ppm")}</td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* About / Info modal */}
+      {aboutOpen && (
+        <div className="finish-overlay" onClick={closeAbout}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">{t("lobby.aboutTitle")}</div>
+
+            <div className="about-content">
+              <p>{t("lobby.about.p1")}</p>
+              <p>{t("lobby.about.p2")}</p>
+
+              <h3>{t("lobby.about.howTitle")}</h3>
+              <p>{t("lobby.about.p3")}</p>
+              <p>{t("lobby.about.p4")}</p>
+
+              <h3>{t("lobby.about.modesTitle")}</h3>
+              <p>{t("lobby.about.p5")}</p>
+
+              <h3>{t("lobby.about.lensTitle")}</h3>
+              <p>{t("lobby.about.p6")}</p>
+
+              <h3>{t("lobby.about.progressTitle")}</h3>
+              <p>{t("lobby.about.p7")}</p>
+              <p>{t("lobby.about.p8")}</p>
+            </div>
+
+            <div className="finish-actions">
+              <button className="hud-btn" onClick={closeAbout}>
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback modal */}
+      {bugOpen && (
+        <div className="finish-overlay" onClick={closeBug}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">
+              {bugMode === "admin" ? t("lobby.feedback.adminTitle") : t("lobby.feedback.title")}
+            </div>
+
+            {bugMode !== "admin" && (
+              <div className="about-content">
+                <div className="feedback-tabs">
+                  <button
+                    type="button"
+                    className={`feedback-tab ${feedbackKind === "bug" ? "active" : ""}`}
+                    onClick={() => setFeedbackKind("bug")}
+                  >
+                    🐞 {t("lobby.feedback.kindBug")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`feedback-tab ${feedbackKind === "feature" ? "active" : ""}`}
+                    onClick={() => setFeedbackKind("feature")}
+                  >
+                    ✨ {t("lobby.feedback.kindFeature")}
+                  </button>
+                </div>
+
+                <textarea
+                  className="bug-report-text"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder={
+                    feedbackKind === "feature"
+                      ? t("lobby.feedback.placeholderFeature")
+                      : t("lobby.feedback.placeholderBug")
+                  }
+                />
+
+                {feedbackError && <div className="progress-error">{feedbackError}</div>}
+                {feedbackSent && <div className="feedback-ok">✅ {t("lobby.feedback.sent")}</div>}
+
+                <div className="bug-report-actions">
+                  <button
+                    type="button"
+                    className="hud-btn"
+                    onClick={submitFeedback}
+                    disabled={feedbackSending || !feedbackText.trim()}
+                  >
+                    {feedbackSending ? t("lobby.feedback.sending") : t("lobby.feedback.send")}
+                  </button>
+                  <button type="button" className="hud-btn" onClick={closeBug}>
+                    {t("common.close")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {bugMode === "admin" && (
+              <div className="about-content">
+                <div className="feedback-admin-top">
+                  <div className="feedback-tabs">
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "all" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("all");
+                        loadFeedbackList("all");
+                      }}
+                    >
+                      {t("lobby.feedback.filterAll")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "bug" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("bug");
+                        loadFeedbackList("bug");
+                      }}
+                    >
+                      {t("lobby.feedback.filterBug")}
+                    </button>
+                    <button
+                      type="button"
+                      className={`feedback-tab ${feedbackFilter === "feature" ? "active" : ""}`}
+                      onClick={() => {
+                        setFeedbackFilter("feature");
+                        loadFeedbackList("feature");
+                      }}
+                    >
+                      {t("lobby.feedback.filterFeature")}
+                    </button>
+                  </div>
+
+                  <button type="button" className="hud-btn" onClick={() => loadFeedbackList(feedbackFilter)}>
+                    ↻ {t("lobby.feedback.refresh")}
+                  </button>
+                </div>
+
+                {feedbackLoading && <div className="progress-loading">{t("common.loading")}</div>}
+                {feedbackError && <div className="progress-error">{feedbackError}</div>}
+
+                {!feedbackLoading && !feedbackError && (
+                  <>
+                    {(!feedbackRows || feedbackRows.length === 0) ? (
+                      <div className="about-content">{t("lobby.feedback.empty")}</div>
+                    ) : (
+                      <table className="leaderboard leaderboard-wide feedback-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 140 }}>{t("lobby.feedback.colTime")}</th>
+                            <th style={{ width: 110 }}>{t("lobby.feedback.colKind")}</th>
+                            <th style={{ width: 140 }}>{t("lobby.feedback.colUser")}</th>
+                            <th>{t("lobby.feedback.colMessage")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {feedbackRows.map((r) => {
+                            const isSel = feedbackSelectedId === r.id;
+                            const msg = String(r.message || "");
+                            const short = msg.length > 90 ? `${msg.slice(0, 90)}…` : msg;
+                            const time = r.created_at ? new Date(r.created_at).toLocaleString() : "";
+                            return (
+                              <React.Fragment key={r.id}>
+                                <tr
+                                  className={isSel ? "is-me" : ""}
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => setFeedbackSelectedId(isSel ? null : r.id)}
+                                >
+                                  <td>{time}</td>
+                                  <td>{r.kind}</td>
+                                  <td>{r.username}</td>
+                                  <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 420 }}>
+                                    {short}
+                                  </td>
+                                </tr>
+
+                                {isSel && (
+                                  <tr>
+                                    <td colSpan={4} className="feedback-details">
+                                      <div className="feedback-details-msg">{msg}</div>
+                                      {r.page_url && (
+                                        <div className="feedback-details-meta">
+                                          <span className="muted">{t("lobby.feedback.colUrl")}: </span>
+                                          <span className="mono">{r.page_url}</span>
+                                        </div>
+                                      )}
+                                      {r.lang && (
+                                        <div className="feedback-details-meta">
+                                          <span className="muted">{t("lobby.feedback.colLang")}: </span>
+                                          <span className="mono">{r.lang}</span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+
+                <div className="bug-report-actions">
+                  <button type="button" className="hud-btn" onClick={closeBug}>
+                    {t("common.close")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Progression modal */}
+      {progressOpen && (
+        <div className="finish-overlay" onClick={closeProgress}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">
+              {t("lobby.progress.title", { user: progressUser, levelLabel: t("common.level"), level: levelValue })}
+            </div>
+
+            {progressLoading && <div className="progress-loading">{t("common.loading")}</div>}
+            {progressError && <div className="progress-error">{progressError}</div>}
+
+            {!progressLoading && !progressError && (
+              <>
+                <div className="progress-summary">
+                  {xpUi && (
+                    <div className="progress-xp">
+                      <div className="progress-xp-row">
+                        <div className="ps-label">{t("common.xp")}</div>
+                        <div className="ps-value">{fmtIntOrDash(xpUi.xpTotal)}</div>
+                      </div>
+
+                      <div
+                        className="xp-bar"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(Number(xpUi.xpPctToNext ?? 0))}
+                      >
+                        <div className="xp-bar-fill" style={{ width: `${xpUi.xpPctToNext}%` }} />
+                      </div>
+
+                      <div className="xp-subtext">
+                        {t("lobby.progress.xpToNext", { n: fmtIntOrDash(xpUi.xpToNext) })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="progress-stats-grid">
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsPlayed")}</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.played)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsWins")}</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.wins)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsLosses")}</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.losses)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsWinrate")}</div>
+                      <div className="ps-value">{fmtPctOrDash(progStats.pct)}%</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsAvgScore")}</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.avgScore)}</div>
+                    </div>
+
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsBestMatch")}</div>
+                      <div className="ps-value">{fmtIntOrDash(progStats.bestMatchScore)}</div>
+                    </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsBestWin")}</div>
+                      <div className="ps-value">
+                        {Number.isFinite(Number(progStats.bestWinMargin)) ? fmtIntOrDash(progStats.bestWinMargin) : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✅ Emoji-överblick (alla badges som endast emojis) */}
+                <div className="badge-overview-wrap">
+                  <div className="progress-summary-row">
+                    <span>
+                      {t("lobby.progress.badgesLine", {
+                        label: t("common.badges"),
+                        earned: earnedSet.size,
+                        total: totalBadges,
+                        hover: t("common.hoverForInfo"),
+                      })}
+                    </span>
+                  </div>
+                  <div className="badge-overview">
+                    {groupedBadges.map((g) =>
+                      g.items.map((b) => {
+                        const code = getBadgeCode(b);
+                        const earned = code ? earnedSet.has(code) : false;
+                        const emoji = b.emoji || "🏷️";
+
+                        const tooltipTitle = b.name || "";
+                        const tooltipDesc = b.description || "";
+
+                        return (
+                          <span
+                            key={code || `${g.groupName}-${b.name}-${emoji}`}
+                            className={`badge-emoji-only ${earned ? "is-earned" : "is-missing"}`}
+                            aria-label={tooltipTitle}
+                            title=""
+                          >
+                            <FlagOrEmoji emoji={emoji} alt={tooltipTitle} className="badge-flag" />
+
+                            {(tooltipTitle || tooltipDesc) && (
+                              <span className="badge-tooltip" role="tooltip">
+                                <span className="badge-tooltip-title">{tooltipTitle}</span>
+                                <span className="badge-tooltip-desc">{tooltipDesc}</span>
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="finish-actions">
+              <button className="hud-btn" onClick={closeProgress}>
+                {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
-}
-
-.city-label {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  font-size: 28px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.96);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
-}
-
-.city-label-row {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.city-country {
-  display:block;  
-  font-size: 0.78em;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  opacity: 0.85;
-}
-
-.city-name {
-  /* medvetet tom: behåller nuvarande styling */
-}
-
-.city-timer {
-  margin-top: 6px;
-  font-size: 28px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
-}
-
-.city-countdown {
-  /* ✅ Flytta upp den till mitten (samma plats som ready-knappen) */
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-
-  /* ✅ Större text men samma stilkänsla */
-  margin-top: 0;
-  font-size: 26px;        /* <-- större */
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-
-  /* Behåll looken (ljus text + tydlighet) */
-  color: rgba(255, 255, 255, 0.82);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.70);
-
-  /* Lite “chip”-känsla så den syns på ljusa partier av kartan */
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(6px);
-
-  /* Ska ligga ovanpå HUD men under overlays */
-  z-index: 99999;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* ✅ emoji-fonts på flaggan */
-.city-flag {
-  margin-left: 8px;
-  font-size: 1.05em;
-  line-height: 1;
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-  font-variant-emoji: emoji;
-}
-
-.city-flag-img {
-  margin-left: 8px;
-  height: 1.05em;
-  width: auto;
-  vertical-align: -0.12em;
-  image-rendering: auto;
-  pointer-events: none;
-  user-select: none;
-  filter: drop-shadow(0 2px 14px rgba(0,0,0,0.55));
-}
-
-/* ---------- Crosshair ---------- */
-.crosshair {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  transform: translate(-50%, -50%);
-  z-index: 9;
-  pointer-events: none;
-  opacity: 0.72;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
-}
-
-.crosshair::before,
-.crosshair::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  background: rgba(255, 255, 255, 0.72);
-  transform: translate(-50%, -50%);
-}
-
-.crosshair::before {
-  width: 10px;
-  height: 1px;
-}
-
-.crosshair::after {
-  width: 1px;
-  height: 10px;
-}
-
-/* ---------- Lens ---------- */
-.lens {
-  position: absolute;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.90);
-  z-index: 8;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  background-image: var(--map-image);
-  background-repeat: no-repeat;
-  background-position: center;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-}
-
-.world-map-full.is-debug .lens {
-  background-image: var(--map-debug-image);
-}
-
-/* ---------- Click markers ---------- */
-.click-marker {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  z-index: 13;
-  pointer-events: none;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 10px 22px rgba(0, 0, 0, 0.35);
-}
-
-.click-marker-me {
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.click-marker-opp {
-  background: rgba(255, 70, 70, 0.92);
-}
-
-/* ---------- Debug markers ---------- */
-.debug-dot {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  z-index: 14;
-  pointer-events: none;
-}
-
-.debug-dot-click {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
-}
-
-.debug-dot-target {
-  background: rgba(0, 255, 180, 0.95);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
-}
-
-/* ---------- Ready overlay ---------- */
-.ready-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 18;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
-.ready-btn {
-  pointer-events: auto;
-  margin-top: 0;
-  padding: 12px 18px;
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  opacity: 1;
-}
-
-.ready-btn:hover {
-  opacity: 1;
-}
-
-.ready-btn:disabled {
-  opacity: 0.55;
-}
-
-/* ---------- Finish overlay ---------- */
-.finish-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-}
-
-.finish-card {
-  width: min(420px, calc(100vw - 32px));
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 18px;
-  padding: 16px 16px 14px;
-  color: rgba(255, 255, 255, 0.93);
-}
-
-.finish-title {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  opacity: 0.99;
-  text-transform: uppercase;
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: center;
-}
-
-.finish-row {
-  display: none;
-  justify-content: center;
-  padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 16px;
-}
-
-.finish-row:first-of-type {
-  border-top: none;
-}
-
-.finish-winner {
-  margin-top: 12px;
-  font-size: 18px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.finish-actions {
-  margin-top: 10px;
-  display: flex;
-  justify-content: center;
-}
-
-/* ===== Finish progression (kompakt, ikon-only som i Lobby) ===== */
-.finish-progression {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.finish-prog-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: auto;
-}
-
-.finish-prog-left {
-  font-size: 13px;
-  font-weight: 900;
-  opacity: 0.9;
-  white-space: nowrap;
-}
-
-.finish-prog-right {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  min-width: 0;
-}
-
-.finish-prog-icons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-}
-
-.finish-prog-dash {
-  opacity: 0.7;
-  font-weight: 900;
-}
-
-/* Gör badge-emoji-only mindre i finish, så modalen inte växer på höjden */
-.finish-progression .badge-emoji-only {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  font-size: 22px;
-}
-
-/* Om du vill att tooltipen ska ligga snyggt även i finish-overlayn */
-.finish-progression .badge-tooltip {
-  width: min(260px, 55vw);
-}
-
-.city-pop {
-  margin-top: 4px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.78);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
-}
-
-.target-marker {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  transform: translate(-50%, -50%);
-  z-index: 13;
-  pointer-events: none;
-  background: rgba(0, 255, 180, 0.95);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
-}
-
-.click-distance {
-  position: absolute;
-  transform: translate(-50%, 0);
-  z-index: 14;
-  pointer-events: none;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(6px);
-}
-
-/* ===== Mobile block (App.jsx renders .mobile-block) ===== */
-.mobile-block{display:none;min-height:100vh;padding:32px;align-items:center;justify-content:center;text-align:center}
-@media (max-width: 900px){
-  .app-desktop{display:none !important;}
-  .mobile-block{display:flex;}
-}
-
-
-/* ===== Resultattabell i finish overlay ===== */
-.finish-card-wide {
-  width: min(1250px, calc(100vw - 32px));
-}
-
-.rounds-table-wrap {
-  margin-top: 12px;
-  max-height: 520px;          /* scroll om den blir hög */
-  overflow: auto;
-  overscroll-behavior: contain; /* ✅ minskar “scroll-bounce” */
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.rounds-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 16px;
-}
-
-.rounds-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 10px 10px;
-  text-align: left;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: rgba(2, 6, 23, 0.92);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(229, 231, 235, 0.92);
-}
-
-.rounds-table tbody td {
-  padding: 2px 0px 2px 0px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(229, 231, 235, 0.9);
-}
-
-.rounds-table tbody tr:nth-child(odd) {
-  background: rgba(15, 23, 42, 0.28);
-}
-.rounds-table tbody tr:nth-child(even) {
-  background: rgba(15, 23, 42, 0.44);
-}
-
-.rt-round {
-  width: 42px;
-  text-align: center;
-  font-weight: 900;
-  opacity: 0.9;
-}
-
-.rt-city {
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.rt-cell {
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* ✅ svag grön highlight om man vann rundan */
-.rt-win {
-  background: rgba(34, 197, 94, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.16);
-}
-
-/* Total-rad */
-.rt-total td {
-  font-weight: 900;
-  background: rgba(0, 0, 0, 0.35) !important;
-  border-bottom: none;
-  text-align: center;
-}
-
-/* ---------- Progression / Badges ---------- */
-
-/* ✅ PATCH: kompakt, nertonat, hover-info */
-.progress-summary {
-  margin-top: 10px;
-  opacity: 0.85;
-  font-size: 13px;
-}
-
-.progress-hint {
-  opacity: 0.65;
-  font-weight: 800;
-}
-
-/* ✅ NYTT: liten stat-grid (spelade/vinster/... + rekord) */
-.progress-summary-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.progress-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 8px;
-}
-
-/* ----- XP (progression) ----- */
-.xp-block {
-  margin-top: 10px;
-}
-
-.xp-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-.xp-total {
-  font-weight: 900;
-}
-
-.xp-subtext {
-  margin-top: 4px;
-  font-size: 12px;
-  opacity: 0.75;
-}
-
-.xp-bar {
-  margin-top: 6px;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.xp-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: rgba(37, 99, 235, 0.85);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  transition: width 220ms ease;
-}
-
-/* ===== Progression modal: Emoji overview + grupp-tabs ===== */
-
-.badge-overview-wrap {
-  margin-top: 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.14);
-  padding: 10px;
-}
-
-.badge-overview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-/* Emoji-only “chips” */
-.badge-emoji-only {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 44px;
-  height: 44px;
-
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(2, 6, 23, 0.35);
-
-  font-size: 34px; /* ✅ större emoji */
-  line-height: 1;
-
-  font-family:
-    "Apple Color Emoji",
-    "Segoe UI Emoji",
-    "Segoe UI Symbol",
-    "Noto Color Emoji",
-    system-ui,
-    sans-serif;
-
-  user-select: none;
-}
-
-/* ✅ FIX 3: ingen opacity här (annars blir tooltip också transparent) */
-.badge-emoji-only.is-missing {
-  filter: grayscale(1) saturate(0.35) brightness(0.4);
-}
-
-.badge-emoji-only.is-earned {
-  opacity: 1;
-  border-color: rgba(34, 197, 94, 0.20);
-  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.10);
-}
-
-/* ===== Emoji-only tooltip (HTML, kan stylas per rad) ===== */
-
-.badge-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%);
-
-  width: min(280px, 60vw);
-  padding: 10px 12px;
-  border-radius: 12px;
-
-  background: #0b1220;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: rgba(255, 255, 255, 0.96);
-
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
-  z-index: 9999;
-
-  /* gömd default */
-  opacity: 0;
-  pointer-events: none;
-
-  /* layout */
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-align: center;
-}
-
-/* Pil under tooltipen */
-.badge-tooltip::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  transform: translateX(-50%) rotate(45deg);
-
-  width: 10px;
-  height: 10px;
-
-  background: #0b1220;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-/* Visa tooltip på hover */
-.badge-emoji-only:hover .badge-tooltip {
-  opacity: 1;
-}
-
-/* Titel och beskrivning (olika stil) */
-.badge-tooltip-title {
-  font-size: 17px;
-  font-weight: 800;          /* "bolder" kan variera mellan fonter */
-  line-height: 1.15;
-
-  text-transform: uppercase; /* ✅ UPPERCASE */
-  letter-spacing: 0.06em;    /* ✅ lite spacing mellan bokstäver */
-
-  opacity: 0.99;             /* ✅ lite ljusare/”lättare” än 1.0 */
-  /* alternativt: color: rgba(255,255,255,0.92); */
-}
-
-.badge-tooltip-desc {
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.25;
-  opacity: 0.92;
-}
-
-@media (min-width: 860px) {
-  .progress-stats-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-.ps-item {
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.18);
-  padding: 8px 10px;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;   /* ✅ centrerar label+value horisontellt */
-  text-align: center;    /* ✅ centrerar texten */
-}
-
-.ps-label {
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  opacity: 0.72;
-}
-
-.ps-value {
-  margin-top: 3px;
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  color: rgba(255, 255, 255, 0.93);
-}
-
-
-/* ---------- Lobby header actions + ?-modal ---------- */
-
-.panel-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Rund liten “?”-knapp som matchar hud-stilen */
-.help-btn {
-  margin-top: 0;              /* viktigt: annars tar den global button { margin-top: 8px } */
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border-radius: 999px;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
-
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
-
-  backdrop-filter: blur(6px);
-  opacity: 1;
-}
-
-.help-btn:hover {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.28);
-}
-
-.help-btn:disabled {
-  opacity: 0.55;
-}
-
-.help-btn:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.9);
-  outline-offset: 2px;
-}
-
-/* Innehåll i “Vad är GeoSense?”-modalen */
-.about-content {
-  max-height: min(62vh, 560px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding-right: 6px;
-
-  font-size: 14px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.about-content p {
-  margin: 0 0 10px;
-}
-
-.about-content h3 {
-  margin: 14px 0 6px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.85;
-}
-
-.logout-btn { margin-top: 0; }
-
-/* Under header: Topplista + Min progression (ligger under Logga ut) */
-.panel-sub-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 0 8px;
-}
-.panel-sub-actions .sub-action-btn {
-  margin-top: 0;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 800;
-}
-.panel-sub-actions .sub-action-btn:hover {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-/* Lobbychat toggle: visually indicate OFF state */
-.panel-sub-actions .sub-action-btn.is-off {
-  opacity: 0.78;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-/* Topplista-modal header */
-.lb-modal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.lb-modal-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.lb-visibility {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-.lb-visibility input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: #2563eb;
-}
-.lb-controls-modal {
-  margin-top: 6px;
-}
-
-/* ================================
-   LOBBY v2: Queue + Wide Leaderboard
-   Lägg längst ner i styles.css
-================================== */
-
-/* Selects (du har input + button men inte select) */
-select {
-  font: inherit;          /* samma typsnitt som resten */
-  font-weight: 700;
-  font-size: 13px;
-
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid #475569;
-  background: #020617;
-  color: #e5e7eb;
-  outline: none;
-}
-
-select:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.9);
-  outline-offset: 2px;
-}
-
-/* Challenge-form: centrerad, inte för bred */
-.challenge-form {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 10px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.challenge-form input {
-  width: 320px;          /* ✅ fast storlek (inte fullbredd) */
-  max-width: 100%;
-  margin: 0;
-}
-.challenge-form select {
-  margin: 0;
-}
-.challenge-form button {
-  margin-top: 0;         /* viktigt pga global button { margin-top: 8px } */
-}
-
-/* Lobby action blocks (matchmaking + öva) */
-.lobby-actions{
-  display: flex;
-  gap: 12px;
-  align-items: stretch;   /* samma höjd */
-  flex-wrap: nowrap;      /* håll 2 kolumner i panelen */
-}
-
-/* Varje block tar halva bredden och håller sig symmetriskt */
-.lobby-action-block{
-  flex: 1 1 0;            /* lika breda */
-  max-width: 250px;           /* viktigt: låt innehållet krympa istället för att bryta rad */
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.18);
-  padding: 10px 12px;
-}
-
-.lobby-action-title {
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  opacity: 0.75;
-  margin-bottom: 8px;
-}
-
-.lobby-action-row{
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;        /* om det blir trångt: select + knapp får gå ner */
-}
-
-.lobby-action-row button {
-  margin-top: 0; /* viktigt pga global button { margin-top: 8px } */
-}
-
-/* På riktigt små skärmar: stacka istället */
-@media (max-width: 420px) {
-  .lobby-actions{
-    flex-wrap: wrap;
-  }
-  .lobby-action-block{
-    flex: 1 1 100%;
-  }
-}
-
-.queue-me-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 0.8;
-}
-
-/* Kö-statusrutor (3 st) */
-.queue-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 12px 0 12px;
-}
-
-.queue-card {
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.18);
-  padding: 10px 10px 9px;
-  text-align: center;
-  user-select: none;
-}
-
-.queue-card-title {
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  opacity: 0.75;
-}
-
-.queue-card-count {
-  margin-top: 6px;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-}
-
-.queue-card-sub {
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 800;
-  opacity: 0.7;
-}
-
-/* Markera din egen kö */
-.queue-card.is-me {
-  background: rgba(37, 99, 235, 0.18);
-  border-color: rgba(37, 99, 235, 0.35);
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.22);
-}
-
-/* Leaderboard header + controls */
-.lb-header {
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  justify-content: space-between;
-}
-
-.lb-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-end;
-}
-
-/* Tabs för EASY/MEDEL/SVÅR/TOTAL/ALLA */
-.lb-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.lb-tab {
-  margin-top: 0;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  background: rgba(37, 99, 235, 0.18);
-  border: 1px solid rgba(37, 99, 235, 0.22);
-}
-
-.lb-tab:hover {
-  opacity: 1;
-  border-color: rgba(37, 99, 235, 0.35);
-}
-
-.lb-tab.is-active {
-  background: rgba(37, 99, 235, 0.55);
-  border-color: rgba(37, 99, 235, 0.65);
-}
-
-.lb-sort-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-/* Loading + error */
-.lb-loading,
-.lb-error {
-  margin-top: 10px;
-  font-size: 13px;
-  font-weight: 800;
-  opacity: 0.85;
-}
-.lb-error {
-  color: rgba(255, 120, 120, 0.95);
-  opacity: 1;
-}
-
-/* Wide leaderboard wrap: gör tabellen bred men scrollbar horisontellt */
-.lb-wide-wrap {
-  margin-top: 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  /*
-    ✅ Leaderboard-modalen: låt tabellen scrolla INUTI modalen.
-    Själva modalen (.finish-card) ska vara oförändrad, men vi begränsar
-    wrapperns höjd och låter overflow sköta både vertikal och ev.
-    horisontell scroll.
-  */
-  max-height: min(520px, calc(100vh - 320px));
-  overflow: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  background: rgba(0, 0, 0, 0.14);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.26) rgba(0, 0, 0, 0.18);
-}
-
-/* Snygg, smal scrollbar i webkit-browsers (Chrome/Edge/Safari) */
-.lb-wide-wrap::-webkit-scrollbar {
-  width: 8px;   /* vertikal */
-  height: 10px; /* horisontell */
-}
-.lb-wide-wrap::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.18);
-}
-.lb-wide-wrap::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 999px;
-  border: 2px solid rgba(0, 0, 0, 0.18);
-}
-.lb-wide-wrap::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.30);
-}
-
-/* Wide leaderboard table */
-.leaderboard.leaderboard-wide {
-  width: max(820px, 100%);      /* ✅ tillåt bred tabell */
-  margin: 0;                    /* wrap tar hand om placering */
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-}
-
-/* Grupphuvuden (EASY/MEDEL/SVÅR/TOTAL) */
-.leaderboard thead th.lb-group {
-  text-align: center !important;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  opacity: 0.9;
-  background: rgba(2, 6, 23, 0.92);
-}
-
-/* Spelarnamn-kolumn lite stabilare */
-.leaderboard .lb-name {
-  width: 220px;
-}
-.leaderboard .lb-name-cell {
-  white-space: nowrap;
-}
-
-/* Centra alla sifferkolumner i wide (efter LVL) */
-.leaderboard.leaderboard-wide th:nth-child(n + 4),
-.leaderboard.leaderboard-wide td:nth-child(n + 4) {
-  text-align: center;
-}
-
-/* Tighta till cell-padding lite i wide för att få plats */
-.leaderboard.leaderboard-wide thead th {
-  padding: 9px 10px;
-}
-.leaderboard.leaderboard-wide tbody td {
-  padding: 9px 10px;
-}
-
-/* Små förbättringar för rank/LVL i wide */
-.leaderboard.leaderboard-wide th.lb-rank,
-.leaderboard.leaderboard-wide td.lb-rank {
-  width: 62px;
-}
-.leaderboard.leaderboard-wide th.lb-lvl,
-.leaderboard.leaderboard-wide td.lb-lvl {
-  width: 58px;
-}
-
-/* När panelen är 520px bred: tabellen får scroll i wrappern */
-.panel .lb-wide-wrap {
-  max-width: 100%;
-}
-
-/* Grupphuvuden (EASY/MEDEL/SVÅR/TOTAL) */
-.leaderboard thead th.lb-group {
-  font-size: 12px; /* lite större */
-}
-
-/* === ALLA-vy: tydligare gruppindelning + större rubriker === */
-
-/* Spacer-cellen (första raden) så gruppheaders linjerar */
-.leaderboard.leaderboard-wide thead th.lb-left-spacer {
-  background: rgba(2, 6, 23, 0.92);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-/* Gruppheaders i ALLA-läget */
-.leaderboard.leaderboard-wide thead th.lb-group-head {
-  text-align: center !important;
-  font-size: 13px;
-  font-weight: 950;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  background: rgba(2, 6, 23, 0.92);
-}
-
-/* Under-rubriker (VM/FM/SP/PCT/PPM) */
-.leaderboard.leaderboard-wide thead th.lb-sub {
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-}
-
-/* Vertikal separator vid varje ny grupp */
-.leaderboard.leaderboard-wide .lb-gstart {
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-/* Subtila "kolumnblock"-tints per grupp (väldigt låg alpha) */
-.leaderboard.leaderboard-wide th.lb-easy,
-.leaderboard.leaderboard-wide td.lb-easy {
-  background-image: linear-gradient(rgba(34, 197, 94, 0.04), rgba(34, 197, 94, 0.04));
-}
-.leaderboard.leaderboard-wide th.lb-medium,
-.leaderboard.leaderboard-wide td.lb-medium {
-  background-image: linear-gradient(rgba(245, 158, 11, 0.04), rgba(245, 158, 11, 0.04));
-}
-.leaderboard.leaderboard-wide th.lb-hard,
-.leaderboard.leaderboard-wide td.lb-hard {
-  background-image: linear-gradient(rgba(239, 68, 68, 0.04), rgba(239, 68, 68, 0.04));
-}
-.leaderboard.leaderboard-wide th.lb-total,
-.leaderboard.leaderboard-wide td.lb-total {
-  background-image: linear-gradient(rgba(37, 99, 235, 0.04), rgba(37, 99, 235, 0.04));
-}
-
-
-/* Mobil-block finns redan; men om viewport är “smal desktop” kan vi minska padding i panel */
-@media (max-width: 1100px) {
-  .panel {
-    width: 520px; /* behåll */
-  }
-}
-
-/* Lite snällare layout för lb-header på smalare panel */
-@media (max-width: 560px) {
-  .lb-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .lb-controls {
-    align-items: flex-start;
-  }
-  .lb-tabs,
-  .lb-sort-row {
-    justify-content: flex-start;
-  }
-  .challenge-form {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Mini: ta bort margin-top på knappar i compact action rows */
-.lobby-actions-compact button {
-  margin-top: 0;
-}
-
-
-/* ---------- Start background pings (Login + Lobby) ---------- */
-.start-bg-overlay {
-  /* Match start background positioning: top center with fixed max width */
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-
-  width: min(1920px, 100%);
-  aspect-ratio: 5600 / 2900;
-
-  pointer-events: none;
-  z-index: 1;
-}
-
-.start-ping {
-  position: absolute;
-  transform: translate(-50%, -50%);
-
-  /* Fade out the whole ping group */
-  animation-name: pingFade;
-  animation-duration: var(--ping-life, 1600ms);
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
-  animation-iteration-count: 1;
-}
-
-.ping-core {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  width: 35%;
-  height: 35%;
-  border-radius: 999px;
-  background: rgba(239, 68, 68, 0.9);
-  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.35));
-}
-
-.ping-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 2px solid rgba(239, 68, 68, 0.85);
-
-  /* One-shot expand (no looping) */
-  animation-name: pingExpand;
-  animation-duration: var(--ping-life, 1600ms);
-  animation-timing-function: ease-out;
-
-  /* 'both' = applies 0% styles during delay too (prevents "pop-in") */
-  animation-fill-mode: both;
-  animation-iteration-count: 1;
-}
-
-.ping-ring.ring1 {
-  opacity: 0.9;
-  animation-delay: 0ms;
-}
-
-.ping-ring.ring2 {
-  opacity: 0.75;
-  animation-delay: 250ms;
-}
-
-.ping-ring.ring3 {
-  opacity: 0.6;
-  animation-delay: 500ms;
-}
-
-@keyframes pingExpand {
-  0% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-  70% {
-    opacity: 0.12;
-  }
-  100% {
-    transform: scale(3.2);
-    opacity: 0;
-  }
-}
-
-@keyframes pingFade {
-  0% {
-    opacity: 0.9;
-  }
-  45% {
-    opacity: 0.25;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-
-/* i18n */
-/* i18n: language toggle (top-right) */
-.screen-topbar {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 5;
-
-  display: flex;
-  align-items: center;   /* vertikal centrering */
-  justify-content: flex-end;
-}
-
-.lang-toggle {
-  display: inline-flex;
-  align-items: center;   /* vertikal centrering av text */
-  gap: 6px;
-
-  padding: 6px 10px;
-  border-radius: 999px;
-
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(0, 0, 0, 0.25);
-  color: inherit;
-
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.lang-toggle:hover {
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.lang-toggle .lang-active {
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-
-/* ---------- Discreet bug report link under lobby panel ---------- */
-.lobby-footer {
-  display: flex;
-  justify-content: center;
-  margin-top: 10px;
-}
-
-.bug-report-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.72);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.bug-report-btn:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.bug-report-text {
-  width: 100%;
-  min-height: 140px;
-  resize: vertical;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.22);
-  color: inherit;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.35;
-  outline: none;
-}
-
-.bug-report-text:focus {
-  border-color: rgba(99, 102, 241, 0.55);
-}
-
-.bug-report-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
-  justify-content: flex-end;
-}
-
-/* --- Lobby: stack panel + "report bug" under, without touching .screen --- */
-.lobby-stack{
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-.bug-report-under{
-  margin-top: 12px;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-/* ===== Feedback (Bug report / Feature request) ===== */
-.feedback-tabs{
-  display:flex;
-  gap:8px;
-  justify-content:center;
-  align-items:center;
-  flex-wrap:wrap;
-  margin: 6px 0 10px;
-}
-
-.feedback-tab{
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.88);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.feedback-tab:hover{
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.22);
-}
-
-.feedback-tab.active{
-  background: rgba(37, 99, 235, 0.22);
-  border-color: rgba(37, 99, 235, 0.35);
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
-}
-
-.feedback-admin-top{
-  display:flex;
-  justify-content: space-between;
-  align-items:center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-
-.feedback-ok{
-  margin-top: 8px;
-  text-align: center;
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-.feedback-details{
-  padding: 10px 12px !important;
-  background: rgba(0,0,0,0.18);
-}
-
-.feedback-details-msg{
-  white-space: pre-wrap;
-  line-height: 1.35;
-}
-
-.feedback-details-meta{
-  margin-top: 6px;
-  font-size: 12px;
-  opacity: 0.82;
-}
-
-.muted{ opacity: 0.75; }
-.mono{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  word-break: break-all;
 }
