@@ -29,6 +29,9 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
 
   const isLogin = mode === "login";
 
+  const looksLikeEmail = (s) => /\S+@\S+\.\S+/.test(String(s || "").trim());
+  const emailDetected = !isLogin && looksLikeEmail(username);
+
   return (
     <div className="screen start-screen">
       <div className="screen-topbar">
@@ -41,6 +44,15 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
       <div className="panel">
         <h1 className="title">{t("login.headline")}</h1>
         <p className="subtitle">{t("login.blurb")}</p>
+
+        {!isLogin && (
+          <div className="privacy-note">
+            <div>
+              <strong>{t("login.noEmailTitle")}</strong>
+            </div>
+            <div>{t("login.noEmailBody")}</div>
+          </div>
+        )}
 
         <div className="mode-toggle">
           <button
@@ -66,15 +78,28 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
             <label className="form-label" htmlFor="login-username">
               {t("login.username")}
             </label>
-            <input
-              id="login-username"
-              className="input"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={t("login.username")}
-              autoComplete="username"
-              disabled={loading}
-            />
+
+            <div className="field-stack">
+              <input
+                id="login-username"
+                className="input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={
+                  isLogin ? t("login.username") : t("login.usernamePlaceholder")
+                }
+                autoComplete="username"
+                disabled={loading}
+              />
+
+              {!isLogin && (
+                <div className="field-help">{t("login.usernameHelp")}</div>
+              )}
+
+              {emailDetected && (
+                <div className="field-warn">{t("login.emailDetected")}</div>
+              )}
+            </div>
           </div>
 
           <div className="form-row">
