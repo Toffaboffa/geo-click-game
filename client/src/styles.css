@@ -1001,8 +1001,8 @@ button:disabled {
 }
 
 .click-marker-opp {
-  background: transparent;
-  border: 2px solid rgba(255, 70, 70, 0.92);
+  border: 0;
+  background: rgba(96, 165, 250, 0.55); /* pastellblå, lätt transparent */
 }
 
 /* ---------- Debug markers ---------- */
