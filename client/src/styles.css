@@ -217,6 +217,34 @@ button:disabled {
   margin: 0;
 }
 
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-help {
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.25;
+}
+
+.field-warn {
+  font-size: 12px;
+  line-height: 1.25;
+  color: #fca5a5;
+}
+
+.privacy-note {
+  margin: 10px 0 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* liten spacing mellan raderna på små skärmar */
 @media (max-width: 420px) {
   .form-row {
