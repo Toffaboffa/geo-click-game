@@ -928,6 +928,8 @@ function createMatch(playerA, playerB, opts = {}) {
     currentRound: 0,
     totalRounds: 10,
     rounds: [],
+    // city selection: without replacement within a match
+    usedCityKeys: new Set(),
     finished: false,
     scorer,
     isSolo: !!opts.isSolo,
@@ -1245,6 +1247,31 @@ function startNextRoundCountdown(match) {
   }, seconds * 1000);
 }
 
+
+// =====================
+// Start-ready: countdown before FIRST round
+// =====================
+function startInitialRoundCountdown(match) {
+  if (!match || match.finished) return;
+
+  // ✅ Same countdown overlay/event as between rounds
+  if (match._countdownRunning) return;
+  match._countdownRunning = true;
+
+  const room = getRoomName(match.id);
+
+  const seconds = 5;
+  io.to(room).emit("next_round_countdown", { seconds });
+
+  clearTimeout(match.countdownTimeout);
+  match.countdownTimeout = setTimeout(() => {
+    match._countdownRunning = false;
+
+    // First round: do NOT change currentRound here (it should already be 0)
+    startRound(match);
+  }, seconds * 1000);
+}
+
 // =====================
 // Cities: capitals markering + pools
 // =====================
@@ -1344,17 +1371,54 @@ function startRound(match) {
   const d = normalizeDifficulty(match.difficulty);
   const poolList = cityPools[d] && cityPools[d].length ? cityPools[d] : cities;
 
-  // ✅ Välj en stad med giltiga koordinater (skydd mot "buggade städer")
+  // ✅ City-val utan återläggning (ingen stad två gånger i samma match)
+  //    Key = name|countryCode (samma som för capitals-markering)
+  const used = match.usedCityKeys || (match.usedCityKeys = new Set());
+  const cityKey = (c) =>
+    `${String(c?.name || "").trim().toLowerCase()}|${String(c?.countryCode || "")
+      .trim()
+      .toUpperCase()}`;
+
+  // ✅ Välj en stad med giltiga koordinater + som inte använts i matchen
   let city = null;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 250; i++) {
     const candidate = poolList[Math.floor(Math.random() * poolList.length)];
     const lat = Number(candidate?.lat);
     const lon = Number(candidate?.lon);
+    const key = cityKey(candidate);
+
+    if (!key.split("|")[0] || !key.split("|")[1]) continue;
+    if (used.has(key)) continue;
+
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
       city = candidate;
+      used.add(key);
       break;
     }
   }
+
+  // Fallback: filtrera fram återstående städer (bör nästan aldrig behövas)
+  if (!city) {
+    const remaining = poolList.filter((c) => {
+      const key = cityKey(c);
+      const lat = Number(c?.lat);
+      const lon = Number(c?.lon);
+      return (
+        key.split("|")[0] &&
+        key.split("|")[1] &&
+        !used.has(key) &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lon)
+      );
+    });
+
+    if (remaining.length) {
+      city = remaining[Math.floor(Math.random() * remaining.length)];
+      used.add(cityKey(city));
+    }
+  }
+
+  // Sista fallback (extremt osannolikt om totalRounds är liten): välj ändå från pool
   if (!city) city = poolList[Math.floor(Math.random() * poolList.length)];
 
   const round = {
@@ -3024,7 +3088,7 @@ io.on("connection", (socket) => {
 
     if (bothReady) {
       clearStartReady(match);
-      startRound(match);
+      startInitialRoundCountdown(match);
     }
   });
 

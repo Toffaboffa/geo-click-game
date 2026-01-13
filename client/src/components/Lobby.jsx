@@ -169,6 +169,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutTab, setAboutTab] = useState("basic");
+
 
   // Feedback (Bug report / Feature request)
   const FEEDBACK_ADMIN_USERNAME = "Toffaboffa";
@@ -326,7 +328,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     setProgressError("");
   };
 
-  const openAbout = () => setAboutOpen(true);
+  const openAbout = () => {
+    setAboutTab("basic");
+    setAboutOpen(true);
+  };
 
   const closeBug = () => setBugOpen(false);
   const openBug = async () => {
@@ -473,6 +478,18 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       difficulty: safeDiff(challengeDifficulty),
     });
     setChallengeName("");
+  };
+
+  // Challenge from lobby chat: click username
+  const challengeFromChat = (username) => {
+    if (!socket) return;
+    const u = String(username || "").trim();
+    if (!u) return;
+    if (u === session?.username) return;
+    socket.emit("challenge_player", {
+      targetUsername: u,
+      difficulty: safeDiff(challengeDifficulty),
+    });
   };
 
   // =========================
@@ -907,7 +924,15 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 chatMsgs.map((m) => (
                   <div key={m.id || `${m.user}-${m.ts}`} className="lobby-chat-msg">
                     <div className="lobby-chat-msg-top">
-                      <span className="lobby-chat-user">{m.user}{Number.isFinite(Number(m.level)) ? ` · L${Number(m.level)}` : ""}</span>
+                      <button
+                        type="button"
+                        className="lobby-chat-user lobby-chat-user-btn"
+                        onClick={() => challengeFromChat(m.user)}
+                        disabled={!socket || String(m.user || "").trim() === session?.username}
+                      >
+                        {m.user}
+                        {Number.isFinite(Number(m.level)) ? ` · L${Number(m.level)}` : ""}
+                      </button>
                       <span className="lobby-chat-time">
                         {new Date(m.ts || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </span>
@@ -1058,36 +1083,36 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("easy") && (
                             <>
-                              <th className="lb-sub lb-easy lb-gstart">VM</th>
+                              <th className="lb-sub lb-easy lb-gstart">SM</th>
+                              <th className="lb-sub lb-easy">VM</th>
                               <th className="lb-sub lb-easy">FM</th>
-                              <th className="lb-sub lb-easy">SP</th>
                               <th className="lb-sub lb-easy">PCT</th>
                               <th className="lb-sub lb-easy">PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("medium") && (
                             <>
-                              <th className="lb-sub lb-medium lb-gstart">VM</th>
+                              <th className="lb-sub lb-medium lb-gstart">SM</th>
+                              <th className="lb-sub lb-medium">VM</th>
                               <th className="lb-sub lb-medium">FM</th>
-                              <th className="lb-sub lb-medium">SP</th>
                               <th className="lb-sub lb-medium">PCT</th>
                               <th className="lb-sub lb-medium">PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("hard") && (
                             <>
-                              <th className="lb-sub lb-hard lb-gstart">VM</th>
+                              <th className="lb-sub lb-hard lb-gstart">SM</th>
+                              <th className="lb-sub lb-hard">VM</th>
                               <th className="lb-sub lb-hard">FM</th>
-                              <th className="lb-sub lb-hard">SP</th>
                               <th className="lb-sub lb-hard">PCT</th>
                               <th className="lb-sub lb-hard">PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("total") && (
                             <>
-                              <th className="lb-sub lb-total lb-gstart">VM</th>
+                              <th className="lb-sub lb-total lb-gstart">SM</th>
+                              <th className="lb-sub lb-total">VM</th>
                               <th className="lb-sub lb-total">FM</th>
-                              <th className="lb-sub lb-total">SP</th>
                               <th className="lb-sub lb-total">PCT</th>
                               <th className="lb-sub lb-total">PPM</th>
                             </>
@@ -1130,36 +1155,36 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("easy") && (
                             <>
+                              <th>SM</th>
                               <th>VM</th>
                               <th>FM</th>
-                              <th>SP</th>
                               <th>PCT</th>
                               <th>PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("medium") && (
                             <>
+                              <th>SM</th>
                               <th>VM</th>
                               <th>FM</th>
-                              <th>SP</th>
                               <th>PCT</th>
                               <th>PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("hard") && (
                             <>
+                              <th>SM</th>
                               <th>VM</th>
                               <th>FM</th>
-                              <th>SP</th>
                               <th>PCT</th>
                               <th>PPM</th>
                             </>
                           )}
                           {groupsToShow.includes("total") && (
                             <>
+                              <th>SM</th>
                               <th>VM</th>
                               <th>FM</th>
-                              <th>SP</th>
                               <th>PCT</th>
                               <th>PPM</th>
                             </>
@@ -1196,9 +1221,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("easy") && (
                             <>
+                              <td>{getCell(u, "e_", "sp")}</td>
                               <td>{getCell(u, "e_", "vm")}</td>
                               <td>{getCell(u, "e_", "fm")}</td>
-                              <td>{getCell(u, "e_", "sp")}</td>
                               <td>{getCell(u, "e_", "pct")}</td>
                               <td>{getCell(u, "e_", "ppm")}</td>
                             </>
@@ -1206,9 +1231,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("medium") && (
                             <>
+                              <td>{getCell(u, "m_", "sp")}</td>
                               <td>{getCell(u, "m_", "vm")}</td>
                               <td>{getCell(u, "m_", "fm")}</td>
-                              <td>{getCell(u, "m_", "sp")}</td>
                               <td>{getCell(u, "m_", "pct")}</td>
                               <td>{getCell(u, "m_", "ppm")}</td>
                             </>
@@ -1216,9 +1241,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("hard") && (
                             <>
+                              <td>{getCell(u, "s_", "sp")}</td>
                               <td>{getCell(u, "s_", "vm")}</td>
                               <td>{getCell(u, "s_", "fm")}</td>
-                              <td>{getCell(u, "s_", "sp")}</td>
                               <td>{getCell(u, "s_", "pct")}</td>
                               <td>{getCell(u, "s_", "ppm")}</td>
                             </>
@@ -1226,9 +1251,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
                           {groupsToShow.includes("total") && (
                             <>
+                              <td>{getCell(u, "t_", "sp")}</td>
                               <td>{getCell(u, "t_", "vm")}</td>
                               <td>{getCell(u, "t_", "fm")}</td>
-                              <td>{getCell(u, "t_", "sp")}</td>
                               <td>{getCell(u, "t_", "pct")}</td>
                               <td>{getCell(u, "t_", "ppm")}</td>
                             </>
@@ -1248,8 +1273,33 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {aboutOpen && (
         <div className="finish-overlay" onClick={closeAbout}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
-            <div className="finish-title">{t("lobby.aboutTitle")}</div>
+<div className="finish-title">{t("lobby.aboutTitle")}</div>
 
+<div className="feedback-tabs">
+  <button
+    type="button"
+    className={`feedback-tab ${aboutTab === "basic" ? "active" : ""}`}
+    onClick={() => setAboutTab("basic")}
+  >
+    {t("lobby.aboutTabs.basic")}
+  </button>
+  <button
+    type="button"
+    className={`feedback-tab ${aboutTab === "scoring" ? "active" : ""}`}
+    onClick={() => setAboutTab("scoring")}
+  >
+    {t("lobby.aboutTabs.scoring")}
+  </button>
+  <button
+    type="button"
+    className={`feedback-tab ${aboutTab === "xp" ? "active" : ""}`}
+    onClick={() => setAboutTab("xp")}
+  >
+    {t("lobby.aboutTabs.xp")}
+  </button>
+</div>
+
+{aboutTab === "basic" && (
             <div className="about-content">
               <p>{t("lobby.about.p1")}</p>
               <p>{t("lobby.about.p2")}</p>
@@ -1268,6 +1318,44 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               <p>{t("lobby.about.p7")}</p>
               <p>{t("lobby.about.p8")}</p>
             </div>
+            )}
+
+{aboutTab === "scoring" && (
+  <div className="about-content">
+    <p>{t("lobby.aboutScoring.p1")}</p>
+    <p>{t("lobby.aboutScoring.p2")}</p>
+
+    <h3>{t("lobby.aboutScoring.hFormula")}</h3>
+    <div>
+      {String(t("lobby.aboutScoring.formula") || "")
+        .split("\n")
+        .map((line, i) => (
+          <div key={i}>
+            <code>{line}</code>
+          </div>
+        ))}
+    </div>
+
+    <h3>{t("lobby.aboutScoring.hExamples")}</h3>
+    <p>{t("lobby.aboutScoring.ex1")}</p>
+    <p>{t("lobby.aboutScoring.ex2")}</p>
+    <p>{t("lobby.aboutScoring.ex3")}</p>
+  </div>
+)}
+
+{aboutTab === "xp" && (
+  <div className="about-content">
+    <p>{t("lobby.aboutXp.p1")}</p>
+
+    <h3>{t("lobby.aboutXp.hBreakdown")}</h3>
+    <p>{t("lobby.aboutXp.p2")}</p>
+    <p>{t("lobby.aboutXp.p3")}</p>
+    <p>{t("lobby.aboutXp.p4")}</p>
+
+    <h3>{t("lobby.aboutXp.hBadges")}</h3>
+    <p>{t("lobby.aboutXp.p5")}</p>
+  </div>
+)}
 
             <div className="finish-actions">
               <button className="hud-btn" onClick={closeAbout}>

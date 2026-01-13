@@ -160,6 +160,38 @@ export default {
         "Topplistan visar olika sorteringar och svårighetsgrader. Du kan även välja att dölja dig.",
     },
 
+aboutTabs: {
+  basic: "Grund",
+  scoring: "Poängräkning",
+  xp: "XP & Badges",
+},
+
+aboutScoring: {
+  p1: "Poängen per runda är summan av en avståndsdel och en tidsdel. Lägre är bättre. Max är 2000 poäng (1000 + 1000).",
+  p2: "Avståndsdelen är linjär upp till 17 000 km (ungefär jordens antipod). Tidsdelen växer enligt en exponentiell kurva och normaliseras så att 20 s ger 1000 poäng.",
+  hFormula: "Formel",
+  formula:
+    "distPenalty = min(distanceKm / 17000, 1)\n" +
+    "tNorm = clamp(timeMs / 20000, 0, 1)\n" +
+    "timePenalty = expm1(3.2 * tNorm) / expm1(3.2)\n" +
+    "roundScore = 1000 * distPenalty + 1000 * timePenalty",
+  hExamples: "Exempel",
+  ex1: "34 km fel och 5,0 s: dist ≈ 34/17000 → 2 poäng, tid ≈ 52 poäng ⇒ totalt ≈ 54 poäng.",
+  ex2: "850 km fel och 2,0 s: dist ≈ 50 poäng, tid ≈ 16 poäng ⇒ totalt ≈ 66 poäng.",
+  ex3: "Ingen klick inom 20 s: du får maxstraff (≈ 2000 poäng) den rundan.",
+},
+
+aboutXp: {
+  p1: "Efter varje match får du XP (erfarenhet). XP ökar din level och visar hur mycket du spelat, vunnit och låst upp.",
+  hBreakdown: "Efter matchen",
+  p2: "Match: grund‑XP för att spela matchen.",
+  p3: "Vinst: extra XP om du vinner (visas bara när du vunnit).",
+  p4: "Badges: extra XP när du låser upp badges i matchen (summa av badge‑bonusar). Total‑raden är summan av allt ovan.",
+  hBadges: "Badges",
+  p5: "Badges delas ut av servern när matchen är klar, baserat på kriterier (t.ex. antal matcher, vinster, streaks, precision eller snabbhet). Du ser dina badges och din level i \"Min progression\".",
+},
+
+
     progress: {
       title: "{user} • {levelLabel} {level}",
       xpToNext: "{n} XP till nästa level",

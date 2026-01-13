@@ -158,6 +158,38 @@ export default {
         "La clasificación permite varios ordenamientos y dificultades. También puedes ocultarte.",
     },
 
+aboutTabs: {
+  basic: "Básico",
+  scoring: "Puntuación",
+  xp: "XP y Badges",
+},
+
+aboutScoring: {
+  p1: "La puntuación de cada ronda es la suma de una parte de distancia y una parte de tiempo. Menor es mejor. El máximo es 2000 puntos (1000 + 1000).",
+  p2: "La parte de distancia es lineal hasta 17.000 km (aprox. el antípoda). La parte de tiempo sigue una curva exponencial y se normaliza para que 20 s dé 1000 puntos.",
+  hFormula: "Fórmula",
+  formula:
+    "distPenalty = min(distanceKm / 17000, 1)\n" +
+    "tNorm = clamp(timeMs / 20000, 0, 1)\n" +
+    "timePenalty = expm1(3.2 * tNorm) / expm1(3.2)\n" +
+    "roundScore = 1000 * distPenalty + 1000 * timePenalty",
+  hExamples: "Ejemplos",
+  ex1: "34 km de error y 5,0 s: dist ≈ 34/17000 → 2 pts, tiempo ≈ 52 pts ⇒ total ≈ 54 pts.",
+  ex2: "850 km de error y 2,0 s: dist ≈ 50 pts, tiempo ≈ 16 pts ⇒ total ≈ 66 pts.",
+  ex3: "Sin clic dentro de 20 s: recibes la penalización máxima (≈ 2000 puntos) en esa ronda.",
+},
+
+aboutXp: {
+  p1: "Después de cada partida ganas XP (experiencia). La XP aumenta tu nivel y refleja cuánto juegas, ganas y desbloqueas.",
+  hBreakdown: "Después de la partida",
+  p2: "Partida: XP base por jugar.",
+  p3: "Victoria: XP extra si ganas (solo se muestra si ganas).",
+  p4: "Badges: XP extra cuando desbloqueas badges en la partida (suma de bonus de badges). La línea Total es la suma de todo lo anterior.",
+  hBadges: "Badges",
+  p5: "Los badges los otorga el servidor cuando termina la partida, según criterios (p. ej. partidas jugadas, victorias, rachas, precisión o velocidad). Mira tus badges y tu nivel en \"Mi progresión\".",
+},
+
+
     progress: {
       title: "{user} • {levelLabel} {level}",
       xpToNext: "{n} XP para el siguiente nivel",

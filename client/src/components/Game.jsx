@@ -250,6 +250,10 @@ export default function Game({
   const [myPendingScore, setMyPendingScore] = useState(null); // number
   const [myPendingRoundIndex, setMyPendingRoundIndex] = useState(null); // number
 
+
+  // ✅ Pop-poäng: kort visning efter klick (placerad nedtill, se CSS)
+  const [clickPopScore, setClickPopScore] = useState(null); // number | null
+  const clickPopHideRef = useRef(null);
   // I övning vill vi INTE visa bot/opp-markör
   const [oppClickPx, setOppClickPx] = useState(null); // {x,y}
 
@@ -259,6 +263,70 @@ export default function Game({
 
   // ✅ Auto-submit när tiden går ut (förhindra dubbel-emits)
   const autoSubmittedRef = useRef(false);
+
+  // ✅ Audio: unlock on user gesture + ping when first city appears
+  const audioCtxRef = useRef(null);
+  const firstCityPingPlayedRef = useRef(false);
+
+  const ensureAudioUnlocked = useCallback(() => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      const ctx = audioCtxRef.current;
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    } catch (_) {}
+  }, []);
+
+  const playPing = useCallback(() => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      const ctx = audioCtxRef.current;
+
+      if (ctx && ctx.state === "suspended") {
+        // Best-effort; if the browser blocks it, we just stay silent.
+        ctx.resume().catch(() => {});
+      }
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch (_) {}
+  }, []);
+
+  // Reset per match
+  useEffect(() => {
+    firstCityPingPlayedRef.current = false;
+  }, [match?.matchId]);
+
+  // Ping exactly once when the FIRST city of the match appears
+  useEffect(() => {
+    if (firstCityPingPlayedRef.current) return;
+    if (gameState.currentRound !== 0) return;
+    if (!gameState.city && !gameState.cityName) return;
+
+    playPing();
+    firstCityPingPlayedRef.current = true;
+  }, [gameState.currentRound, gameState.city, gameState.cityName, playPing]);
+
 
   // ✅ Lens gate (Punkt 3)
   // Efter att du klickat: göm linsen tills 1s kvar på countdown, sedan får den synas igen.
@@ -295,7 +363,11 @@ export default function Game({
   const pop = gameState.city?.population ? String(gameState.city.population) : null;
 
   const matchFinished = !!gameState.finalResult;
-  const showStartGate = !matchFinished && gameState.currentRound < 0;
+  const showStartGate = !matchFinished && gameState.currentRound < 0 && countdown === null;
+
+  // ✅ Punkt 3: progress bar som visar rundans tid (20s)
+  const showRoundTimeBar = !matchFinished && gameState.currentRound >= 0 && countdown === null && !showReadyButton;
+  const roundTimePct = clamp((elapsedMs || 0) / SCORER_MAX_TIME_MS, 0, 1);
 
   // FIX: om hoveringUi fastnar
   useEffect(() => {
@@ -338,6 +410,13 @@ export default function Game({
     // ✅ reset live-score
     setMyPendingScore(null);
     setMyPendingRoundIndex(null);
+
+    // ✅ Ny runda: nollställ pop-poäng
+    if (clickPopHideRef.current) {
+      clearTimeout(clickPopHideRef.current);
+      clickPopHideRef.current = null;
+    }
+    setClickPopScore(null);
 
     // practice: se till att vi aldrig visar bot/opp-spår
     setOppClickPx(null);
@@ -680,9 +759,21 @@ useEffect(() => {
     if (Number.isFinite(dKm)) {
       setMyPendingScore(scoreLocal(dKm, timeMs));
       setMyPendingRoundIndex(gameState.currentRound);
+
+      // ✅ Pop-poäng: visa direkt efter klick (endast UI)
+      const popScore = Math.round(scoreLocal(dKm, timeMs));
+      setClickPopScore(popScore);
+      if (clickPopHideRef.current) clearTimeout(clickPopHideRef.current);
+      clickPopHideRef.current = setTimeout(() => {
+        setClickPopScore(null);
+        clickPopHideRef.current = null;
+      }, 900);
     } else {
       setMyPendingScore(null);
       setMyPendingRoundIndex(null);
+
+      // ✅ Pop-poäng: inget att visa utan dist
+      setClickPopScore(null);
     }
 
     socket.emit("player_click", { matchId: match.matchId, lon, lat, timeMs });
@@ -734,6 +825,9 @@ useEffect(() => {
   const onPressStartReady = () => {
     if (!socket || !match) return;
     if (startReadySent) return;
+
+    // ✅ Unlock audio on user gesture so the first-city ping can play
+    ensureAudioUnlocked();
     setStartReadySent(true);
     socket.emit("player_start_ready", { matchId: match.matchId });
   };
@@ -912,6 +1006,9 @@ useEffect(() => {
 
         {/* Bottom strip */}
         <div className="city-bottom">
+          {Number.isFinite(clickPopScore) && (
+            <div className="click-pop-score">{Math.round(clickPopScore)}</div>
+          )}
           <div className="city-bar">
 <div className="city-label">
   <span className="city-label-row">
@@ -935,6 +1032,16 @@ useEffect(() => {
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">{t("game.nextRoundIn")} {countdown}s</div>
             )}
+            {showRoundTimeBar && (
+              <div className="round-timebar-wrap">
+                <div className="round-timebar">
+                  <div
+                    className="round-timebar-fill"
+                    style={{ width: `${Math.round(roundTimePct * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -953,7 +1060,12 @@ useEffect(() => {
 
         {/* Target marker */}
         {shouldShowTarget && targetPx && (
-          <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }} />
+          <div className="target-marker" style={{ left: targetPx.x, top: targetPx.y }}>
+            <div className="ping-core" />
+            <div className="ping-ring ring1" />
+            <div className="ping-ring ring2" />
+            <div className="ping-ring ring3" />
+          </div>
         )}
 
         {/* Click markers (endast din i Öva) */}
