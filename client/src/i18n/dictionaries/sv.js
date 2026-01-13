@@ -152,7 +152,7 @@ export default {
         "1v1: du möter en annan spelare. Öva: solo‑läge där du kan träna utan stress.",
       lensTitle: "Förstoringsglaset",
       p6:
-        "Linsen hjälper dig sikta mer exakt. Efter att du klickat döljs den tills det är 1 sekund kvar på nedräkningen till nästa stad.",
+        "Håll inne CTRL för att aktivera linsen när du vill sikta mer exakt. Efter att du klickat döljs den tills det är 1 sekund kvar på nedräkningen till nästa stad.",
       progressTitle: "Progression",
       p7:
         "Du kan låsa upp badges genom att spela och uppfylla villkor. Vissa badges kräver precision, andra snabbhet eller streaks.",

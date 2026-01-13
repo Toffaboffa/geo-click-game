@@ -149,7 +149,7 @@ export default {
       p5: "1v1: play another human. Practice: solo mode to train without pressure.",
       lensTitle: "The magnifier",
       p6:
-        "The lens helps you aim precisely. After you click, it hides until 1 second remains on the countdown to the next city.",
+        "Hold CTRL to activate the lens when you want extra precision. After you click, it hides until 1 second remains on the countdown to the next city.",
       progressTitle: "Progression",
       p7:
         "Unlock badges by playing and meeting criteria. Some reward precision, others speed or streaks.",

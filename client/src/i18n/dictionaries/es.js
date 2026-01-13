@@ -150,7 +150,7 @@ export default {
       p5: "1v1: contra otra persona. Práctica: modo en solitario para entrenar.",
       lensTitle: "La lupa",
       p6:
-        "La lente ayuda a apuntar con más precisión. Tras tu clic, se oculta hasta que falte 1 segundo para la siguiente ciudad.",
+        "Mantén CTRL para activar la lente cuando quieras más precisión. Tras tu clic, se oculta hasta que falte 1 segundo para la siguiente ciudad.",
       progressTitle: "Progresión",
       p7:
         "Desbloquea insignias jugando y cumpliendo condiciones. Algunas premian precisión, otras velocidad o rachas.",

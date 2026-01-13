@@ -332,6 +332,29 @@ export default function Game({
   // Efter att du klickat: göm linsen tills 1s kvar på countdown, sedan får den synas igen.
   const [lensUnlocked, setLensUnlocked] = useState(false);
 
+  // ✅ Lens toggle: initialt AV. Håll inne CTRL för att visa förstoringsglaset.
+  // Släpper du CTRL försvinner det direkt.
+  const [lensCtrlHeld, setLensCtrlHeld] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Control") setLensCtrlHeld(true);
+    };
+    const onKeyUp = (e) => {
+      if (e.key === "Control") setLensCtrlHeld(false);
+    };
+    const onBlur = () => setLensCtrlHeld(false);
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
   // ✅ 1v1 fairness: visa target (och därmed ”rätt svar”) först när round_result kommit.
   // I practice/solo vill vi fortfarande kunna visa target direkt efter eget klick.
   const [roundResultReceived, setRoundResultReceived] = useState(false);
@@ -808,6 +831,9 @@ useEffect(() => {
     if (hoveringUi) return null;
     if (!pointer.inside || !mapRef.current) return null;
 
+    // ✅ Toggle: visa bara när CTRL hålls nere.
+    if (!lensCtrlHeld) return null;
+
     // ✅ Punkt 3: efter klick -> ingen lins förrän vi låst upp (1s kvar på countdown)
     if (hasClickedThisRound && !lensUnlocked) return null;
 
@@ -823,7 +849,7 @@ useEffect(() => {
       backgroundSize: `${bgSizeX}px ${bgSizeY}px`,
       backgroundPosition: `${bgPosX}px ${bgPosY}px`,
     };
-  }, [pointer, hoveringUi, hasClickedThisRound, lensUnlocked]);
+  }, [pointer, hoveringUi, hasClickedThisRound, lensUnlocked, lensCtrlHeld]);
 
   // -------- button helpers ----------
   const stop = (fn) => (e) => {
