@@ -1865,9 +1865,36 @@ select:focus-visible {
   margin-top: 10px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.10);
-  overflow: auto;               /* ✅ horisontell scroll vid behov */
+  /*
+    ✅ Leaderboard-modalen: låt tabellen scrolla INUTI modalen.
+    Själva modalen (.finish-card) ska vara oförändrad, men vi begränsar
+    wrapperns höjd och låter overflow sköta både vertikal och ev.
+    horisontell scroll.
+  */
+  max-height: min(520px, calc(100vh - 320px));
+  overflow: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background: rgba(0, 0, 0, 0.14);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.26) rgba(0, 0, 0, 0.18);
+}
+
+/* Snygg, smal scrollbar i webkit-browsers (Chrome/Edge/Safari) */
+.lb-wide-wrap::-webkit-scrollbar {
+  width: 8px;   /* vertikal */
+  height: 10px; /* horisontell */
+}
+.lb-wide-wrap::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.18);
+}
+.lb-wide-wrap::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  border: 2px solid rgba(0, 0, 0, 0.18);
+}
+.lb-wide-wrap::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.30);
 }
 
 /* Wide leaderboard table */
