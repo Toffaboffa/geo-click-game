@@ -1101,7 +1101,6 @@ useEffect(() => {
         </span>
       </div>
 
-      {/* I Öva-läge visar vi level-up här (i 1v1 visas den i progression-raden). */}
       {isPractice && progression.myLevelUp ? (
         <div className="finish-xp-sub">
           <span className="level-up-chip">
@@ -1112,27 +1111,7 @@ useEffect(() => {
       ) : null}
     </div>
   )}
-                      </span>
-                    </div>
 
-                    {progression.myDelta.xpBadges > 0 && (
-                      <div className="finish-xp-sub">
-                        {t("game.matchEnd.badgeXp")} +{Math.round(progression.myDelta.xpBadges)}{" "}
-                        {t("common.xp")}
-                      </div>
-                    )}
-
-                    {/* I Öva-läge visar vi level-up här (i 1v1 visas den i progression-raden). */}
-                    {isPractice && progression.myLevelUp ? (
-                      <div className="finish-xp-sub">
-                        <span className="level-up-chip">
-                          ⬆️ {t("game.matchEnd.levelUp")} {progression.myDelta.oldLevel} →{" "}
-                          {progression.myDelta.newLevel}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
 {/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}
 			{!isPractice && progression.hasAnything && (
 			  <div className="finish-progression">
