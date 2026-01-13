@@ -35,6 +35,12 @@ export default {
     headline: "GeoSense",
     blurb:
       "Una batalla de mapas rápida: recibes una ciudad, haces clic en el mapa y compites por ser el más cercano y el más rápido.",
+    noEmailTitle: "No se necesita correo.",
+    noEmailBody: "Elige un usuario (tu apodo en el juego) y una contraseña. Solo guardamos usuario + contraseña para poder guardar tu progreso.",
+    usernamePlaceholder: "p. ej. ZorroEspacial (no correo)",
+    usernameHelp: "No escribas tu correo. Tu usuario es visible para otros jugadores.",
+    emailDetected: "Eso parece un correo electrónico. Usa un apodo en su lugar.",
+
     username: "Usuario",
     password: "Contraseña",
     loginBtn: "Entrar",
