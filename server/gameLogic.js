@@ -20,21 +20,33 @@ export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
 
 // server/gameLogic.js
 export function createRoundScorer(
-  maxDistanceKm = 20000,
+  maxDistanceKm = 17000,
   maxTimeMs = 20000,
-  { distW = 1.0, timeW = 0.30, timeGamma = 1.0 } = {}
+  {
+    distPoints = 1000,
+    timePoints = 1000,
+    timeCurve = "exp",   // "exp" eller "power"
+    timeK = 3.2,
+    timeGamma = 1.0,
+  } = {}
 ) {
   return function score(distanceKm, timeMs) {
-    const distPenalty = Math.min(distanceKm / maxDistanceKm, 1);
+    const distPenalty = Math.min(Number(distanceKm) / maxDistanceKm, 1);
 
-    // timeGamma: 1.0 = linjärt, >1 gör att tid straffar mindre tidigt (och mer sent)
-    const tNorm = Math.min(timeMs / maxTimeMs, 1);
-    const timePenalty = Math.pow(tNorm, timeGamma);
+    const tNorm = Math.min(Math.max(Number(timeMs) / maxTimeMs, 0), 1);
 
-    // viktad medelpoäng, normaliserad så max fortfarande blir 2000
-    const weighted = (distW * distPenalty + timeW * timePenalty) / (distW + timeW);
-    return weighted * 2000;
+    let timePenalty = tNorm;
+    if (timeCurve === "exp") {
+      const k = Number(timeK);
+      timePenalty =
+        Number.isFinite(k) && k > 0 ? Math.expm1(k * tNorm) / Math.expm1(k) : tNorm;
+    } else {
+      timePenalty = Math.pow(tNorm, timeGamma);
+    }
+
+    return distPenalty * distPoints + timePenalty * timePoints;
   };
 }
+
 
 

@@ -214,6 +214,10 @@ export default {
       xpGained: "XP ganado",
       badgeXp: "XP de insignias",
       levelUp: "Subes de nivel",
+      match: "Partida",
+      win: "Victoria",
+      badge: "Insignias",
+      total: "Total",
     },
 
   },

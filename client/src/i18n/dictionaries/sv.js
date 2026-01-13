@@ -216,6 +216,10 @@ export default {
       xpGained: "XP",
       badgeXp: "Badge-XP",
       levelUp: "Level up",
+      match: "Match",
+      win: "Vinst",
+      badge: "Badge",
+      total: "Total",
     },
 
   },

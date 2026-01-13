@@ -80,14 +80,22 @@ function antipodeLonLat(lon, lat) {
   return [aLon, aLat];
 }
 
-// ---------- Local scoring (must match server) ----------
-// Server: SCORER_MAX_DISTANCE_KM = 20_000, SCORER_MAX_TIME_MS = 20_000
+// Server: SCORER_MAX_DISTANCE_KM = 17_000, SCORER_MAX_TIME_MS = 20_000
+// Time curve: exp-normalized, k=3.2
 const SCORER_MAX_TIME_MS = 20_000;
-const SCORER_MAX_DISTANCE_KM = 20_000;
+const SCORER_MAX_DISTANCE_KM = 17_000;
+const TIME_K = 3.2;
+
+function timePenaltyExp(tNorm, k) {
+  // tNorm i [0,1]
+  return Math.expm1(k * tNorm) / Math.expm1(k);
+}
 
 function scoreLocal(distanceKm, timeMs) {
-  const distPenalty = Math.min(distanceKm / SCORER_MAX_DISTANCE_KM, 1);
-  const timePenalty = Math.min(timeMs / SCORER_MAX_TIME_MS, 1);
+  const distPenalty = Math.min(Number(distanceKm) / SCORER_MAX_DISTANCE_KM, 1);
+  const tNorm = Math.min(Math.max(Number(timeMs) / SCORER_MAX_TIME_MS, 0), 1);
+  const timePenalty = timePenaltyExp(tNorm, TIME_K);
+
   return distPenalty * 1000 + timePenalty * 1000;
 }
 
@@ -173,6 +181,7 @@ function normalizeDelta(d) {
     // XP (new)
     xpGained: numOr(o.xpGained ?? o.xp_gained ?? o.xpDelta ?? o.xp_delta, 0),
     xpMatch: numOr(o.xpMatch ?? o.xp_match, 0),
+    xpWinBonus: numOr(o.xpWinBonus ?? o.xp_win_bonus ?? o.xpWin ?? o.xp_win, 0),
     xpBadges: numOr(o.xpBadges ?? o.xp_badges ?? o.badgeBonusXp ?? o.badge_bonus_xp, 0),
 
     oldXpTotal: numOr(o.oldXpTotal ?? o.old_xp_total, 0),
@@ -1053,17 +1062,56 @@ useEffect(() => {
                 </div>
               )}
 
-			 
-              {/* XP (finish overlay) */}
-              {progression.myDelta &&
-                (progression.myDelta.xpGained > 0 ||
-                  progression.myDelta.xpMatch > 0 ||
-                  progression.myDelta.xpBadges > 0) && (
-                  <div className="finish-xp">
-                    <div className="finish-xp-row">
-                      <span className="finish-xp-label">{t("game.matchEnd.xpGained")}</span>
-                      <span className="finish-xp-val">
-                        +{Math.round(progression.myDelta.xpGained)} {t("common.xp")}
+{/* XP (finish overlay) */}
+{progression.myDelta &&
+  (progression.myDelta.xpGained > 0 ||
+    progression.myDelta.xpMatch > 0 ||
+    progression.myDelta.xpWinBonus > 0 ||
+    progression.myDelta.xpBadges > 0) && (
+    <div className="finish-xp">
+      <div className="finish-xp-row">
+        <span className="finish-xp-label">{t("game.matchEnd.match")}</span>
+        <span className="finish-xp-val">
+          +{Math.round(progression.myDelta.xpMatch)} {t("common.xp")}
+        </span>
+      </div>
+
+      {progression.myDelta.xpWinBonus > 0 && (
+        <div className="finish-xp-row">
+          <span className="finish-xp-label">{t("game.matchEnd.win")}</span>
+          <span className="finish-xp-val">
+            +{Math.round(progression.myDelta.xpWinBonus)} {t("common.xp")}
+          </span>
+        </div>
+      )}
+
+      {progression.myDelta.xpBadges > 0 && (
+        <div className="finish-xp-row">
+          <span className="finish-xp-label">{t("game.matchEnd.badge")}</span>
+          <span className="finish-xp-val">
+            +{Math.round(progression.myDelta.xpBadges)} {t("common.xp")}
+          </span>
+        </div>
+      )}
+
+      <div className="finish-xp-row">
+        <span className="finish-xp-label">{t("game.matchEnd.total")}</span>
+        <span className="finish-xp-val">
+          {Math.round(progression.myDelta.xpGained)} {t("common.xp")}
+        </span>
+      </div>
+
+      {/* I Öva-läge visar vi level-up här (i 1v1 visas den i progression-raden). */}
+      {isPractice && progression.myLevelUp ? (
+        <div className="finish-xp-sub">
+          <span className="level-up-chip">
+            ⬆️ {t("game.matchEnd.levelUp")} {progression.myDelta.oldLevel} →{" "}
+            {progression.myDelta.newLevel}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  )}
                       </span>
                     </div>
 

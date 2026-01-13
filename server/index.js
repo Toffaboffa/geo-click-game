@@ -76,7 +76,7 @@ const PENALTY_TIME_MS = 20_000; // om man inte klickar: timeMs som max
 
 // Score normalization
 const SCORER_MAX_TIME_MS = 20_000; // normalisera tid i score över 20s
-const SCORER_MAX_DISTANCE_KM = 20_000;
+const SCORER_MAX_DISTANCE_KM = 17_000;
 
 // Start-ready gate timers
 const START_READY_PROMPT_DELAY_MS = 200;
@@ -912,7 +912,13 @@ function emitAlreadyInMatch(socket, eventName, username) {
 
 function createMatch(playerA, playerB, opts = {}) {
   const matchId = crypto.randomBytes(8).toString("hex");
-  const scorer = createRoundScorer(SCORER_MAX_DISTANCE_KM, SCORER_MAX_TIME_MS);
+  const scorer = createRoundScorer(SCORER_MAX_DISTANCE_KM, SCORER_MAX_TIME_MS, {
+  distPoints: 1000,
+  timePoints: 1000,
+  timeCurve: "exp",
+  timeK: 3.2,
+});
+
   const match = {
     id: matchId,
     createdAt: nowMs(),
@@ -1994,6 +2000,7 @@ async function applyPracticeXpForUserTx(dbClient, match, username, totalScore) {
     username,
     xpGained: res.inserted ? xpAmount : 0,
     xpMatch: res.inserted ? xpAmount : 0,
+    xpWinBonus: 0,
     xpBadges: 0,
     oldXpTotal,
     newXpTotal,
@@ -2017,8 +2024,16 @@ async function applyMatchXpForUserTx(dbClient, match, username, totalScore, winn
 
   const perfMult = computePerfMult(totalScore, roundsCount);
 
-  const xpRaw = (playedBase + winBase) * queueMult * perfMult;
-  const xpAmount = Math.max(0, Math.round(xpRaw));
+  // --- Split för UI: Match-del + Vinst-bonus ---
+  // Vi vill kunna visa "Match" och "Vinst" separat i klienten, men ändå
+  // garantera att summan blir exakt samma som tidigare (inkl. avrundning).
+  const baseRaw = playedBase * queueMult * perfMult;
+  const winRaw = winBase * queueMult * perfMult;
+  const xpAmount = Math.max(0, Math.round(baseRaw + winRaw));
+
+  const xpMatch = Math.max(0, Math.round(baseRaw));
+  // Lägg all avrundnings-diff på winBonus så att xpMatch + xpWinBonus == xpAmount
+  const xpWinBonus = Math.max(0, xpAmount - xpMatch);
 
   const meta = {
     mode: "match",
@@ -2050,7 +2065,8 @@ async function applyMatchXpForUserTx(dbClient, match, username, totalScore, winn
   return {
     username,
     xpGained: res.inserted ? xpAmount : 0,
-    xpMatch: res.inserted ? xpAmount : 0,
+    xpMatch: res.inserted ? xpMatch : 0,
+    xpWinBonus: res.inserted ? xpWinBonus : 0,
     xpBadges: 0,
     oldXpTotal,
     newXpTotal,
@@ -2068,6 +2084,7 @@ async function getXpSnapshotForUserTx(dbClient, username) {
       username: u,
       xpGained: 0,
       xpMatch: 0,
+    xpWinBonus: 0,
       xpBadges: 0,
       oldXpTotal: 0,
       newXpTotal: 0,
@@ -2085,6 +2102,7 @@ async function getXpSnapshotForUserTx(dbClient, username) {
       username: u,
       xpGained: 0,
       xpMatch: 0,
+    xpWinBonus: 0,
       xpBadges: 0,
       oldXpTotal: null,
       newXpTotal: null,
@@ -2107,6 +2125,7 @@ async function getXpSnapshotForUserTx(dbClient, username) {
     username: u,
     xpGained: 0,
     xpMatch: 0,
+    xpWinBonus: 0,
     xpBadges: 0,
     oldXpTotal: xpTotal,
     newXpTotal: xpTotal,
@@ -2151,6 +2170,7 @@ async function applyWalkoverWinXpForUserTx(dbClient, match, username) {
     username,
     xpGained: res.inserted ? xpAmount : 0,
     xpMatch: res.inserted ? xpAmount : 0,
+    xpWinBonus: 0,
     xpBadges: 0,
     oldXpTotal,
     newXpTotal,
@@ -2180,6 +2200,7 @@ async function applyBadgeBonusXpForUserTx(dbClient, match, username, badgeBonusX
       username,
       xpGained: 0,
       xpMatch: 0,
+    xpWinBonus: 0,
       xpBadges: 0,
       oldXpTotal: xpTotal,
       newXpTotal: xpTotal,
@@ -2215,6 +2236,7 @@ async function applyBadgeBonusXpForUserTx(dbClient, match, username, badgeBonusX
     username,
     xpGained: res.inserted ? bonus : 0,
     xpMatch: 0,
+    xpWinBonus: 0,
     xpBadges: res.inserted ? bonus : 0,
     oldXpTotal,
     newXpTotal,
@@ -2523,6 +2545,7 @@ if (bothReal) {
         ...bx,
         // Aggregerad XP
         xpMatch: Number(m.xpMatch ?? 0),
+        xpWinBonus: Number(m.xpWinBonus ?? 0),
         xpBadges: Number(bx.xpBadges ?? 0),
         xpGained: Number(m.xpGained ?? 0) + Number(bx.xpGained ?? 0),
         // oldXp/oldLevel ska komma från match-deltat (första steget i kedjan)
