@@ -542,6 +542,23 @@ export function evaluateEligibleBadgeCodes({
       if (ok) eligible.push(b.code);
       continue;
     }
+        // NEW: minst X städer under en viss population (per match)
+      // Ex: {"type":"win_match_min_cities_under_population","difficulty":"hard","min_cities":8,"max_population":100000}
+      if (t === "win_match_min_cities_under_population") {
+        if (!difficultyOk) continue;
+        const minCities = toInt(c.min_cities) ?? 0;
+        const maxPop = toInt(c.max_population);
+        if (minCities <= 0 || maxPop == null) continue;
+      
+        const n = countRounds((r) => {
+          const pop = toInt(r?.city?.population);
+          if (pop == null) return false;
+          return pop < maxPop;
+        });
+      
+        if (n >= minCities) eligible.push(b.code);
+        continue;
+      }
 
     if (t === "win_match_min_capitals") {
       if (!difficultyOk) continue;
@@ -549,6 +566,18 @@ export function evaluateEligibleBadgeCodes({
       if (minCaps <= 0) continue;
       const caps = countRounds((r) => r?.city?.isCapital === true);
       if (caps >= minCaps) eligible.push(b.code);
+      continue;
+    }
+        // NEW: max antal huvudstäder (inkl 0)
+    // Ex: {"type":"win_match_max_capitals","difficulty":"hard","max_capitals":0}
+    if (t === "win_match_max_capitals") {
+      if (!difficultyOk) continue;
+      const maxCaps = toInt(c.max_capitals);
+      if (maxCaps == null) continue;
+    
+      const caps = countRounds((r) => r?.city?.isCapital === true);
+    
+      if (caps <= maxCaps) eligible.push(b.code);
       continue;
     }
 
