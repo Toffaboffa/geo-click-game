@@ -1113,6 +1113,50 @@ button:disabled {
   justify-content: center;
 }
 
+/* ===== Finish XP (centered "invisible table") ===== */
+.finish-xp {
+  display: flex;
+  justify-content: center; /* centrerar hela blocket i modalen */
+  margin-top: 10px;
+}
+
+.finish-xp-grid {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 14px;
+  row-gap: 6px;
+
+  /* gör att griden krymper till innehållet -> lätt att centrera */
+  width: fit-content;
+  padding: 6px 8px;
+}
+
+.finish-xp-label {
+  text-align: right; /* kolon hamnar snyggt under varandra */
+  opacity: 0.85;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.finish-xp-val {
+  text-align: left;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.finish-xp-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.finish-xp-total {
+  opacity: 0.95;
+}
+
 /* ===== Finish progression (kompakt, ikon-only som i Lobby) ===== */
 .finish-progression {
   margin-top: 10px;

@@ -1232,48 +1232,48 @@ useEffect(() => {
     progression.myDelta.xpMatch > 0 ||
     progression.myDelta.xpWinBonus > 0 ||
     progression.myDelta.xpBadges > 0) && (
-    <div className="finish-xp">
-      <div className="finish-xp-row">
-        <span className="finish-xp-label">{t("game.matchEnd.match")}</span>
-        <span className="finish-xp-val">
-          +{Math.round(progression.myDelta.xpMatch)} {t("common.xp")}
-        </span>
-      </div>
+	    <div className="finish-xp">
+	      <div className="finish-xp-grid">
+	        <div className="finish-xp-label">{t("game.matchEnd.match")}</div>
+	        <div className="finish-xp-val">
+	          +{Math.round(progression.myDelta.xpMatch)} {t("common.xp")}
+	        </div>
 
-      {progression.myDelta.xpWinBonus > 0 && (
-        <div className="finish-xp-row">
-          <span className="finish-xp-label">{t("game.matchEnd.win")}</span>
-          <span className="finish-xp-val">
-            +{Math.round(progression.myDelta.xpWinBonus)} {t("common.xp")}
-          </span>
-        </div>
-      )}
+	        {progression.myDelta.xpWinBonus > 0 && (
+	          <>
+	            <div className="finish-xp-label">{t("game.matchEnd.win")}</div>
+	            <div className="finish-xp-val">
+	              +{Math.round(progression.myDelta.xpWinBonus)} {t("common.xp")}
+	            </div>
+	          </>
+	        )}
 
-      {progression.myDelta.xpBadges > 0 && (
-        <div className="finish-xp-row">
-          <span className="finish-xp-label">{t("game.matchEnd.badge")}</span>
-          <span className="finish-xp-val">
-            +{Math.round(progression.myDelta.xpBadges)} {t("common.xp")}
-          </span>
-        </div>
-      )}
+	        {progression.myDelta.xpBadges > 0 && (
+	          <>
+	            <div className="finish-xp-label">{t("game.matchEnd.badge")}</div>
+	            <div className="finish-xp-val">
+	              +{Math.round(progression.myDelta.xpBadges)} {t("common.xp")}
+	            </div>
+	          </>
+	        )}
 
-      <div className="finish-xp-row">
-        <span className="finish-xp-label">{t("game.matchEnd.total")}</span>
-        <span className="finish-xp-val">
-          {Math.round(progression.myDelta.xpGained)} {t("common.xp")}
-        </span>
-      </div>
+	        <div className="finish-xp-divider" />
 
-      {isPractice && progression.myLevelUp ? (
-        <div className="finish-xp-sub">
-          <span className="level-up-chip">
-            ⬆️ {t("game.matchEnd.levelUp")} {progression.myDelta.oldLevel} →{" "}
-            {progression.myDelta.newLevel}
-          </span>
-        </div>
-      ) : null}
-    </div>
+	        <div className="finish-xp-label finish-xp-total">{t("game.matchEnd.total")}</div>
+	        <div className="finish-xp-val finish-xp-total">
+	          {Math.round(progression.myDelta.xpGained)} {t("common.xp")}
+	        </div>
+	      </div>
+
+	      {isPractice && progression.myLevelUp ? (
+	        <div className="finish-xp-sub">
+	          <span className="level-up-chip">
+	            ⬆️ {t("game.matchEnd.levelUp")} {progression.myDelta.oldLevel} →{" "}
+	            {progression.myDelta.newLevel}
+	          </span>
+	        </div>
+	      ) : null}
+	    </div>
   )}
 
 {/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}
