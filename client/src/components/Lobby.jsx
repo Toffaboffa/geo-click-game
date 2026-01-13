@@ -1582,3 +1582,4 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     </div>
   );
 }
+
