@@ -190,6 +190,7 @@ aboutLeaderboard: {
   colPpm: "Average points per match (lower is better).",
   colScore: "Rank score (higher is better) computed from win rate + avg score, weighted by difficulty, match count, and level.",
 
+  colElo: "ELO rating (a skill rating that changes after each 1v1 match).",
   hScore: "How SCORE is computed",
   p2: "For each difficulty, two normalized values are computed: winrate = VM/SM (0–1) and ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
   p3: "Per difficulty: skill = 0.5·winrate + 0.5·ppmNorm. Difficulties are combined with weights: Easy 1, Medium 4, Hard 8, and each difficulty also gets a match factor m = clamp(SM/20, 0, 1).",
@@ -204,6 +205,12 @@ aboutLeaderboard: {
     "S_skill = (Σ (w_d * m_d * skill_d)) / (Σ (w_d * m_d))\n" +
     "F_level = 1 + (Lvl / 100)\n" +
     "SCORE = round(10000 * S_skill * F_level)",
+
+  hElo: "What ELO is",
+  pElo1: "ELO is a rating system used in many competitive games. Higher ELO means stronger performance over time.",
+  pElo2: "When you win a 1v1 match your ELO goes up; when you lose it goes down.",
+  pElo3: "The change depends on the opponent: beating a higher-rated player gives more ELO than beating a lower-rated one.",
+
 
   hNotes: "Notes",
   p5: "The Total view uses the same computation, combining all difficulties using the weights above.",

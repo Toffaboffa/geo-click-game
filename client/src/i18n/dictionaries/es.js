@@ -192,6 +192,7 @@ aboutLeaderboard: {
   colPpm: "Puntos medios por partida (más bajo es mejor).",
   colScore: "Puntuación de ranking (más alto es mejor) calculada con % de victorias + media, ponderada por dificultad, nº de partidas y nivel.",
 
+  colElo: "Puntuación ELO (un rating de habilidad que cambia después de cada partida 1v1).",
   hScore: "Cómo se calcula SCORE",
   p2: "Para cada dificultad se calculan dos valores normalizados: winrate = VM/SM (0–1) y ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
   p3: "Por dificultad: skill = 0.5·winrate + 0.5·ppmNorm. Luego se combinan las dificultades con pesos: Fácil 1, Medio 4, Difícil 8, y cada dificultad tiene además un factor de partidas m = clamp(SM/20, 0, 1).",
@@ -206,6 +207,12 @@ aboutLeaderboard: {
     "S_skill = (Σ (w_d * m_d * skill_d)) / (Σ (w_d * m_d))\n" +
     "F_level = 1 + (Lvl / 100)\n" +
     "SCORE = round(10000 * S_skill * F_level)",
+
+  hElo: "Qué es ELO",
+  pElo1: "ELO es un sistema de puntuación usado en muchos juegos competitivos. Un ELO más alto significa mejor rendimiento con el tiempo.",
+  pElo2: "Cuando ganas una partida 1v1 tu ELO sube; cuando pierdes, baja.",
+  pElo3: "El cambio depende del rival: vencer a alguien con ELO más alto da más que vencer a alguien con ELO más bajo.",
+
 
   hNotes: "A tener en cuenta",
   p5: "La vista Total usa el mismo cálculo, combinando todas las dificultades con los pesos anteriores.",
