@@ -30,6 +30,7 @@ const DIFFS = ["easy", "medium", "hard"];
 const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
 
 const SORT_KEYS = [
+  { key: "score", label: "SCORE" },
   { key: "ppm", label: "PPM" },
   { key: "pct", label: "PCT" },
   { key: "sp", label: "SP" },
@@ -152,7 +153,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
   // leaderboard wide
   const [lbView, setLbView] = useState("all"); // easy|medium|hard|total|all
-  const [lbSort, setLbSort] = useState("ppm"); // ppm|pct|sp|vm|fm
+  const [lbSort, setLbSort] = useState("score"); // score|ppm|pct|sp|vm|fm
   const [lbDir, setLbDir] = useState(""); // "" => server default
   const [lbAllSortMode, setLbAllSortMode] = useState("total"); // när view=all: vilken grupp sorterar vi på
   const [lbRows, setLbRows] = useState([]);
@@ -1082,6 +1083,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                               {t("lobby.lb.groups.total")}
                             </th>
                           )}
+
+                        <th className="lb-score-head" rowSpan={2}>
+                          SCORE
+                        </th>
                         </tr>
 
                         <tr>
@@ -1154,6 +1159,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                               {t("lobby.lb.groups.total")}
                             </th>
                           )}
+
+                          <th className="lb-score-head" rowSpan={2}>
+                            SCORE
+                          </th>
                         </tr>
 
                         <tr>
@@ -1266,6 +1275,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                               <td>{getCell(u, "t_", "ppm")}</td>
                             </>
                           )}
+
+                          <td className="lb-score">{fmtIntOrDash(u?.score)}</td>
                         </tr>
                       );
                     })}
