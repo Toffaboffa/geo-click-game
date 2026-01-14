@@ -3,7 +3,7 @@ export default {
     appName: "GeoSense",
     language: "Language",
     other: "Other",
-    loading: "Logging in. Please wait…",
+    loading: "Loading...",
     close: "Close",
     logout: "Log out",
     leave: "Leave",
@@ -216,6 +216,7 @@ aboutXp: {
     loadingMap: "Loading map…",
     waitingForOthers: "Waiting for others…",
     readyForNext: "Ready for next…",
+    ctrlMagnifierHint: "Hold CTRL on your keyboard to show the magnifier",
 	roundN: "Round {n}",
 
     currentTotalScore: "Current total score",
