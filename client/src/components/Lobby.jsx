@@ -472,9 +472,11 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   // Challenge med difficulty
   const challenge = (e) => {
     e.preventDefault();
-    if (!socket || !challengeName) return;
+    if (!socket) return;
+    const targetUsername = String(challengeName || "").trim();
+    if (!targetUsername) return;
     socket.emit("challenge_player", {
-      targetUsername: challengeName.trim(),
+      targetUsername,
       difficulty: safeDiff(challengeDifficulty),
     });
     setChallengeName("");
@@ -904,7 +906,13 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
               ))}
             </select>
 
-            <button type="submit" disabled={!socket || !challengeName.trim()}>
+            {/*
+              We only gate on socket availability.
+              Some browsers/devices have edge-cases where the controlled input value
+              and the disabled-state can desync after certain flows, making the button
+              look "stuck" disabled. The submit handler still guards against empty input.
+            */}
+            <button type="submit" disabled={!socket}>
               {t("lobby.challenge.btn")}
             </button>
           </form>
