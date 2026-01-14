@@ -164,6 +164,7 @@ aboutTabs: {
   basic: "Grund",
   scoring: "Poängräkning",
   xp: "XP & Badges",
+  leaderboard: "Topplista",
 },
 
 aboutScoring: {
@@ -179,6 +180,33 @@ aboutScoring: {
   ex1: "34 km fel och 5,0 s: dist ≈ 34/17000 → 2 poäng, tid ≈ 52 poäng ⇒ totalt ≈ 54 poäng.",
   ex2: "850 km fel och 2,0 s: dist ≈ 50 poäng, tid ≈ 16 poäng ⇒ totalt ≈ 66 poäng.",
   ex3: "Ingen klick inom 20 s: du får maxstraff (≈ 2000 poäng) den rundan.",
+},
+
+
+aboutLeaderboard: {
+  p1: "Topplistan visar statistik per svårighetsgrad (Enkel/Medel/Svår) samt Total. Du kan byta vy och sortering.",
+  hColumns: "Förkortningar",
+  colLvl: "Din level (ökar med XP och minskar aldrig).",
+  colSm: "Spelade matcher (spelade totalt i vald svårighet).",
+  colVm: "Vunna matcher.",
+  colFm: "Förlorade matcher.",
+  colPct: "Vinstprocent (VM/SM). Högre är bättre.",
+  colPpm: "Genomsnittlig poäng per match (lägre är bättre).",
+  colScore: "En sammanvägd rank‑poäng som väger in prestation, svårighet, matcher och level.",
+
+  hScore: "Vad vägs in i SCORE?",
+  p2: "SCORE bygger på både vinstprocent och PPM, men Medel och Svår väger mycket tyngre än Enkel.",
+  p3: "SCORE tar också hänsyn till hur många matcher du spelat på varje svårighet (få matcher ger mindre genomslag).",
+  p4: "För att undvika att man bara spelar Enkel finns en svårighets‑bonus: du når högre potential när du visar form på Medel/Svår.",
+
+  hFormula: "Förenklad formel (idé)",
+  formula:
+    "SCORE ≈ 10000 · S_skill · M_diff · F_matches · F_level\n" +
+    "S_skill = viktat snitt av (winrate + PPM) per svårighet\n" +
+    "Vikter: Easy 1, Medium 4, Hard 8 (kräver matcher för fullt genomslag)",
+
+  hNotes: "Bra att veta",
+  p5: "Har du få matcher blir SCORE mer osäker. När du spelar fler matcher (särskilt på Medel/Svår) blir rankingen stabilare.",
 },
 
 aboutXp: {
