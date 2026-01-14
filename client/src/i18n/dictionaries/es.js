@@ -162,6 +162,7 @@ aboutTabs: {
   basic: "Básico",
   scoring: "Puntuación",
   xp: "XP y Badges",
+  leaderboard: "Clasificación",
 },
 
 aboutScoring: {
@@ -177,6 +178,33 @@ aboutScoring: {
   ex1: "34 km de error y 5,0 s: dist ≈ 34/17000 → 2 pts, tiempo ≈ 52 pts ⇒ total ≈ 54 pts.",
   ex2: "850 km de error y 2,0 s: dist ≈ 50 pts, tiempo ≈ 16 pts ⇒ total ≈ 66 pts.",
   ex3: "Sin clic dentro de 20 s: recibes la penalización máxima (≈ 2000 puntos) en esa ronda.",
+},
+
+
+aboutLeaderboard: {
+  p1: "La clasificación muestra estadísticas por dificultad (Fácil/Medio/Difícil) y el Total. Puedes cambiar la vista y el orden.",
+  hColumns: "Abreviaturas",
+  colLvl: "Tu nivel (sube con XP y nunca baja).",
+  colSm: "Partidas jugadas (en la dificultad seleccionada).",
+  colVm: "Partidas ganadas.",
+  colFm: "Partidas perdidas.",
+  colPct: "Porcentaje de victoria (VM/SM). Más alto es mejor.",
+  colPpm: "Puntos medios por partida (más bajo es mejor).",
+  colScore: "Un valor de ranking combinado que pondera rendimiento, dificultad, partidas y nivel.",
+
+  hScore: "¿Qué entra en SCORE?",
+  p2: "SCORE usa tanto el % de victorias como el PPM, pero Medio y Difícil cuentan mucho más que Fácil.",
+  p3: "También tiene en cuenta cuántas partidas tienes en cada dificultad (pocas partidas influyen menos).",
+  p4: "Para evitar ‘farmear’ solo Fácil, hay un bonus de dificultad: alcanzas mayor potencial demostrando nivel en Medio/Difícil.",
+
+  hFormula: "Fórmula simplificada (idea)",
+  formula:
+    "SCORE ≈ 10000 · S_skill · M_diff · F_matches · F_level\n" +
+    "S_skill = media ponderada de (winrate + PPM) por dificultad\n" +
+    "Pesos: Fácil 1, Medio 4, Difícil 8 (necesita partidas para contar del todo)",
+
+  hNotes: "A tener en cuenta",
+  p5: "Con pocas partidas, SCORE es menos seguro. Más partidas (especialmente en Medio/Difícil) hace la clasificación más estable.",
 },
 
 aboutXp: {
