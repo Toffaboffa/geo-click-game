@@ -1124,7 +1124,7 @@ button:disabled {
   display: grid;
   grid-template-columns: max-content max-content;
   column-gap: 14px;
-  row-gap: 6px;
+  row-gap: 1px;
 
   /* gör att griden krymper till innehållet -> lätt att centrera */
   width: fit-content;
@@ -1335,7 +1335,7 @@ button:disabled {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .rounds-table thead th {
