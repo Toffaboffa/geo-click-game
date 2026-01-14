@@ -274,7 +274,7 @@ function _confidence(played, k) {
 
 function computeLeaderboardScore(row) {
   // Row comes from leaderboard_wide (snake-ish keys)
-  const lvl = Math.max(0, _toFiniteNum(row?.lvl, 0));
+  const lvl = Math.max(0, _toFiniteNum(row?.lvl ?? row?.level, 0));
 
   // Läs svårighetsfält (defensivt)
   const e = {
@@ -300,6 +300,10 @@ function computeLeaderboardScore(row) {
 
   const p = SCORE_PARAMS;
 
+  // Fallbacks om du råkat ha en SCORE_PARAMS utan levelB/levelK (så du inte får runtime-crash)
+  const levelB = _toFiniteNum(p?.levelB, 0.06);            // liten bonus per level, avtagande
+  const levelK = Math.max(1, _toFiniteNum(p?.levelK, 25)); // ungefär där bonusen börjar mätta
+
   const per = [
     { key: "easy", ...e },
     { key: "medium", ...m },
@@ -324,7 +328,8 @@ function computeLeaderboardScore(row) {
   // Exposure ska INTE bero på confidence (annars blir “straff” två gånger för få matcher).
   // Den ska bara spegla att man faktiskt exponerat sig för medium/hard överhuvudtaget.
   let exposureNum = 0;
-  const exposureDen = (p.w?.easy ?? 1) + (p.w?.medium ?? 1) + (p.w?.hard ?? 1);
+  const exposureDen =
+    _toFiniteNum(p?.w?.easy, 1) + _toFiniteNum(p?.w?.medium, 1) + _toFiniteNum(p?.w?.hard, 1);
 
   for (const d of per) {
     const wc = d.w * d.c;
@@ -333,24 +338,26 @@ function computeLeaderboardScore(row) {
       den += wc;
     }
     // Exposure: vikt * (har spelat något alls i svårigheten)
-    if (d.played > 0) {
-      exposureNum += d.w;
-    }
+    if (d.played > 0) exposureNum += d.w;
   }
 
   const S_skill = den > 0 ? num / den : 0;
 
   // Difficulty exposure multiplier: easy-only can't reach full potential
   const E = exposureDen > 0 ? exposureNum / exposureDen : 0;
-  const Mdiff = p.exposureFloor + (1 - p.exposureFloor) * Math.min(1, Math.max(0, E));
+  const floor = _toFiniteNum(p.exposureFloor, 0.85);
+  const Mdiff = floor + (1 - floor) * Math.min(1, Math.max(0, E));
 
-  // Match factor (trust)
-  const FN = 1 - _expSafe(-Ntot / p.matchK);
+  // Match factor (trust) – avtagande, men växer med antal matcher
+  const matchK = Math.max(1, _toFiniteNum(p.matchK, 30));
+  const FN = 1 - _expSafe(-Ntot / matchK);
 
   // Level factor (avtagande)
-  const FL = 1 + p.levelB * Math.log(1 + lvl / p.levelK);
+  const FL = 1 + levelB * Math.log(1 + lvl / levelK);
 
-  const raw = p.scale * S_skill * Mdiff * FN * FL;
+  const scale = Math.max(1, _toFiniteNum(p.scale, 10000));
+  const raw = scale * S_skill * Mdiff * FN * FL;
+
   const out = Math.round(Math.max(0, raw));
   return Number.isFinite(out) ? out : 0;
 }
