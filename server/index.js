@@ -191,6 +191,158 @@ function pickExistingCols(existingMap, cols) {
 }
 
 // =====================
+// Leaderboard SCORE (anti-easy-farm)
+// =====================
+// SCORE är avsedd för topplistan (wide leaderboard) och är konstruerad för att:
+// - belöna hög vinst% (PCT) och låg PPM (lägre = bättre)
+// - ge Medel/Svår mycket större tyngd än Easy
+// - men kräva ett rimligt antal matcher i Medel/Svår innan de dominerar (confidence)
+// - ge fler matcher + högre level en bonus med avtagande effekt
+//
+// Designparametrar (tunna gärna):
+const SCORE_PARAMS = Object.freeze({
+  // Vinst-smoothing (Bayes/Laplace)
+  winPriorStrength: 10, // a
+  winPriorP: 0.5, // p0
+
+  // PPM -> (0..1] (lägre PPM => högre score)
+  ppmCurveK: 1.5, // k
+  ppmC: { easy: 500, medium: 1200, hard: 1800 }, // C_d (fast, ingen rolling)
+
+  // Mix win vs ppm per diff
+  lambda: { easy: 0.55, medium: 0.60, hard: 0.65 },
+
+  // Svårighetsvikter (anti-easy-farm)
+  w: { easy: 1, medium: 4, hard: 8 },
+
+  // Confidence per diff (avtagande, kräver matcher för att väga tungt)
+  confK: { easy: 10, medium: 8, hard: 6 },
+
+  // Difficulty exposure multiplier
+  exposureFloor: 0.65,
+
+  // Match + level multipliers
+  matchK: 20,
+  levelB: 0.20,
+  levelK: 10,
+
+  // Output scaling
+  scale: 10000,
+});
+
+function _toFiniteNum(v, fallback = null) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function _expSafe(x) {
+  // skydda mot NaN/Infinity
+  if (!Number.isFinite(x)) return 0;
+  // Math.exp(709) ~ 8e307 (nära max double)
+  if (x > 700) return Number.POSITIVE_INFINITY;
+  if (x < -700) return 0;
+  return Math.exp(x);
+}
+
+function _ppmToScore(ppm, C, k) {
+  const p = _toFiniteNum(ppm, 20000);
+  const c = Math.max(1, _toFiniteNum(C, 1000));
+  const kk = Math.max(0.1, _toFiniteNum(k, 1.5));
+  // exp(-k * ln(1 + ppm/C)) == (1 + ppm/C)^(-k)
+  return _expSafe(-kk * Math.log(1 + p / c));
+}
+
+function _winAdj(wins, played, a, p0) {
+  const W = Math.max(0, _toFiniteNum(wins, 0));
+  const N = Math.max(0, _toFiniteNum(played, 0));
+  const aa = Math.max(0, _toFiniteNum(a, 10));
+  const prior = Math.min(1, Math.max(0, _toFiniteNum(p0, 0.5)));
+  if (N <= 0 && aa <= 0) return prior;
+  return (W + aa * prior) / (N + aa);
+}
+
+function _confidence(played, k) {
+  const N = Math.max(0, _toFiniteNum(played, 0));
+  const kk = Math.max(1, _toFiniteNum(k, 10));
+  return 1 - _expSafe(-N / kk);
+}
+
+function computeLeaderboardScore(row) {
+  // Row comes from leaderboard_wide (snake-ish keys)
+  const lvl = Math.max(0, _toFiniteNum(row?.lvl, 0));
+
+  const e = {
+    played: Math.max(0, _toFiniteNum(row?.e_sp, 0)),
+    wins: Math.max(0, _toFiniteNum(row?.e_vm, 0)),
+    ppm: _toFiniteNum(row?.e_ppm, null),
+  };
+  const m = {
+    played: Math.max(0, _toFiniteNum(row?.m_sp, 0)),
+    wins: Math.max(0, _toFiniteNum(row?.m_vm, 0)),
+    ppm: _toFiniteNum(row?.m_ppm, null),
+  };
+  const h = {
+    played: Math.max(0, _toFiniteNum(row?.s_sp, 0)),
+    wins: Math.max(0, _toFiniteNum(row?.s_vm, 0)),
+    ppm: _toFiniteNum(row?.s_ppm, null),
+  };
+
+  const tPlayed = _toFiniteNum(row?.t_sp, null);
+  const Ntot = Math.max(0, tPlayed != null ? tPlayed : e.played + m.played + h.played);
+  if (Ntot <= 0) return 0;
+
+  const p = SCORE_PARAMS;
+
+  const per = [
+    { key: "easy", ...e },
+    { key: "medium", ...m },
+    { key: "hard", ...h },
+  ];
+
+  // Per-difficulty performance S_d
+  for (const d of per) {
+    const Pwin = _winAdj(d.wins, d.played, p.winPriorStrength, p.winPriorP);
+    const Sppm = _ppmToScore(d.ppm, p.ppmC[d.key], p.ppmCurveK);
+    const lam = _toFiniteNum(p.lambda[d.key], 0.6);
+    d.S = Math.min(1, Math.max(0, lam * Pwin + (1 - lam) * Sppm));
+    d.c = d.played > 0 ? _confidence(d.played, p.confK[d.key]) : 0;
+    d.w = _toFiniteNum(p.w[d.key], 1);
+  }
+
+  // Weighted skill score with confidence gating
+  let num = 0;
+  let den = 0;
+  let exposureNum = 0;
+  const exposureDen = p.w.easy + p.w.medium + p.w.hard;
+
+  for (const d of per) {
+    const wc = d.w * d.c;
+    if (wc > 0) {
+      num += wc * d.S;
+      den += wc;
+      exposureNum += wc;
+    }
+  }
+
+  const S_skill = den > 0 ? num / den : 0;
+
+  // Difficulty exposure multiplier: easy-only can't reach full potential
+  const E = exposureDen > 0 ? exposureNum / exposureDen : 0;
+  const Mdiff = p.exposureFloor + (1 - p.exposureFloor) * Math.min(1, Math.max(0, E));
+
+  // Match factor (trust)
+  const FN = 1 - _expSafe(-Ntot / p.matchK);
+
+  // Level factor (avtagande)
+  const FL = 1 + p.levelB * Math.log(1 + lvl / p.levelK);
+
+  const raw = p.scale * S_skill * Mdiff * FN * FL;
+  // SCORE ska vara ett stabilt heltal i UI
+  const out = Math.round(Math.max(0, raw));
+  return Number.isFinite(out) ? out : 0;
+}
+
+// =====================
 // Basic routes
 // =====================
 app.get("/api/me", authMiddleware, async (req, res) => {
@@ -542,15 +694,17 @@ app.get("/api/leaderboard-wide", async (req, res) => {
     const sortRaw = String(req.query.sort || "ppm").trim().toLowerCase();
     const dirRaw = String(req.query.dir || "").trim().toLowerCase();
 
-    const allowedSort = new Set(["ppm", "pct", "sp", "vm", "fm"]);
+    const allowedSort = new Set(["ppm", "pct", "sp", "vm", "fm", "score"]);
     const sort = allowedSort.has(sortRaw) ? sortRaw : "ppm";
 
     // Default direction per sort
-    const defaultDir = sort === "pct" || sort === "vm" ? "desc" : "asc";
+    const defaultDir = sort === "pct" || sort === "vm" || sort === "score" ? "desc" : "asc";
     const dir = dirRaw === "asc" || dirRaw === "desc" ? dirRaw : defaultDir;
 
-    const col = `${prefix}${sort}`;
-    const playedCol = `${prefix}sp`;
+    // score är en server-beräknad kolumn (anti-easy-farm). Vi hämtar en större mängd rader och sorterar i JS.
+    const isScoreSort = sort === "score";
+    const col = isScoreSort ? null : `${prefix}${sort}`;
+    const playedCol = isScoreSort ? "t_sp" : `${prefix}sp`;
 
     const allowedCols = new Set([
       "e_ppm",
@@ -574,25 +728,59 @@ app.get("/api/leaderboard-wide", async (req, res) => {
       "t_vm",
       "t_fm",
     ]);
-    if (!allowedCols.has(col) || !allowedCols.has(playedCol)) {
+
+    if (!allowedCols.has(playedCol)) {
       return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
     }
 
-    const { rows } = await pool.query(
-      `select *
-       from public.leaderboard_wide
-       where coalesce(hidden,false) = false
-         and ${playedCol} > 0
-       order by
-         ${col} ${dir} nulls last,
-         ${prefix}pct desc nulls last,
-         ${playedCol} desc,
-         namn asc
-       limit $1`,
-      [limit]
+    if (!isScoreSort && !allowedCols.has(col)) {
+      return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
+    }
+
+    // För score-sort hämtar vi fler rader för att kunna sortera rätt efter beräkningen.
+    const sqlLimit = isScoreSort ? Math.max(limit, 120) : limit;
+
+    const { rows: rawRows } = await pool.query(
+      isScoreSort
+        ? `select *
+           from public.leaderboard_wide
+           where coalesce(hidden,false) = false
+             and ${playedCol} > 0
+           order by namn asc
+           limit $1`
+        : `select *
+           from public.leaderboard_wide
+           where coalesce(hidden,false) = false
+             and ${playedCol} > 0
+           order by
+             ${col} ${dir} nulls last,
+             ${prefix}pct desc nulls last,
+             ${playedCol} desc,
+             namn asc
+           limit $1`,
+      [sqlLimit]
     );
 
-    res.json({ mode: modeKey, sort, dir, rows });
+    // Beräkna och attach:a SCORE
+    const rows = (rawRows || []).map((r) => ({ ...r, score: computeLeaderboardScore(r) }));
+
+    if (isScoreSort) {
+      rows.sort((a, b) => {
+        const sa = _toFiniteNum(a?.score, 0);
+        const sb = _toFiniteNum(b?.score, 0);
+        if (sb !== sa) return sb - sa; // desc
+        // tie-breakers
+        const pctA = _toFiniteNum(a?.t_pct, -1);
+        const pctB = _toFiniteNum(b?.t_pct, -1);
+        if (pctB !== pctA) return pctB - pctA;
+        const spA = _toFiniteNum(a?.t_sp, 0);
+        const spB = _toFiniteNum(b?.t_sp, 0);
+        if (spB !== spA) return spB - spA;
+        return String(a?.namn || "").localeCompare(String(b?.namn || ""));
+      });
+    }
+
+    res.json({ mode: modeKey, sort, dir, rows: rows.slice(0, limit) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
@@ -1219,7 +1407,7 @@ function startNextRoundCountdown(match) {
   match.awaitingReady = false;
   match.ready.clear();
 
-  const seconds = 8;
+  const seconds = 6;
   io.to(room).emit("next_round_countdown", { seconds });
 
   clearTimeout(match.countdownTimeout);
