@@ -1184,13 +1184,20 @@ useEffect(() => {
             onMouseEnter={() => setHoveringUiSafe(true)}
             onMouseLeave={() => setHoveringUiSafe(false)}
           >
-            <button
-              className="ready-btn"
-              onClick={stop(onPressStartReady)}
-              disabled={!mapLoaded || startReadySent}
-            >
-              {!mapLoaded ? t("game.loadingMap") : startReadySent ? t("game.waiting") : t("game.ready")}
-            </button>
+            <div className="ready-stack">
+              <button
+                className="ready-btn"
+                onClick={stop(onPressStartReady)}
+                disabled={!mapLoaded || startReadySent}
+              >
+                {!mapLoaded ? t("game.loadingMap") : startReadySent ? t("game.waiting") : t("game.ready")}
+              </button>
+
+              {/* Small helper shown only before you press "Ready" */}
+              {mapLoaded && !startReadySent && (
+                <div className="ready-hint">{t("game.ctrlMagnifierHint")}</div>
+              )}
+            </div>
           </div>
         )}
 
