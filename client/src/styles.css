@@ -2078,7 +2078,7 @@ select:focus-visible {
   padding: 9px 10px;
 }
 .leaderboard.leaderboard-wide tbody td {
-  padding: 3px 6px 3px 6px;
+  padding: 9px 10px;
 }
 
 /* Små förbättringar för rank/LVL i wide */
@@ -2146,9 +2146,9 @@ select:focus-visible {
   text-align: center !important;
   font-size: 13px;
   font-weight: 950;
-  letter-spacing: 0.6em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  background: rgba(21, 30, 67, 0.65);
+  background: rgba(2, 6, 23, 0.92);
 }
 
 /* Under-rubriker (VM/FM/SP/PCT/PPM) */
@@ -2179,35 +2179,6 @@ select:focus-visible {
 .leaderboard.leaderboard-wide th.lb-total,
 .leaderboard.leaderboard-wide td.lb-total {
   background-image: linear-gradient(rgba(37, 99, 235, 0.04), rgba(37, 99, 235, 0.04));
-}
-
-/* Grupphuvud (EASY / MEDEL / SVÅR / TOTAL) */
-.leaderboard thead th.lb-group,
-.leaderboard.leaderboard-wide thead th.lb-group-head {
-  padding: 8px 10px;
-}
-
-/* Underrubriker (SM VM FM PCT PPM osv) */
-.leaderboard.leaderboard-wide thead th.lb-sub {
-  padding: 10px 10px;
-}
-
-/* ===========================
-   Sticky header för Leaderboard
-   (så rubrikerna står still)
-=========================== */
-
-/* 1) Gör header-celler sticky */
-.lb-wide-wrap .leaderboard thead th{
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: rgba(2, 6, 23, 0.92);
-}
-
-.lb-wide-wrap .leaderboard.leaderboard-wide thead tr:nth-child(2) th{
-  top: 34px;
-  z-index: 4;
 }
 
 
@@ -2517,40 +2488,92 @@ select:focus-visible {
   word-break: break-all;
 }
 
-/* --- Leaderboard Wide: header tinting --- */
-/* Sticky header sets a default dark background for all <th>. These rules override it
-   so SCORE/ELO + difficulty groups get distinct colors. */
-.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-score-head{
-  background: linear-gradient(rgba(59, 130, 246, 0.30), rgba(59, 130, 246, 0.18)) !important;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.45);
-}
-.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-elo-head{
-  background: linear-gradient(rgba(168, 85, 247, 0.32), rgba(168, 85, 247, 0.18)) !important;
-  border-bottom: 1px solid rgba(168, 85, 247, 0.45);
+/* =========================================================
+   PATCH: Wide Leaderboard header colors (opaque / dark)
+   - SCORE and ELO get distinct dark gradients
+   - EASY / MEDIUM / HARD group headers get distinct dark gradients
+   - Sub-headers are slightly milder (still opaque)
+   This prevents “see-through” headers when scrolling.
+========================================================= */
+
+.lb-wide-wrap .leaderboard thead th{
+  /* if sticky header is enabled elsewhere, make sure it's fully opaque */
+  background: rgba(2, 6, 23, 1) !important;
+  backdrop-filter: none !important;
 }
 
-/* Difficulty group headers (row 1) */
+/* SCORE */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-score-head{
+  background: linear-gradient(to bottom, rgba(30, 58, 138, 1), rgba(15, 23, 42, 1)) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.55);
+}
+
+/* ELO */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-elo-head{
+  background: linear-gradient(to bottom, rgba(88, 28, 135, 1), rgba(15, 23, 42, 1)) !important;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.55);
+}
+
+/* Group headers (row 1) */
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-easy{
-  background: linear-gradient(rgba(34, 197, 94, 0.26), rgba(34, 197, 94, 0.18)) !important;
-  border-bottom: 1px solid rgba(34, 197, 94, 0.35);
+  background: linear-gradient(to bottom, rgba(20, 83, 45, 1), rgba(15, 23, 42, 1)) !important;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.45);
 }
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-medium{
-  background: linear-gradient(rgba(245, 158, 11, 0.26), rgba(245, 158, 11, 0.18)) !important;
-  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+  background: linear-gradient(to bottom, rgba(120, 53, 15, 1), rgba(15, 23, 42, 1)) !important;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.45);
 }
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-hard{
-  background: linear-gradient(rgba(239, 68, 68, 0.26), rgba(239, 68, 68, 0.18)) !important;
-  border-bottom: 1px solid rgba(239, 68, 68, 0.35);
+  background: linear-gradient(to bottom, rgba(127, 29, 29, 1), rgba(15, 23, 42, 1)) !important;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.45);
 }
 
-/* Difficulty sub-headers (row 2) – slightly more transparent than the group header */
+/* Sub-headers (row 2) */
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-easy{
-  background: linear-gradient(rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.10)) !important;
+  background: linear-gradient(to bottom, rgba(16, 64, 37, 1), rgba(15, 23, 42, 1)) !important;
 }
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-medium{
-  background: linear-gradient(rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.10)) !important;
+  background: linear-gradient(to bottom, rgba(92, 40, 12, 1), rgba(15, 23, 42, 1)) !important;
 }
 .lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-hard{
-  background: linear-gradient(rgba(239, 68, 68, 0.14), rgba(239, 68, 68, 0.10)) !important;
+  background: linear-gradient(to bottom, rgba(92, 20, 20, 1), rgba(15, 23, 42, 1)) !important;
 }
+
+/* Little depth so headers feel “soldered” to the top */
+.lb-wide-wrap .leaderboard thead th{
+  box-shadow: 0 8px 18px rgba(0,0,0,0.45);
+}
+
+/* Grupphuvud (EASY / MEDEL / SVÅR / TOTAL) */
+.leaderboard thead th.lb-group,
+.leaderboard.leaderboard-wide thead th.lb-group-head {
+  padding: 8px 10px;
+}
+
+/* Underrubriker (SM VM FM PCT PPM osv) */
+.leaderboard.leaderboard-wide thead th.lb-sub {
+  padding: 10px 10px;
+}
+
+/* ===========================
+   Sticky header för Leaderboard
+   (så rubrikerna står still)
+=========================== */
+
+/* 1) Gör header-celler sticky */
+.lb-wide-wrap .leaderboard thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+
+  /* Bas-färg om någon cell inte får egen gradient */
+  background: rgba(2, 6, 23, 0.98);
+}
+
+/* 2) Rad 2 (underrubriker) ska ligga under rad 1 */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead tr:nth-child(2) th {
+  top: 34px; /* rad 1 höjd ungefär */
+  z-index: 4;
+}
+
 
