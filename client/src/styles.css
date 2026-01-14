@@ -1228,7 +1228,7 @@ button:disabled {
 .click-pop-score {
   position: absolute;
   left: 50%;
-  bottom: 150px;
+  bottom: 190px;
   transform: translateX(-50%);
   z-index: 13;
   pointer-events: none;
