@@ -161,6 +161,7 @@ aboutTabs: {
   basic: "Basic",
   scoring: "Scoring",
   xp: "XP & Badges",
+  leaderboard: "Leaderboard",
 },
 
 aboutScoring: {
@@ -176,6 +177,36 @@ aboutScoring: {
   ex1: "34 km off and 5.0 s: dist ≈ 34/17000 → 2 pts, time ≈ 52 pts ⇒ total ≈ 54 pts.",
   ex2: "850 km off and 2.0 s: dist ≈ 50 pts, time ≈ 16 pts ⇒ total ≈ 66 pts.",
   ex3: "No click within 20 s: you get the max penalty (≈ 2000 points) for that round.",
+},
+
+aboutLeaderboard: {
+  p1: "The leaderboard shows stats per difficulty (Easy/Medium/Hard) plus Total. You can switch view and sorting.",
+  hColumns: "Abbreviations",
+  colLvl: "Your level (increases with XP and never goes down).",
+  colSm: "Matches played (total played in the selected difficulty).",
+  colVm: "Matches won.",
+  colFm: "Matches lost.",
+  colPct: "Win rate (VM/SM). Higher is better.",
+  colPpm: "Average points per match (lower is better).",
+  colScore: "Rank score (higher is better) computed from win rate + avg score, weighted by difficulty, match count, and level.",
+
+  hScore: "How SCORE is computed",
+  p2: "For each difficulty, two normalized values are computed: winrate = VM/SM (0–1) and ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
+  p3: "Per difficulty: skill = 0.5·winrate + 0.5·ppmNorm. Difficulties are combined with weights: Easy 1, Medium 4, Hard 8, and each difficulty also gets a match factor m = clamp(SM/20, 0, 1).",
+
+  hFormula: "Formula",
+  formula:
+    "ppmNorm_d = 1 - clamp(PPM_d / 2000, 0, 1)\n" +
+    "winrate_d = VM_d / SM_d\n" +
+    "skill_d = 0.5 * winrate_d + 0.5 * ppmNorm_d\n" +
+    "m_d = clamp(SM_d / 20, 0, 1)\n" +
+    "w_d: Easy=1, Medium=4, Hard=8\n" +
+    "S_skill = (Σ (w_d * m_d * skill_d)) / (Σ (w_d * m_d))\n" +
+    "F_level = 1 + (Lvl / 100)\n" +
+    "SCORE = round(10000 * S_skill * F_level)",
+
+  hNotes: "Notes",
+  p5: "The Total view uses the same computation, combining all difficulties using the weights above.",
 },
 
 aboutXp: {

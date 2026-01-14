@@ -190,21 +190,25 @@ aboutLeaderboard: {
   colFm: "Partidas perdidas.",
   colPct: "Porcentaje de victoria (VM/SM). Más alto es mejor.",
   colPpm: "Puntos medios por partida (más bajo es mejor).",
-  colScore: "Un valor de ranking combinado que pondera rendimiento, dificultad, partidas y nivel.",
+  colScore: "Puntuación de ranking (más alto es mejor) calculada con % de victorias + media, ponderada por dificultad, nº de partidas y nivel.",
 
-  hScore: "¿Qué entra en SCORE?",
-  p2: "SCORE usa tanto el % de victorias como el PPM, pero Medio y Difícil cuentan mucho más que Fácil.",
-  p3: "También tiene en cuenta cuántas partidas tienes en cada dificultad (pocas partidas influyen menos).",
-  p4: "Para evitar ‘farmear’ solo Fácil, hay un bonus de dificultad: alcanzas mayor potencial demostrando nivel en Medio/Difícil.",
+  hScore: "Cómo se calcula SCORE",
+  p2: "Para cada dificultad se calculan dos valores normalizados: winrate = VM/SM (0–1) y ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
+  p3: "Por dificultad: skill = 0.5·winrate + 0.5·ppmNorm. Luego se combinan las dificultades con pesos: Fácil 1, Medio 4, Difícil 8, y cada dificultad tiene además un factor de partidas m = clamp(SM/20, 0, 1).",
 
-  hFormula: "Fórmula simplificada (idea)",
+  hFormula: "Fórmula",
   formula:
-    "SCORE ≈ 10000 · S_skill · M_diff · F_matches · F_level\n" +
-    "S_skill = media ponderada de (winrate + PPM) por dificultad\n" +
-    "Pesos: Fácil 1, Medio 4, Difícil 8 (necesita partidas para contar del todo)",
+    "ppmNorm_d = 1 - clamp(PPM_d / 2000, 0, 1)\n" +
+    "winrate_d = VM_d / SM_d\n" +
+    "skill_d = 0.5 * winrate_d + 0.5 * ppmNorm_d\n" +
+    "m_d = clamp(SM_d / 20, 0, 1)\n" +
+    "w_d: Fácil=1, Medio=4, Difícil=8\n" +
+    "S_skill = (Σ (w_d * m_d * skill_d)) / (Σ (w_d * m_d))\n" +
+    "F_level = 1 + (Lvl / 100)\n" +
+    "SCORE = round(10000 * S_skill * F_level)",
 
   hNotes: "A tener en cuenta",
-  p5: "Con pocas partidas, SCORE es menos seguro. Más partidas (especialmente en Medio/Difícil) hace la clasificación más estable.",
+  p5: "La vista Total usa el mismo cálculo, combinando todas las dificultades con los pesos anteriores.",
 },
 
 aboutXp: {

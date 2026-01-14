@@ -192,20 +192,25 @@ aboutLeaderboard: {
   colFm: "Förlorade matcher.",
   colPct: "Vinstprocent (VM/SM). Högre är bättre.",
   colPpm: "Genomsnittlig poäng per match (lägre är bättre).",
-  colScore: "En sammanvägd rank‑poäng som väger in prestation, svårighet, matcher och level.",
+  colScore: "Rank-poäng (högre är bättre) som räknas från vinstprocent + snittpoäng, viktat per svårighet, antal matcher och level.",
 
-  hScore: "Vad vägs in i SCORE?",
-  p2: "SCORE bygger på både vinstprocent och PPM, men Medel och Svår väger mycket tyngre än Enkel.",
-  p3: "SCORE tar också hänsyn till hur många matcher du spelat på varje svårighet (få matcher ger mindre genomslag).",
+  hScore: "Så räknas SCORE",
+  p2: "För varje svårighet räknas två normaliserade delvärden: winrate = VM/SM (0–1) och ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
+  p3: "Delvärdet per svårighet blir skill = 0.5·winrate + 0.5·ppmNorm. Sedan vägs svårigheterna ihop med vikter: Enkel 1, Medel 4, Svår 8. Varje svårighet får även en match-faktor m = clamp(SM/20, 0, 1).",
 
-  hFormula: "Förenklad formel (idé)",
+  hFormula: "Formel",
   formula:
-    "SCORE ≈ 10000 · S_skill · M_diff · F_matches · F_level\n" +
-    "S_skill = viktat snitt av (winrate + PPM) per svårighet\n" +
-    "Vikter: Easy 1, Medium 4, Hard 8",
+    "ppmNorm_d = 1 - clamp(PPM_d / 2000, 0, 1)\n" +
+    "winrate_d = VM_d / SM_d\n" +
+    "skill_d = 0.5 * winrate_d + 0.5 * ppmNorm_d\n" +
+    "m_d = clamp(SM_d / 20, 0, 1)\n" +
+    "w_d: Enkel=1, Medel=4, Svår=8\n" +
+    "S_skill = (Σ (w_d * m_d * skill_d)) / (Σ (w_d * m_d))\n" +
+    "F_level = 1 + (Lvl / 100)\n" +
+    "SCORE = round(10000 * S_skill * F_level)",
 
   hNotes: "Bra att veta",
-  p5: "Har du få matcher blir SCORE mer osäker.",
+  p5: "Total-vyn använder samma beräkning men väger samman alla svårigheter med vikterna ovan.",
 },
 
 aboutXp: {
