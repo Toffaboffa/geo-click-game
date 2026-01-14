@@ -193,7 +193,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
 
   // Lobby chat (försvinner efter 5 min)
-  const CHAT_TTL_MS = 5 * 60 * 1000;
+  const CHAT_TTL_MS = 15 * 60 * 1000;
   const [chatInput, setChatInput] = useState("");
   const [chatMsgs, setChatMsgs] = useState([]);
   const chatListRef = useRef(null);
