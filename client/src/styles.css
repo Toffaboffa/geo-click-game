@@ -1057,6 +1057,26 @@ button:disabled {
   opacity: 0.55;
 }
 
+.ready-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.ready-hint {
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
 /* ---------- Finish overlay ---------- */
 .finish-overlay {
   position: absolute;
