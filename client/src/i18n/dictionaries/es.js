@@ -218,6 +218,7 @@ aboutXp: {
     loadingMap: "Cargando mapa…",
     waitingForOthers: "Esperando a otros…",
     readyForNext: "Listo para la siguiente…",
+    ctrlMagnifierHint: "Mantén presionada la tecla CTRL para mostrar la lupa",
 
     currentTotalScore: "Puntuación total actual",
     pop: "Pob.",
