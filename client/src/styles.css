@@ -2078,7 +2078,7 @@ select:focus-visible {
   padding: 9px 10px;
 }
 .leaderboard.leaderboard-wide tbody td {
-  padding: 9px 10px;
+  padding: 3px 6px 3px 6px;
 }
 
 /* Små förbättringar för rank/LVL i wide */
