@@ -202,33 +202,38 @@ function pickExistingCols(existingMap, cols) {
 // Designparametrar (tunna gärna):
 const SCORE_PARAMS = Object.freeze({
   // Vinst-smoothing (Bayes/Laplace)
-  winPriorStrength: 10, // a
-  winPriorP: 0.5, // p0
+  winPriorStrength: 12, // lite stabilare PCT när N är litet
+  winPriorP: 0.5,
 
   // PPM -> (0..1] (lägre PPM => högre score)
-  ppmCurveK: 1.5, // k
-  ppmC: { easy: 500, medium: 1200, hard: 1800 }, // C_d (fast, ingen rolling)
+  // lite mjukare kurva än innan för att inte överdriva skillnader
+  ppmCurveK: 1.35,
+  ppmC: { easy: 650, medium: 1350, hard: 1750 },
 
-  // Mix win vs ppm per diff
-  lambda: { easy: 0.55, medium: 0.60, hard: 0.65 },
+  // Mix win vs ppm per diff (PCT + PPM är huvudsignal)
+  // små skillnader mellan svårigheter, inte stora hopp
+  lambda: { easy: 0.60, medium: 0.62, hard: 0.64 },
 
-  // Svårighetsvikter (anti-easy-farm)
-  w: { easy: 1, medium: 4, hard: 8 },
+  // Svårighetsvikter (mycket mindre gap än 1/4/8)
+  w: { easy: 1.0, medium: 1.8, hard: 2.4 },
 
-  // Confidence per diff (avtagande, kräver matcher för att väga tungt)
-  confK: { easy: 10, medium: 8, hard: 6 },
+  // Confidence per diff (kräver matcher, men inte lika hårt)
+  confK: { easy: 12, medium: 10, hard: 9 },
 
-  // Difficulty exposure multiplier
-  exposureFloor: 0.65,
+  // Exposure: easy-only ska fortfarande inte maxa, men mildare straff
+  exposureFloor: 0.85,
 
-  // Match + level multipliers
-  matchK: 20,
-  levelB: 0.20,
-  levelK: 10,
+  // Match-trust (avtagande)
+  matchK: 30,
+
+  // Liten “vinster”-faktor (mest tie-breaker-ish)
+  winsB: 0.07, // max ~ +7–10% beroende på clamp
+  winsK: 40,   // ungefär där bonusen “mättar” tydligt
 
   // Output scaling
   scale: 10000,
 });
+
 
 function _toFiniteNum(v, fallback = null) {
   const n = typeof v === "number" ? v : Number(v);
@@ -271,6 +276,7 @@ function computeLeaderboardScore(row) {
   // Row comes from leaderboard_wide (snake-ish keys)
   const lvl = Math.max(0, _toFiniteNum(row?.lvl, 0));
 
+  // Läs svårighetsfält (defensivt)
   const e = {
     played: Math.max(0, _toFiniteNum(row?.e_sp, 0)),
     wins: Math.max(0, _toFiniteNum(row?.e_vm, 0)),
@@ -287,6 +293,7 @@ function computeLeaderboardScore(row) {
     ppm: _toFiniteNum(row?.s_ppm, null),
   };
 
+  // Total played: ta t_sp om den finns, annars summera
   const tPlayed = _toFiniteNum(row?.t_sp, null);
   const Ntot = Math.max(0, tPlayed != null ? tPlayed : e.played + m.played + h.played);
   if (Ntot <= 0) return 0;
@@ -299,11 +306,12 @@ function computeLeaderboardScore(row) {
     { key: "hard", ...h },
   ];
 
-  // Per-difficulty performance S_d
+  // Per-difficulty performance S_d + confidence c_d
   for (const d of per) {
     const Pwin = _winAdj(d.wins, d.played, p.winPriorStrength, p.winPriorP);
     const Sppm = _ppmToScore(d.ppm, p.ppmC[d.key], p.ppmCurveK);
     const lam = _toFiniteNum(p.lambda[d.key], 0.6);
+
     d.S = Math.min(1, Math.max(0, lam * Pwin + (1 - lam) * Sppm));
     d.c = d.played > 0 ? _confidence(d.played, p.confK[d.key]) : 0;
     d.w = _toFiniteNum(p.w[d.key], 1);
@@ -312,15 +320,21 @@ function computeLeaderboardScore(row) {
   // Weighted skill score with confidence gating
   let num = 0;
   let den = 0;
+
+  // Exposure ska INTE bero på confidence (annars blir “straff” två gånger för få matcher).
+  // Den ska bara spegla att man faktiskt exponerat sig för medium/hard överhuvudtaget.
   let exposureNum = 0;
-  const exposureDen = p.w.easy + p.w.medium + p.w.hard;
+  const exposureDen = (p.w?.easy ?? 1) + (p.w?.medium ?? 1) + (p.w?.hard ?? 1);
 
   for (const d of per) {
     const wc = d.w * d.c;
     if (wc > 0) {
       num += wc * d.S;
       den += wc;
-      exposureNum += wc;
+    }
+    // Exposure: vikt * (har spelat något alls i svårigheten)
+    if (d.played > 0) {
+      exposureNum += d.w;
     }
   }
 
@@ -337,7 +351,6 @@ function computeLeaderboardScore(row) {
   const FL = 1 + p.levelB * Math.log(1 + lvl / p.levelK);
 
   const raw = p.scale * S_skill * Mdiff * FN * FL;
-  // SCORE ska vara ett stabilt heltal i UI
   const out = Math.round(Math.max(0, raw));
   return Number.isFinite(out) ? out : 0;
 }
