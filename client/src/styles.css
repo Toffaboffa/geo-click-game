@@ -2148,7 +2148,7 @@ select:focus-visible {
   font-weight: 950;
   letter-spacing: 0.6em;
   text-transform: uppercase;
-  background: rgba(2, 6, 23, 0.92);
+  background: rgba(21, 30, 67, 0.65);
 }
 
 /* Under-rubriker (VM/FM/SP/PCT/PPM) */
@@ -2184,7 +2184,7 @@ select:focus-visible {
 /* Grupphuvud (EASY / MEDEL / SVÅR / TOTAL) */
 .leaderboard thead th.lb-group,
 .leaderboard.leaderboard-wide thead th.lb-group-head {
-  padding: 16px 10px;
+  padding: 8px 10px;
 }
 
 /* Underrubriker (SM VM FM PCT PPM osv) */
@@ -2205,10 +2205,8 @@ select:focus-visible {
   background: rgba(2, 6, 23, 0.92);
 }
 
-/* 2) Om du har TVÅ header-rader (grupp-rad + sub-rad) i ALLA-läget:
-      flytta ner rad 2 så den hamnar under rad 1 */
 .lb-wide-wrap .leaderboard.leaderboard-wide thead tr:nth-child(2) th{
-  top: 52px; /* justera vid behov (48–60 brukar vara rätt) */
+  top: 34px;
   z-index: 4;
 }
 

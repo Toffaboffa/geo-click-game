@@ -759,17 +759,35 @@ app.get("/api/leaderboard-wide", async (req, res) => {
     const sortRaw = String(req.query.sort || "ppm").trim().toLowerCase();
     const dirRaw = String(req.query.dir || "").trim().toLowerCase();
 
-    const allowedSort = new Set(["ppm", "pct", "sp", "vm", "fm", "score"]);
+    // sort:
+    // - ppm/pct/sp/vm/fm: från leaderboard_wide (kolumner per difficulty)
+    // - score: server-beräknad (anti-easy-farm) → sorteras i JS
+    // - elo: från users.elo_rating (joinas in ovan) → sorteras i SQL
+    const allowedSort = new Set(["ppm", "pct", "sp", "vm", "fm", "score", "elo"]);
     const sort = allowedSort.has(sortRaw) ? sortRaw : "ppm";
 
+    // ELO-kolumner kan saknas (om du inte har migrerat DB än).
+    // Vi kollar detta tidigt så att sort=elo kan ge ett tydligt fel.
+    const hasElo = await hasColumn(client, "users", "elo_rating");
+    const hasEloPlayed = await hasColumn(client, "users", "elo_played");
+
     // Default direction per sort
-    const defaultDir = sort === "pct" || sort === "vm" || sort === "score" ? "desc" : "asc";
+    const defaultDir =
+      sort === "pct" || sort === "vm" || sort === "score" || sort === "elo" ? "desc" : "asc";
     const dir = dirRaw === "asc" || dirRaw === "desc" ? dirRaw : defaultDir;
 
     // score är en server-beräknad kolumn (anti-easy-farm). Vi hämtar en större mängd rader och sorterar i JS.
+    // elo sorteras på users.elo_rating (join i selectSql).
     const isScoreSort = sort === "score";
-    const col = isScoreSort ? null : `${prefix}${sort}`;
-    const playedCol = isScoreSort ? "t_sp" : `${prefix}sp`;
+    const isEloSort = sort === "elo";
+
+    if (isEloSort && !hasElo) {
+      return res.status(400).json({ error: "ELO is not enabled" });
+    }
+
+    const col = isScoreSort || isEloSort ? null : `${prefix}${sort}`;
+    // Vid score/elo vill vi visa globalt (total) istället för per-difficulty.
+    const playedCol = isScoreSort || isEloSort ? "t_sp" : `${prefix}sp`;
 
     const allowedCols = new Set([
       "e_ppm",
@@ -798,16 +816,12 @@ app.get("/api/leaderboard-wide", async (req, res) => {
       return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
     }
 
-    if (!isScoreSort && !allowedCols.has(col)) {
+    if (!isScoreSort && !isEloSort && !allowedCols.has(col)) {
       return res.status(400).json({ error: "Ogiltiga sort-parametrar" });
     }
 
     // För score-sort hämtar vi fler rader för att kunna sortera rätt efter beräkningen.
     const sqlLimit = isScoreSort ? Math.max(limit, 120) : limit;
-
-    // Optional: hämta ELO från users (utan att ändra viewen)
-    const hasElo = await hasColumn(client, "users", "elo_rating");
-    const hasEloPlayed = await hasColumn(client, "users", "elo_played");
 
     const selectSql = hasElo
       ? `select lb.*, u.elo_rating${hasEloPlayed ? ", u.elo_played" : ""}
@@ -816,9 +830,10 @@ app.get("/api/leaderboard-wide", async (req, res) => {
       : `select lb.*
          from public.leaderboard_wide lb`;
 
-    const colRef = isScoreSort ? null : `lb.${col}`;
+    const colRef = isScoreSort ? null : isEloSort ? "u.elo_rating" : `lb.${col}`;
     const playedRef = `lb.${playedCol}`;
-    const pctRef = `lb.${prefix}pct`;
+    // Vid score/elo vill vi alltid använda total-träffsäkerhet som tie-breaker
+    const pctRef = isScoreSort || isEloSort ? "lb.t_pct" : `lb.${prefix}pct`;
 
     const { rows: rawRows } = await client.query(
       isScoreSort

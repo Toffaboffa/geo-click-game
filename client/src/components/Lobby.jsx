@@ -31,6 +31,7 @@ const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
 
 const SORT_KEYS = [
   { key: "score", label: "SCORE" },
+  { key: "elo", label: "ELO" },
   { key: "ppm", label: "PPM" },
   { key: "pct", label: "PCT" },
   { key: "sp", label: "SP" },
