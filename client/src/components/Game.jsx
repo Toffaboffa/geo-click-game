@@ -807,7 +807,7 @@ useEffect(() => {
       clickPopHideRef.current = setTimeout(() => {
         setClickPopScore(null);
         clickPopHideRef.current = null;
-      }, 900);
+      }, 1400);
     } else {
       setMyPendingScore(null);
       setMyPendingRoundIndex(null);
