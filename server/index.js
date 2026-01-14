@@ -2921,6 +2921,10 @@ io.on("connection", (socket) => {
     }
 
     removeUserFromAllQueues(currentUser);
+	// Keep the challenger's client UI in sync: they might have been queued,
+	// but challenging pulls them out of the queue.
+	socket.emit("queue_state", { queued: false, difficulty: null });
+
     lobby.queues[difficulty].add(currentUser);
 
     socket.emit("queue_state", { queued: true, difficulty });
