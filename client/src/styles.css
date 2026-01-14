@@ -2078,7 +2078,7 @@ select:focus-visible {
   padding: 9px 10px;
 }
 .leaderboard.leaderboard-wide tbody td {
-  padding: 9px 10px;
+  padding: 3px 6px 3px 6px;
 }
 
 /* Små förbättringar för rank/LVL i wide */
@@ -2107,6 +2107,22 @@ select:focus-visible {
   background-image: linear-gradient(rgba(168, 85, 247, 0.06), rgba(168, 85, 247, 0.06));
 }
 
+
+/* ELO-kolumnen (direkt efter SCORE) */
+.leaderboard.leaderboard-wide th.lb-elo-head {
+  width: 86px;
+  text-align: center !important;
+  font-weight: 950;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  background: rgba(2, 6, 23, 0.92);
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+.leaderboard.leaderboard-wide td.lb-elo {
+  font-weight: 900;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  background-image: linear-gradient(rgba(34, 197, 94, 0.05), rgba(34, 197, 94, 0.05));
+}
 /* När panelen är 520px bred: tabellen får scroll i wrappern */
 .panel .lb-wide-wrap {
   max-width: 100%;
@@ -2130,7 +2146,7 @@ select:focus-visible {
   text-align: center !important;
   font-size: 13px;
   font-weight: 950;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.6em;
   text-transform: uppercase;
   background: rgba(2, 6, 23, 0.92);
 }
@@ -2163,6 +2179,37 @@ select:focus-visible {
 .leaderboard.leaderboard-wide th.lb-total,
 .leaderboard.leaderboard-wide td.lb-total {
   background-image: linear-gradient(rgba(37, 99, 235, 0.04), rgba(37, 99, 235, 0.04));
+}
+
+/* Grupphuvud (EASY / MEDEL / SVÅR / TOTAL) */
+.leaderboard thead th.lb-group,
+.leaderboard.leaderboard-wide thead th.lb-group-head {
+  padding: 16px 10px;
+}
+
+/* Underrubriker (SM VM FM PCT PPM osv) */
+.leaderboard.leaderboard-wide thead th.lb-sub {
+  padding: 10px 10px;
+}
+
+/* ===========================
+   Sticky header för Leaderboard
+   (så rubrikerna står still)
+=========================== */
+
+/* 1) Gör header-celler sticky */
+.lb-wide-wrap .leaderboard thead th{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(2, 6, 23, 0.92);
+}
+
+/* 2) Om du har TVÅ header-rader (grupp-rad + sub-rad) i ALLA-läget:
+      flytta ner rad 2 så den hamnar under rad 1 */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead tr:nth-child(2) th{
+  top: 52px; /* justera vid behov (48–60 brukar vara rätt) */
+  z-index: 4;
 }
 
 

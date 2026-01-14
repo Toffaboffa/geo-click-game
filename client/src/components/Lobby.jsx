@@ -1084,10 +1084,13 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                             </th>
                           )}
 
-                        <th className="lb-score-head" rowSpan={2}>
-                          SCORE
-                        </th>
-                        </tr>
+						<th className="lb-score-head" rowSpan={2}>
+						  SCORE
+						</th>
+						<th className="lb-elo-head" rowSpan={2}>
+						  ELO
+						</th>
+						</tr>
 
                         <tr>
                           <th className="lb-rank">#</th>
@@ -1163,6 +1166,9 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                           <th className="lb-score-head" rowSpan={2}>
                             SCORE
                           </th>
+						  <th className="lb-elo-head" rowSpan={2}>
+						    ELO
+						  </th>
                         </tr>
 
                         <tr>
@@ -1276,7 +1282,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                             </>
                           )}
 
-                          <td className="lb-score">{fmtIntOrDash(u?.score)}</td>
+							<td className="lb-score">{fmtIntOrDash(u?.score)}</td>
+							<td className="lb-elo">{fmtIntOrDash(u?.elo_rating)}</td>
                         </tr>
                       );
                     })}

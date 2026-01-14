@@ -153,6 +153,10 @@ function numOr(v, fallback = 0) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
+function numOrNull(v) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 function normalizeBadge(b) {
   const o = safeObj(b);
   const code = o.code || o.badge_code || o.badgeCode || o.key;
@@ -193,6 +197,11 @@ function normalizeDelta(d) {
 
     xpLevelBase: numOr(o.xpLevelBase ?? o.xp_level_base, 0),
     xpNextLevelAt: numOr(o.xpNextLevelAt ?? o.xp_next_level_at, 0),
+
+    // Elo (new) - present only for rated 1v1 matches
+    eloBefore: numOrNull(o.eloBefore ?? o.elo_before),
+    eloAfter: numOrNull(o.eloAfter ?? o.elo_after),
+    eloDelta: numOrNull(o.eloDelta ?? o.elo_delta),
   };
 }
 
@@ -1281,6 +1290,27 @@ useEffect(() => {
 	        </div>
 	      ) : null}
 	    </div>
+  )}
+
+
+{/* ELO (finish overlay) */}
+{!isPractice &&
+  progression.myDelta &&
+  progression.myDelta.eloDelta != null &&
+  progression.myDelta.eloBefore != null &&
+  progression.myDelta.eloAfter != null && (
+    <div className="finish-xp">
+      <div className="finish-xp-grid">
+        <div className="finish-xp-label">ELO</div>
+        <div className="finish-xp-val">
+          {progression.myDelta.eloDelta >= 0 ? "+" : ""}
+          {Math.round(progression.myDelta.eloDelta)}{" "}
+          <span style={{ opacity: 0.85 }}>
+            ({Math.round(progression.myDelta.eloBefore)} → {Math.round(progression.myDelta.eloAfter)})
+          </span>
+        </div>
+      </div>
+    </div>
   )}
 
 {/* ✅ Progression: kompakt rad + ikonchips (som Lobby/Progression) */}

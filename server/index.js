@@ -363,6 +363,46 @@ function computeLeaderboardScore(row) {
 }
 
 // =====================
+// ELO (separat från SCORE)
+// =====================
+// - Elo uppdateras ENDAST för riktiga 1v1-matcher (ej Öva, ej bot, ej walkover)
+// - Provisional: snabbare rörlighet första 10 rated-matcher
+// - ELO ska inte påverka SCORE. Det är ett separat spår.
+
+function eloExpected(rA, rB) {
+  // Standard Elo expected score
+  const A = Number.isFinite(rA) ? rA : 1000;
+  const B = Number.isFinite(rB) ? rB : 1000;
+  return 1 / (1 + Math.pow(10, (B - A) / 400));
+}
+
+function eloOutcome(myName, winnerName) {
+  // 1 = vinst, 0 = förlust, 0.5 = oavgjort
+  if (!winnerName) return 0.5;
+  return myName === winnerName ? 1 : 0;
+}
+
+function eloKFactor(eloPlayed) {
+  const n = Number.isFinite(eloPlayed) ? eloPlayed : 0;
+  return n < 10 ? 40 : 24;
+}
+
+async function hasTable(dbClient, tableName) {
+  const key = `__table__.${tableName}`;
+  if (_colCache.has(key)) return _colCache.get(key);
+  const { rows } = await dbClient.query(
+    `select 1
+     from information_schema.tables
+     where table_schema='public' and table_name=$1
+     limit 1`,
+    [tableName]
+  );
+  const ok = rows.length > 0;
+  _colCache.set(key, ok);
+  return ok;
+}
+
+// =====================
 // Basic routes
 // =====================
 app.get("/api/me", authMiddleware, async (req, res) => {
@@ -375,6 +415,10 @@ app.get("/api/me", authMiddleware, async (req, res) => {
     const optionalCols = [
       "level",
       "badges_count",
+      // ELO (separat rating-spår)
+      "elo_rating",
+      "elo_played",
+      "elo_peak",
       "win_streak",
       "best_win_streak",
       "best_match_score",
@@ -702,6 +746,7 @@ app.get("/api/leaderboard", async (_req, res) => {
 
 // ✅ NEW: Wide leaderboard (easy/medium/hard/total) från public.leaderboard_wide
 app.get("/api/leaderboard-wide", async (req, res) => {
+  const client = await pool.connect();
   try {
     const mode = normalizeDifficulty(req.query.mode || "total");
     const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50) || 50));
@@ -760,23 +805,36 @@ app.get("/api/leaderboard-wide", async (req, res) => {
     // För score-sort hämtar vi fler rader för att kunna sortera rätt efter beräkningen.
     const sqlLimit = isScoreSort ? Math.max(limit, 120) : limit;
 
-    const { rows: rawRows } = await pool.query(
+    // Optional: hämta ELO från users (utan att ändra viewen)
+    const hasElo = await hasColumn(client, "users", "elo_rating");
+    const hasEloPlayed = await hasColumn(client, "users", "elo_played");
+
+    const selectSql = hasElo
+      ? `select lb.*, u.elo_rating${hasEloPlayed ? ", u.elo_played" : ""}
+         from public.leaderboard_wide lb
+         left join public.users u on u.username = lb.namn`
+      : `select lb.*
+         from public.leaderboard_wide lb`;
+
+    const colRef = isScoreSort ? null : `lb.${col}`;
+    const playedRef = `lb.${playedCol}`;
+    const pctRef = `lb.${prefix}pct`;
+
+    const { rows: rawRows } = await client.query(
       isScoreSort
-        ? `select *
-           from public.leaderboard_wide
-           where coalesce(hidden,false) = false
-             and ${playedCol} > 0
-           order by namn asc
+        ? `${selectSql}
+           where coalesce(lb.hidden,false) = false
+             and ${playedRef} > 0
+           order by lb.namn asc
            limit $1`
-        : `select *
-           from public.leaderboard_wide
-           where coalesce(hidden,false) = false
-             and ${playedCol} > 0
+        : `${selectSql}
+           where coalesce(lb.hidden,false) = false
+             and ${playedRef} > 0
            order by
-             ${col} ${dir} nulls last,
-             ${prefix}pct desc nulls last,
-             ${playedCol} desc,
-             namn asc
+             ${colRef} ${dir} nulls last,
+             ${pctRef} desc nulls last,
+             ${playedRef} desc,
+             lb.namn asc
            limit $1`,
       [sqlLimit]
     );
@@ -804,6 +862,8 @@ app.get("/api/leaderboard-wide", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
   }
 });
 
@@ -2835,6 +2895,121 @@ if (bothReal) {
   // Bot/ensam-spelare i icke-öva: behåll endast badgeDelta (vanligen tomt)
   progressionDelta = badgeDelta || {};
 }
+
+        // =====================
+        // ELO: uppdatera endast för riktiga 1v1-matcher (ej Öva, ej bot, ej walkover)
+        // =====================
+        try {
+          const rated1v1 = bothReal && !match.isSolo && !match.isPractice && !isWalkover;
+          if (rated1v1) {
+            const hasEloRating = await hasColumn(client, "users", "elo_rating");
+            if (hasEloRating) {
+              const hasEloPlayed = await hasColumn(client, "users", "elo_played");
+              const hasEloPeak = await hasColumn(client, "users", "elo_peak");
+              const hasEloUpdatedAt = await hasColumn(client, "users", "elo_updated_at");
+
+              const { rows: eloRows } = await client.query(
+                `select username,
+                        coalesce(elo_rating, 1000) as elo_rating,
+                        coalesce(elo_played, 0) as elo_played,
+                        coalesce(elo_peak, 1000) as elo_peak
+                 from users
+                 where username = any($1::text[])
+                 for update`,
+                [realPlayers]
+              );
+
+              const byU = new Map(eloRows.map((r) => [r.username, r]));
+              const A = pA;
+              const B = pB;
+              const a = byU.get(A);
+              const b = byU.get(B);
+
+              if (a && b) {
+                const rA = Number(a.elo_rating ?? 1000);
+                const rB = Number(b.elo_rating ?? 1000);
+
+                const expA = eloExpected(rA, rB);
+                const expB = 1 - expA;
+
+                const sA = eloOutcome(A, winner);
+                const sB = eloOutcome(B, winner);
+
+                const kA = eloKFactor(Number(a.elo_played ?? 0));
+                const kB = eloKFactor(Number(b.elo_played ?? 0));
+
+                const newA = Math.round(rA + kA * (sA - expA));
+                const newB = Math.round(rB + kB * (sB - expB));
+
+                const dA = newA - rA;
+                const dB = newB - rB;
+
+                // Uppdatera båda användare
+                const setParts = [];
+                const params = [];
+                // bygg per user-update för att kunna använda olika rating
+                async function updateUserElo(u, newR) {
+                  const parts = ["elo_rating = $2"]; 
+                  const p = [u, newR];
+                  let idx = 3;
+                  if (hasEloPlayed) {
+                    parts.push(`elo_played = coalesce(elo_played,0) + 1`);
+                  }
+                  if (hasEloPeak) {
+                    parts.push(`elo_peak = greatest(coalesce(elo_peak, $2), $2)`);
+                  }
+                  if (hasEloUpdatedAt) {
+                    parts.push(`elo_updated_at = now()`);
+                  }
+                  await client.query(`update users set ${parts.join(", ")} where username = $1`, p);
+                }
+
+                await updateUserElo(A, newA);
+                await updateUserElo(B, newB);
+
+                // Skriv Elo-logg (om tabellen finns)
+                const canLog = await hasTable(client, "elo_log");
+                if (canLog) {
+                  await client.query(
+                    `insert into public.elo_log
+                      (match_id, p1, p2, p1_before, p1_after, p1_delta, p2_before, p2_after, p2_delta, expected_p1, k_used, outcome)
+                     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                    [
+                      String(match.id),
+                      A,
+                      B,
+                      rA,
+                      newA,
+                      dA,
+                      rB,
+                      newB,
+                      dB,
+                      expA,
+                      Math.max(kA, kB),
+                      sA,
+                    ]
+                  );
+                }
+
+                // Lägg in i progressionDelta så klienten kan visa efter match
+                progressionDelta[A] = {
+                  ...(progressionDelta[A] || {}),
+                  eloBefore: rA,
+                  eloAfter: newA,
+                  eloDelta: dA,
+                };
+                progressionDelta[B] = {
+                  ...(progressionDelta[B] || {}),
+                  eloBefore: rB,
+                  eloAfter: newB,
+                  eloDelta: dB,
+                };
+              }
+            }
+          }
+        } catch (e) {
+          console.error("ELO update error", e);
+        }
       }
 
       await client.query("commit");
