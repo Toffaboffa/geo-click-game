@@ -197,16 +197,15 @@ aboutLeaderboard: {
   hScore: "Vad vägs in i SCORE?",
   p2: "SCORE bygger på både vinstprocent och PPM, men Medel och Svår väger mycket tyngre än Enkel.",
   p3: "SCORE tar också hänsyn till hur många matcher du spelat på varje svårighet (få matcher ger mindre genomslag).",
-  p4: "För att undvika att man bara spelar Enkel finns en svårighets‑bonus: du når högre potential när du visar form på Medel/Svår.",
 
   hFormula: "Förenklad formel (idé)",
   formula:
     "SCORE ≈ 10000 · S_skill · M_diff · F_matches · F_level\n" +
     "S_skill = viktat snitt av (winrate + PPM) per svårighet\n" +
-    "Vikter: Easy 1, Medium 4, Hard 8 (kräver matcher för fullt genomslag)",
+    "Vikter: Easy 1, Medium 4, Hard 8",
 
   hNotes: "Bra att veta",
-  p5: "Har du få matcher blir SCORE mer osäker. När du spelar fler matcher (särskilt på Medel/Svår) blir rankingen stabilare.",
+  p5: "Har du få matcher blir SCORE mer osäker.",
 },
 
 aboutXp: {
