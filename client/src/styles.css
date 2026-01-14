@@ -2516,3 +2516,41 @@ select:focus-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   word-break: break-all;
 }
+
+/* --- Leaderboard Wide: header tinting --- */
+/* Sticky header sets a default dark background for all <th>. These rules override it
+   so SCORE/ELO + difficulty groups get distinct colors. */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-score-head{
+  background: linear-gradient(rgba(59, 130, 246, 0.30), rgba(59, 130, 246, 0.18)) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.45);
+}
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-elo-head{
+  background: linear-gradient(rgba(168, 85, 247, 0.32), rgba(168, 85, 247, 0.18)) !important;
+  border-bottom: 1px solid rgba(168, 85, 247, 0.45);
+}
+
+/* Difficulty group headers (row 1) */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-easy{
+  background: linear-gradient(rgba(34, 197, 94, 0.26), rgba(34, 197, 94, 0.18)) !important;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.35);
+}
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-medium{
+  background: linear-gradient(rgba(245, 158, 11, 0.26), rgba(245, 158, 11, 0.18)) !important;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+}
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-group-head.lb-hard{
+  background: linear-gradient(rgba(239, 68, 68, 0.26), rgba(239, 68, 68, 0.18)) !important;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* Difficulty sub-headers (row 2) – slightly more transparent than the group header */
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-easy{
+  background: linear-gradient(rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.10)) !important;
+}
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-medium{
+  background: linear-gradient(rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.10)) !important;
+}
+.lb-wide-wrap .leaderboard.leaderboard-wide thead th.lb-sub.lb-hard{
+  background: linear-gradient(rgba(239, 68, 68, 0.14), rgba(239, 68, 68, 0.10)) !important;
+}
+
