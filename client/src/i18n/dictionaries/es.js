@@ -97,7 +97,7 @@ export default {
       toggleHide: "Ocultar chat",
       placeholder: "Escribe un mensaje…",
       send: "Enviar",
-      ttl: "Desaparece en 5 min",
+      ttl: "Desaparece en 15 min",
       empty: "Aún no hay mensajes.",
     },
     queue: {
