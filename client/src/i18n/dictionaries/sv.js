@@ -3,7 +3,7 @@ export default {
     appName: "GeoSense",
     language: "Språk",
     other: "Övrigt",
-    loading: "Loggar in. Vänta...",
+    loading: "Laddar",
     close: "Stäng",
     logout: "Logga ut",
     leave: "Lämna",
@@ -220,6 +220,7 @@ aboutXp: {
     loadingMap: "Laddar karta…",
     waitingForOthers: "Väntar på andra…",
     readyForNext: "Redo för nästa…",
+    ctrlMagnifierHint: "Håll in CTRL på tangentbordet för att visa förstoringsglaset",
 
     currentTotalScore: "Aktuell totalpoäng",
     pop: "Pop",
