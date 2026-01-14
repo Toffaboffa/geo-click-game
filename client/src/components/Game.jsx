@@ -701,7 +701,7 @@ useEffect(() => {
 
       // endast multiplayer: visa “Redo för nästa”
       if (!isPractice) {
-        setTimeout(() => setShowReadyButton(true), 3500);
+        setTimeout(() => setShowReadyButton(true), 2000);
       }
     };
 
