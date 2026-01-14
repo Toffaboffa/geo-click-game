@@ -1195,7 +1195,7 @@ function emitRoundResultAndIntermission(match, round) {
 
 	match.readyTimeout = setTimeout(() => {
 	  startNextRoundCountdown(match);
-	}, 4_000);
+	}, 10_000);
 }
 
 function startNextRoundCountdown(match) {
@@ -1219,7 +1219,7 @@ function startNextRoundCountdown(match) {
   match.awaitingReady = false;
   match.ready.clear();
 
-  const seconds = 5;
+  const seconds = 8;
   io.to(room).emit("next_round_countdown", { seconds });
 
   clearTimeout(match.countdownTimeout);
