@@ -1002,7 +1002,9 @@ button:disabled {
 
 .click-marker-opp {
   border: 0;
-  background: rgba(96, 165, 250, 0.55); /* pastellblå, lätt transparent */
+  width: 10px;
+  height: 10px;
+  background: rgba(96, 165, 250, 0.78); /* pastellblå, lätt transparent */
 }
 
 /* ---------- Debug markers ---------- */
