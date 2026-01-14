@@ -2552,7 +2552,7 @@ select:focus-visible {
 
 /* Underrubriker (SM VM FM PCT PPM osv) */
 .leaderboard.leaderboard-wide thead th.lb-sub {
-  padding: 1px;
+  padding: 9px;
 }
 
 /* ===========================
