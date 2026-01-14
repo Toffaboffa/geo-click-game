@@ -2091,6 +2091,22 @@ select:focus-visible {
   width: 58px;
 }
 
+/* SCORE-kolumnen (alltid längst till höger) */
+.leaderboard.leaderboard-wide th.lb-score-head {
+  width: 96px;
+  text-align: center !important;
+  font-weight: 950;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  background: rgba(2, 6, 23, 0.92);
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+.leaderboard.leaderboard-wide td.lb-score {
+  font-weight: 900;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  background-image: linear-gradient(rgba(168, 85, 247, 0.06), rgba(168, 85, 247, 0.06));
+}
+
 /* När panelen är 520px bred: tabellen får scroll i wrappern */
 .panel .lb-wide-wrap {
   max-width: 100%;
