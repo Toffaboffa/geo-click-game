@@ -814,9 +814,9 @@ function pruneLobbyPresence() {
 // This sweep keeps lobby online-count honest even if a client disappears without a clean disconnect.
 setInterval(pruneLobbyPresence, 15000);
 // =====================
-// Lobby chat (ephemeral, 5 min TTL)
+// Lobby chat (ephemeral, 15 min TTL)
 // =====================
-const LOBBY_CHAT_TTL_MS = 5 * 60 * 1000;
+const LOBBY_CHAT_TTL_MS = 15 * 60 * 1000;
 const LOBBY_CHAT_MAX = 200; // säkerhetsgräns i minnet
 const lobbyChat = []; // { id, ts, user, level, text }
 
