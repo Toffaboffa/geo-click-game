@@ -93,6 +93,25 @@ const MATCH_MAX_AGE_MS = 30 * 60_000; // failsafe: 30 min
 const CHALLENGE_TTL_MS = 45_000;
 
 // =====================
+// Guest / "Try" mode helpers
+// =====================
+// We allow a lightweight "guest" session to exist without a row in `users`.
+// This is used for the Login-page "Prova" button (trial practice match).
+// Guest usernames are never meant to store progression (XP/badges/ELO).
+const GUEST_PREFIX = "__guest__";
+
+function makeGuestUsername() {
+  // Example: __guest__k5r7q9_7a3f
+  const ts = Date.now().toString(36);
+  const rnd = crypto.randomBytes(2).toString("hex");
+  return `${GUEST_PREFIX}${ts}_${rnd}`;
+}
+
+function isGuestUsername(u) {
+  return typeof u === "string" && u.startsWith(GUEST_PREFIX);
+}
+
+// =====================
 // Helpers (auth/sessions)
 // =====================
 function hashPassword(pw) {
@@ -505,6 +524,22 @@ app.post("/api/login", authLimiter, async (req, res) => {
 
     const sessionId = await createSession(username);
     res.json({ sessionId, username });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  }
+});
+
+// =====================
+// Guest "Try" session (Login -> Prova)
+// =====================
+// Creates a temporary session without creating a user row.
+// This session can play a solo practice match, but does not store progression.
+app.post("/api/guest", authLimiter, async (req, res) => {
+  try {
+    const username = makeGuestUsername();
+    const sessionId = await createSession(username);
+    res.json({ sessionId, username, isGuest: true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Serverfel" });
@@ -3076,7 +3111,34 @@ if (bothReal) {
 
       // Öva/solo: ge endast "spelad + performance" (7%), inga badges, ingen vinst/queue.
       const deltas = {};
+
+      // IMPORTANT: Guest sessions ("Prova") should never persist progression.
+      // We still let the match run and finish normally, but skip XP writes.
+      const realNonGuest = realPlayers.filter((u) => !isGuestUsername(u));
+
       for (const u of realPlayers) {
+        if (!realNonGuest.includes(u)) {
+          // Keep a stable payload shape for the UI, but with 0 gained XP.
+          deltas[u] = {
+            username: u,
+            xpGained: 0,
+            xpMatch: 0,
+            xpWinBonus: 0,
+            xpBadges: 0,
+            oldXpTotal: 0,
+            newXpTotal: 0,
+            oldLevel: 0,
+            newLevel: 0,
+            level: 0,
+            xpLevelBase: 0,
+            xpNextLevelAt: 0,
+            xpIntoLevel: 0,
+            xpToNext: 0,
+            xpPctToNext: 0,
+          };
+          continue;
+        }
+
         const myTotal = Number(total?.[u] ?? 0);
         deltas[u] = await applyPracticeXpForUserTx(client, match, u, myTotal);
       }
