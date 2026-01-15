@@ -168,6 +168,17 @@ export async function login(username, password) {
   });
 }
 
+// ---------- Guest / "Try" ----------
+// Creates a temporary session without creating a user row (server-side).
+// Used by the Login-page "Prova" button.
+export async function guestLogin() {
+  return apiFetch("/api/guest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+}
+
 export async function logout(sessionId) {
   return apiFetch("/api/logout", {
     method: "POST",

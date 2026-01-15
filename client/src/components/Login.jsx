@@ -4,13 +4,14 @@ import logo from "../assets/logo.png";
 import LanguageToggle from "../i18n/LanguageToggle.jsx";
 import { useI18n } from "../i18n/LanguageProvider.jsx";
 
-export default function Login({ onSubmit, authLoading = false, authHint = "" }) {
+export default function Login({ onSubmit, onTry, authLoading = false, authHint = "" }) {
   const { t } = useI18n();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [localLoading, setLocalLoading] = useState(false);
+  const [showPromo, setShowPromo] = useState(true);
 
   const loading = authLoading || localLoading;
   const year = useMemo(() => new Date().getFullYear(), []);
@@ -39,9 +40,48 @@ export default function Login({ onSubmit, authLoading = false, authHint = "" }) 
       </div>
 
       <StartPings />
-          <img className="screen-logo" src={logo} alt={t("common.appName")} />
+      <img className="screen-logo" src={logo} alt={t("common.appName")} />
+
+      {/* Promo modal (Login overlay) */}
+      {showPromo && (
+        <div className="promo-overlay" role="dialog" aria-modal="true" aria-label={t("login.promo.aria")}>
+          <div className="promo-modal">
+            <button
+              type="button"
+              className="promo-close"
+              onClick={() => setShowPromo(false)}
+              aria-label={t("common.close")}
+              disabled={loading}
+            >
+              ✕
+            </button>
+
+            <div className="promo-title">{t("login.promo.title")}</div>
+            <div className="promo-text">{t("login.promo.text")}</div>
+
+            <div className="promo-images">
+              <div className="promo-img-wrap">
+                <img className="promo-img" src="/screen1.png" alt="screen1" />
+              </div>
+              <div className="promo-img-wrap">
+                <img className="promo-img" src="/screen2.png" alt="screen2" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
+        {/* "Prova" (guest practice) – top-right inside the panel */}
+        <button
+          className="try-corner-btn"
+          type="button"
+          onClick={() => onTry && onTry()}
+          disabled={loading || !onTry}
+        >
+          {t("login.tryBtn")}
+        </button>
+
         <h1 className="title">{t("login.headline")}</h1>
         <p className="subtitle">{t("login.blurb")}</p>
 

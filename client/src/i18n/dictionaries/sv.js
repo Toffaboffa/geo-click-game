@@ -45,8 +45,16 @@ export default {
     password: "Lösenord",
     loginBtn: "Logga in",
     registerBtn: "Skapa konto",
+    tryBtn: "Prova",
+    startingTry: "Startar övning…",
     loggingIn: "Loggar in…",
     registering: "Skapar konto…",
+    promo: {
+      aria: "GeoSense – info",
+      title: "Gillar du GeoSense?",
+      text:
+        "Vill du tävla mot andra? Spara din progression, samla medaljer, XP och levla. Skapa ett konto och utmana vänner eller slumpmässiga motståndare runt om i världen.",
+    },
     hint:
       " ",
     copy: "© {year} GeoSense",
@@ -274,6 +282,8 @@ aboutXp: {
     city: "Stad",
     total: "Total",
     backToLobby: "Till lobby",
+    backToLogin: "Till login",
+    backToLogin: "Till login",
 
     table: {
       scoreCol: "{name} poäng",

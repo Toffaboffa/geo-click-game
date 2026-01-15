@@ -45,8 +45,16 @@ export default {
     password: "Password",
     loginBtn: "Log in",
     registerBtn: "Create account",
+    tryBtn: "Try",
+    startingTry: "Starting practice…",
     loggingIn: "Logging in…",
     registering: "Creating account…",
+    promo: {
+      aria: "GeoSense – info",
+      title: "Like GeoSense?",
+      text:
+        "Want to compete against others? Save your progression, collect medals, XP and level up. Create an account and challenge friends or random opponents around the world.",
+    },
     hint: " ",
     copy: "© {year} GeoSense",
   },
@@ -270,6 +278,7 @@ aboutXp: {
     city: "City",
     total: "Total",
     backToLobby: "Back to lobby",
+    backToLogin: "Back to login",
 
     table: {
       scoreCol: "{name} score",

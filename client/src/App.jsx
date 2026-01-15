@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Login from "./components/Login";
 import Lobby from "./components/Lobby";
 import Game from "./components/Game";
-import { register, login, logout, API_BASE } from "./api";
+import { register, login, logout, guestLogin, API_BASE } from "./api";
 import { useI18n } from "./i18n/LanguageProvider.jsx";
 import { geoRobinson } from "d3-geo-projection";
 
@@ -166,6 +166,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authHint, setAuthHint] = useState("");
 
+  // Login "Prova" (trial practice) state
+  const [tryLoading, setTryLoading] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
+  const pendingSoloStartRef = useRef(null); // { difficulty: "easy" }
+
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   
     const scaledRefs = useMemo(() => {
@@ -244,6 +249,20 @@ const DIFFS = useMemo(
         s.on("connect", () => {
           try {
             s.emit("auth", session.sessionId);
+          } catch (_) {}
+
+          // If Login->Prova triggered a pending solo start, run it right after auth.
+          // The server will ignore it if auth hasn't completed yet.
+          try {
+            const pending = pendingSoloStartRef.current;
+            if (pending && pending.difficulty) {
+              setTimeout(() => {
+                try {
+                  s.emit("start_solo_match", { difficulty: pending.difficulty });
+                } catch (_) {}
+              }, 120);
+              pendingSoloStartRef.current = null;
+            }
           } catch (_) {}
         });
 
@@ -368,6 +387,29 @@ const DIFFS = useMemo(
     }
   };
 
+  // --- Login "Prova": start a guest solo practice match (Easy) ---
+  const handleTry = async () => {
+    if (tryLoading || authLoading) return;
+
+    setTryLoading(true);
+    setAuthHint(t("login.startingTry"));
+
+    try {
+      const res = await guestLogin();
+      // Mark this session as a trial session so we can route back to Login after the match.
+      setIsTrial(true);
+      pendingSoloStartRef.current = { difficulty: "easy" };
+
+      setSession(res);
+      // Keep the Login UI visible until the match actually starts.
+      setView("login");
+    } catch (e) {
+      alert(tFromError(e, t));
+    } finally {
+      setTryLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     const ok = window.confirm(t("dialogs.logoutConfirm"));
     if (!ok) return;
@@ -388,8 +430,37 @@ const DIFFS = useMemo(
     }
   };
 
+  const endTrialAndReturnToLogin = async () => {
+    try {
+      if (session?.sessionId) {
+        await logout(session.sessionId);
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    try {
+      socket?.disconnect();
+    } catch (_) {}
+
+    setSocket(null);
+    setSession(null);
+    setMatch(null);
+    setGameState(initialGameStateRef.current);
+    setIsTrial(false);
+    pendingSoloStartRef.current = null;
+    setView("login");
+    setAuthHint("");
+  };
+
   const handleLeaveMatch = () => {
     if (!match) return;
+
+    // Trial practice from Login -> return to Login (and drop guest session)
+    if (isTrial) {
+      endTrialAndReturnToLogin();
+      return;
+    }
 
     // If match is already finished locally, just go back.
     if (gameState?.finalResult) {
@@ -424,7 +495,12 @@ const DIFFS = useMemo(
 
       <div className="app-desktop">
         {view === "login" && (
-          <Login onSubmit={handleAuth} authLoading={authLoading} authHint={authHint} />
+          <Login
+            onSubmit={handleAuth}
+            onTry={handleTry}
+            authLoading={authLoading || tryLoading}
+            authHint={authHint}
+          />
         )}
 
         {view === "lobby" && session && socket && (
@@ -447,6 +523,8 @@ const DIFFS = useMemo(
             gameState={gameState}
             onLeaveMatch={handleLeaveMatch}
             onLogout={handleLogout}
+            onReturnToLogin={isTrial ? endTrialAndReturnToLogin : null}
+            showReturnToLogin={isTrial}
             mapProject={mapProject}
             mapInvert={mapInvert}
             onMapSize={setMapSize}

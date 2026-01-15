@@ -274,6 +274,132 @@ button:disabled {
 .primary-btn:hover {
   opacity: 0.92;
 }
+
+/* Secondary button (Login -> Prova) */
+.secondary-btn {
+  margin-top: 10px;
+  width: 115px;
+  margin-left: auto;
+  margin-right: auto;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e5e7eb;
+}
+.secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Corner button (Login -> Prova) */
+.try-corner-btn {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid #ef4444;
+  color: #ffffff;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+
+.try-corner-btn:hover {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.try-corner-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 520px) {
+  .try-corner-btn {
+    top: 14px;
+    right: 14px;
+    padding: 9px 14px;
+    border-radius: 9px;
+  }
+}
+
+/* Promo modal (Login overlay) */
+.promo-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 60;
+}
+
+.promo-modal {
+  position: relative;
+  width: min(980px, 96vw);
+  max-height: min(720px, 92vh);
+  overflow: auto;
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+}
+
+.promo-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.promo-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 4px 0 8px 0;
+}
+
+.promo-text {
+  font-size: 14px;
+  line-height: 1.35;
+  opacity: 0.95;
+  margin-bottom: 14px;
+}
+
+.promo-images {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.promo-img-wrap {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 10px;
+}
+
+.promo-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+}
+
+@media (max-width: 840px) {
+  .promo-images {
+    grid-template-columns: 1fr;
+  }
+}
 .login-loading-hint {
   margin-top: 10px;
   font-size: 12px;

@@ -212,6 +212,9 @@ export default function Game({
   gameState,
   onLogout,
   onLeaveMatch,
+  // Trial practice (Login -> Prova)
+  showReturnToLogin = false,
+  onReturnToLogin,
   mapInvert, // (x,y) -> [lon,lat]
   mapProject, // (lon,lat) -> {x,y}
   onMapSize,
@@ -1476,7 +1479,15 @@ useEffect(() => {
               </div>
 
               <div className="finish-actions">
-                <button className="hud-btn" onClick={stop(onLeaveMatch)}>{t("game.backToLobby")}</button>
+                {showReturnToLogin ? (
+                  <button className="hud-btn" onClick={stop(onReturnToLogin || onLeaveMatch)}>
+                    {t("game.backToLogin")}
+                  </button>
+                ) : (
+                  <button className="hud-btn" onClick={stop(onLeaveMatch)}>
+                    {t("game.backToLobby")}
+                  </button>
+                )}
               </div>
             </div>
           </div>
