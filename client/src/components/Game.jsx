@@ -231,7 +231,7 @@ export default function Game({
   // Guest-user (Login -> Prova) börjar med __guest...
   const isGuestUser = /^__guest/i.test(String(myName || ""));
   // I Prova-läge vill vi inte visa användarnamn i resultattabellens rubriker
-  const hideNamesInResultTable = isPractice && isGuestUser;
+  const hideNamesInResultTable = isPractice; // hide username in result table during practice
 
   // Debug: endast för Toffaboffa i Öva-läge (practice/solo)
   const canUseDebug = isPractice && String(myName) === "Toffaboffa";
@@ -1002,7 +1002,7 @@ useEffect(() => {
       >
         {/* Score + rundrader */}
         <div className="hud hud-left">
-          <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
+          <div className="hud-name">{isPractice ? t("common.modes.practice") : myName}</div>
           <div className="hud-score-line">
             <div className="hud-score-label">{t("game.currentTotalScore")}</div>
             <div className="hud-score">{Math.round(myScoreLive)}</div>
