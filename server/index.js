@@ -854,8 +854,42 @@ app.get("/api/leaderboard-wide", async (req, res) => {
       [sqlLimit]
     );
 
-    // Beräkna och attach:a SCORE
-    const rows = (rawRows || []).map((r) => ({ ...r, score: computeLeaderboardScore(r) }));
+    
+
+    // Attach recent ELO results (last up to 3) per player for a small trend icon in the UI
+    let eloRecentMap = new Map();
+    try {
+      const usernames = Array.from(new Set((rawRows || []).map((r) => r?.namn).filter(Boolean)));
+      if (usernames.length > 0) {
+        const { rows: recentRows } = await client.query(
+          `with per as (
+             select p1 as username, created_at, outcome::int as res
+             from public.elo_log
+             union all
+             select p2 as username, created_at, (1 - outcome)::int as res
+             from public.elo_log
+           ), ranked as (
+             select username, res, created_at,
+                    row_number() over (partition by username order by created_at desc) as rn
+             from per
+             where username = any($1::text[])
+           )
+           select username, array_agg(res order by created_at desc) as recent
+           from ranked
+           where rn <= 3
+           group by username`,
+          [usernames]
+        );
+
+        for (const rr of recentRows || []) {
+          if (rr?.username) eloRecentMap.set(rr.username, rr.recent);
+        }
+      }
+    } catch (e) {
+      // If elo_log doesn't exist (yet) or any other issue, ignore so leaderboard still works
+    }
+// Beräkna och attach:a SCORE
+    const rows = (rawRows || []).map((r) => ({ ...r, score: computeLeaderboardScore(r), elo_recent: eloRecentMap.get(r?.namn) || null }));
 
     if (isScoreSort) {
       rows.sort((a, b) => {
