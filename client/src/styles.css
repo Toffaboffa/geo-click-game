@@ -362,6 +362,7 @@ button:disabled {
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  padding: 0;
 }
 
 .promo-title {
@@ -384,9 +385,6 @@ button:disabled {
 }
 
 .promo-img-wrap {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px dashed rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
   padding: 10px;
 }
 
@@ -898,7 +896,7 @@ button:disabled {
 .hud-round {
   display: grid;
   /* idx | (city hidden) | km | s | pts */
-  grid-template-columns: 14px 0px 56px 44px 40px;
+  grid-template-columns: 14px 50px 34px 30px;
   column-gap: 4px;
   align-items: center;
   font-size: 10px;

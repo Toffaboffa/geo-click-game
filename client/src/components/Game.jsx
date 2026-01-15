@@ -228,9 +228,10 @@ export default function Game({
   // Practice = solo/övning
   const isPractice = !!match?.isPractice || !!match?.isSolo;
 
-  const isGuestUser = typeof myName === 'string' && myName.startsWith('_guest_');
-  // Hide HUD player names only for the Login->Prova (guest practice) flow
-  const hideHudNames = Boolean(showReturnToLogin) && (isPractice || isGuestUser);
+  // Guest-user (Login -> Prova) börjar med __guest...
+  const isGuestUser = /^__guest/i.test(String(myName || ""));
+  // I Prova-läge vill vi inte visa användarnamn i resultattabellens rubriker
+  const hideNamesInResultTable = isPractice && isGuestUser;
 
   // Debug: endast för Toffaboffa i Öva-läge (practice/solo)
   const canUseDebug = isPractice && String(myName) === "Toffaboffa";
@@ -1001,9 +1002,7 @@ useEffect(() => {
       >
         {/* Score + rundrader */}
         <div className="hud hud-left">
-          {!hideHudNames && (
-            <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
-          )}
+          <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
           <div className="hud-score-line">
             <div className="hud-score-label">{t("game.currentTotalScore")}</div>
             <div className="hud-score">{Math.round(myScoreLive)}</div>
@@ -1424,9 +1423,9 @@ useEffect(() => {
                     <tr>
                       <th>R</th>
                       <th>{t("game.city")}</th>
-                      <th>{t("game.table.scoreCol", { name: myName })}</th>
-                      <th>{t("game.table.distanceCol", { name: myName })}</th>
-                      <th>{t("game.table.timeCol", { name: myName })}</th>
+                      <th>{t("game.table.scoreCol", { name: hideNamesInResultTable ? "" : myName }).trim()}</th>
+                      <th>{t("game.table.distanceCol", { name: hideNamesInResultTable ? "" : myName }).trim()}</th>
+                      <th>{t("game.table.timeCol", { name: hideNamesInResultTable ? "" : myName }).trim()}</th>
                       {!isPractice && (
                         <>
                           <th>{t("game.table.scoreCol", { name: opponentName })}</th>
