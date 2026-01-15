@@ -1094,16 +1094,14 @@ useEffect(() => {
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">{t("game.nextRoundIn")} {countdown}s</div>
             )}
-            {showRoundTimeBar && (
-              <div className="round-timebar-wrap">
-                <div className="round-timebar">
-                  <div
-                    className="round-timebar-fill"
-                    style={{ width: `${Math.round(roundTimePct * 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
+<div className={`round-timebar-wrap ${showRoundTimeBar ? "" : "is-hidden"}`}>
+  <div className="round-timebar">
+    <div
+      className="round-timebar-fill"
+      style={{ width: showRoundTimeBar ? `${Math.round(roundTimePct * 100)}%` : "0%" }}
+    />
+  </div>
+</div>
           </div>
         </div>
 

@@ -1408,6 +1408,10 @@ button:disabled {
   justify-content: center;
 }
 
+.round-timebar-wrap.is-hidden {
+  visibility: hidden; /* behåller layout, men syns inte */
+}
+
 .round-timebar {
   width: min(640px, calc(100vw - 40px));
   height: 10px;
