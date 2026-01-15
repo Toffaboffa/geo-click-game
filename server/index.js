@@ -538,6 +538,33 @@ app.post("/api/login", authLimiter, async (req, res) => {
 app.post("/api/guest", authLimiter, async (req, res) => {
   try {
     const username = makeGuestUsername();
+
+    // NOTE:
+    // In some DB setups, sessions.username has a FK to users.username.
+    // To keep "Prova" robust we ensure a minimal user row exists for the guest.
+    // The guest row is removed on logout (see /api/logout).
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query("select 1 from users where username=$1", [username]);
+      if (!rows?.length) {
+        const pw = await hashPasswordModern(crypto.randomBytes(16).toString("hex"));
+        const okHidden = await hasColumn(client, "users", "hidden");
+        if (okHidden) {
+          await client.query(
+            "insert into users (username, password_hash, hidden) values ($1,$2,true) on conflict (username) do nothing",
+            [username, pw]
+          );
+        } else {
+          await client.query(
+            "insert into users (username, password_hash) values ($1,$2) on conflict (username) do nothing",
+            [username, pw]
+          );
+        }
+      }
+    } finally {
+      client.release();
+    }
+
     const sessionId = await createSession(username);
     res.json({ sessionId, username, isGuest: true });
   } catch (e) {
@@ -549,6 +576,24 @@ app.post("/api/guest", authLimiter, async (req, res) => {
 app.post("/api/logout", authMiddleware, async (req, res) => {
   try {
     await pool.query("delete from sessions where id=$1", [req.sessionId]);
+
+    // If this is a guest session, remove the temporary guest user row.
+    // (Only if no other sessions still exist for that guest username.)
+    if (isGuestUsername(req.username)) {
+      try {
+        const { rows } = await pool.query(
+          "select count(*)::int as c from sessions where username=$1",
+          [req.username]
+        );
+        const c = Number(rows?.[0]?.c ?? 0);
+        if (c === 0) {
+          await pool.query("delete from users where username=$1", [req.username]);
+        }
+      } catch (_) {
+        // ignore cleanup failures
+      }
+    }
+
     res.json({ ok: true });
   } catch (e) {
     console.error(e);

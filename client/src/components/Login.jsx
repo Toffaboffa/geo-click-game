@@ -4,14 +4,20 @@ import logo from "../assets/logo.png";
 import LanguageToggle from "../i18n/LanguageToggle.jsx";
 import { useI18n } from "../i18n/LanguageProvider.jsx";
 
-export default function Login({ onSubmit, onTry, authLoading = false, authHint = "" }) {
+export default function Login({
+  onSubmit,
+  onTry,
+  authLoading = false,
+  authHint = "",
+  promoOpen = false,
+  onClosePromo,
+}) {
   const { t } = useI18n();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [localLoading, setLocalLoading] = useState(false);
-  const [showPromo, setShowPromo] = useState(true);
 
   const loading = authLoading || localLoading;
   const year = useMemo(() => new Date().getFullYear(), []);
@@ -43,13 +49,13 @@ export default function Login({ onSubmit, onTry, authLoading = false, authHint =
       <img className="screen-logo" src={logo} alt={t("common.appName")} />
 
       {/* Promo modal (Login overlay) */}
-      {showPromo && (
+      {promoOpen && (
         <div className="promo-overlay" role="dialog" aria-modal="true" aria-label={t("login.promo.aria")}>
           <div className="promo-modal">
             <button
               type="button"
               className="promo-close"
-              onClick={() => setShowPromo(false)}
+              onClick={() => onClosePromo && onClosePromo()}
               aria-label={t("common.close")}
               disabled={loading}
             >

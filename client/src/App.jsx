@@ -170,6 +170,7 @@ export default function App() {
   const [tryLoading, setTryLoading] = useState(false);
   const [isTrial, setIsTrial] = useState(false);
   const pendingSoloStartRef = useRef(null); // { difficulty: "easy" }
+  const [showTrialPromo, setShowTrialPromo] = useState(false);
 
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   
@@ -393,6 +394,7 @@ const DIFFS = useMemo(
 
     setTryLoading(true);
     setAuthHint(t("login.startingTry"));
+    setShowTrialPromo(false);
 
     try {
       const res = await guestLogin();
@@ -430,7 +432,7 @@ const DIFFS = useMemo(
     }
   };
 
-  const endTrialAndReturnToLogin = async () => {
+  const endTrialAndReturnToLogin = async (showPromoAfter = false) => {
     try {
       if (session?.sessionId) {
         await logout(session.sessionId);
@@ -451,6 +453,8 @@ const DIFFS = useMemo(
     pendingSoloStartRef.current = null;
     setView("login");
     setAuthHint("");
+    // Show the promo overlay only after a completed guest match.
+    setShowTrialPromo(!!showPromoAfter);
   };
 
   const handleLeaveMatch = () => {
@@ -458,7 +462,7 @@ const DIFFS = useMemo(
 
     // Trial practice from Login -> return to Login (and drop guest session)
     if (isTrial) {
-      endTrialAndReturnToLogin();
+      endTrialAndReturnToLogin(!!gameState?.finalResult);
       return;
     }
 
@@ -498,6 +502,8 @@ const DIFFS = useMemo(
           <Login
             onSubmit={handleAuth}
             onTry={handleTry}
+            promoOpen={showTrialPromo}
+            onClosePromo={() => setShowTrialPromo(false)}
             authLoading={authLoading || tryLoading}
             authHint={authHint}
           />
@@ -523,7 +529,7 @@ const DIFFS = useMemo(
             gameState={gameState}
             onLeaveMatch={handleLeaveMatch}
             onLogout={handleLogout}
-            onReturnToLogin={isTrial ? endTrialAndReturnToLogin : null}
+            onReturnToLogin={isTrial ? () => endTrialAndReturnToLogin(true) : null}
             showReturnToLogin={isTrial}
             mapProject={mapProject}
             mapInvert={mapInvert}
