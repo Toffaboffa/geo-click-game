@@ -1409,6 +1409,10 @@ button:disabled {
   justify-content: center;
 }
 
+.round-timebar-wrap.is-hidden {
+  visibility: hidden; /* behåller layouten → ingen hoppeffekt */
+}
+
 .round-timebar {
   width: min(640px, calc(100vw - 40px));
   height: 10px;
@@ -1425,8 +1429,6 @@ button:disabled {
   background: rgba(255, 255, 255, 0.88);
   border-radius: 999px;
 }
-
-
 
 .target-marker {
   position: absolute;
