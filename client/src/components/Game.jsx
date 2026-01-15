@@ -1092,16 +1092,19 @@ useEffect(() => {
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">{t("game.nextRoundIn")} {countdown}s</div>
             )}
-            {showRoundTimeBar && (
-			<div className={`round-timebar-wrap ${showRoundTimeBar ? "" : "is-hidden"}`}>
-			  <div className="round-timebar">
-				<div
-				  className="round-timebar-fill"
-				  style={{ width: showRoundTimeBar ? `${Math.round(roundTimePct * 100)}%` : "0%" }}
-				/>
-			  </div>
-			</div>
-            )}
+            {/*
+              ✅ Viktigt för att undvika "hopp" i botten-HUD:
+              Rendera timebar-wrap alltid och toggla bara synlighet.
+              Annars ändras höjden på city-strip när baren mount/unmountar.
+            */}
+            <div className={`round-timebar-wrap ${showRoundTimeBar ? "" : "is-hidden"}`}>
+              <div className="round-timebar">
+                <div
+                  className="round-timebar-fill"
+                  style={{ width: showRoundTimeBar ? `${Math.round(roundTimePct * 100)}%` : "0%" }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
