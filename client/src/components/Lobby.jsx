@@ -26,6 +26,51 @@ function fmtPctOrDash(v) {
   return n.toFixed(1);
 }
 
+
+
+function eloTrendMeta(recent) {
+  const arr = Array.isArray(recent)
+    ? recent
+        .map((x) => Number(x))
+        .filter((x) => x === 0 || x === 1)
+    : [];
+
+  if (arr.length === 0) return null;
+
+  const wins = arr.reduce((a, b) => a + (b === 1 ? 1 : 0), 0);
+  const losses = arr.length - wins;
+
+  // Special case: exactly 2 games and split results → neutral minus
+  if (arr.length === 2 && wins === 1 && losses === 1) {
+    return { sym: "–", cls: "elo-trend-neutral", title: "1 vinst / 1 förlust" };
+  }
+
+  // All wins / all losses
+  if (wins === arr.length) {
+    return { sym: "▲", cls: "elo-trend-up", title: `${wins} vinst${wins === 1 ? "" : "er"}` };
+  }
+  if (losses === arr.length) {
+    return { sym: "▼", cls: "elo-trend-down", title: `${losses} förlust${losses === 1 ? "" : "er"}` };
+  }
+
+  // 3-game mixed trends
+  if (arr.length === 3 && wins === 2) {
+    return { sym: "▲", cls: "elo-trend-up-mid", title: "2 vinster / 1 förlust" };
+  }
+  if (arr.length === 3 && wins === 1) {
+    return { sym: "▼", cls: "elo-trend-down-mid", title: "1 vinst / 2 förluster" };
+  }
+
+  // 1 game total
+  if (arr.length === 1 && wins === 1) {
+    return { sym: "▲", cls: "elo-trend-up", title: "Vinst" };
+  }
+  if (arr.length === 1 && losses === 1) {
+    return { sym: "▼", cls: "elo-trend-down", title: "Förlust" };
+  }
+
+  return null;
+}
 const DIFFS = ["easy", "medium", "hard"];
 const LB_VIEWS = ["easy", "medium", "hard", "total", "all"];
 
@@ -1284,7 +1329,22 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                           )}
 
 							<td className="lb-score">{fmtIntOrDash(u?.score)}</td>
-							<td className="lb-elo">{fmtIntOrDash(u?.elo_rating)}</td>
+							<td className="lb-elo">
+                              <span className="elo-value">{fmtIntOrDash(u?.elo_rating)}</span>
+                              {(() => {
+                                const meta = eloTrendMeta(u?.elo_recent);
+                                if (!meta) return null;
+                                return (
+                                  <span
+                                    className={`elo-trend ${meta.cls}`}
+                                    title={meta.title}
+                                    aria-label={meta.title}
+                                  >
+                                    {meta.sym}
+                                  </span>
+                                );
+                              })()}
+                            </td>
                         </tr>
                       );
                     })}
