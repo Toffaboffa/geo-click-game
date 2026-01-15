@@ -2126,7 +2126,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 6px;
-
+  height: 27px;
 }
 
 /* ELO trend icon (last 1–3 ELO matches) */
