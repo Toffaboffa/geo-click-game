@@ -653,7 +653,7 @@ button:disabled {
 }
 
 .leaderboard tbody td {
-  padding: 4x 4px;
+  padding: 4px 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -882,23 +882,24 @@ button:disabled {
 
 .hud-rounds {
   margin-top: 8px;
-  padding: 4px 5px;
+  padding: 6px 8px;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(6px);
-  max-width: 1700px;
+
+  /* ✅ kompakt: låt boxen krympa till innehållet */
+  display: inline-block;
+  width: fit-content;
+  max-width: 260px;
+  box-sizing: border-box;
 }
 
 .hud-round {
   display: grid;
-
-  /* ✅ Smalare: ta bort stadkolumnen helt */
-  grid-template-columns: 14px 0px 46px 46px 38px;
-
-  /* ✅ Lite tightare spacing */
+  /* idx | (city hidden) | km | s | pts */
+  grid-template-columns: 14px 0px 56px 44px 40px;
   column-gap: 4px;
-
   align-items: center;
   font-size: 10px;
   line-height: 1.35;
@@ -918,7 +919,7 @@ button:disabled {
 }
 
 .hud-round-city {
-  display: none; /* ✅ döljer staden helt */
+  display: none; /* ✅ döljer stadsnamn helt för att hålla HUD smal */
 }
 
 /* ---------- Actions ---------- */
@@ -1408,10 +1409,6 @@ button:disabled {
   margin-top: 10px;
   display: flex;
   justify-content: center;
-}
-
-.round-timebar-wrap.is-hidden {
-  visibility: hidden; /* behåller layout, men syns inte */
 }
 
 .round-timebar {
@@ -2747,3 +2744,9 @@ select:focus-visible {
 }
 
 
+
+
+/* Align compact rounds box in right HUD */
+.hud-right .hud-rounds {
+  margin-left: auto;
+}

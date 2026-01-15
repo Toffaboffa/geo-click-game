@@ -228,6 +228,10 @@ export default function Game({
   // Practice = solo/övning
   const isPractice = !!match?.isPractice || !!match?.isSolo;
 
+  const isGuestUser = typeof myName === 'string' && myName.startsWith('_guest_');
+  // Hide HUD player names only for the Login->Prova (guest practice) flow
+  const hideHudNames = Boolean(showReturnToLogin) && (isPractice || isGuestUser);
+
   // Debug: endast för Toffaboffa i Öva-läge (practice/solo)
   const canUseDebug = isPractice && String(myName) === "Toffaboffa";
 
@@ -612,13 +616,9 @@ useEffect(() => {
         const res = rr?.results?.[username] || null;
 
         // Om vi inte ska avslöja (t.ex. motståndare innan matchslut): visa bara radrubriken
-        const cityName = rr?.city?.name || rr?.cityName || rr?.city_name || "";
-        const cityLabel = cityName ? shortCityName(cityName) : "";
-
         if (!revealValues) {
           out.push({
             idx: i + 1,
-            city: cityLabel || "—",
             distance: "—",
             time: "—",
             score: "—",
@@ -634,7 +634,6 @@ useEffect(() => {
 
         out.push({
           idx: i + 1,
-          city: cityLabel || "—",
           distance: fmtKmCompact(distanceKm),
           time: fmtSecFromMs(timeMs),
           score: fmtScore(score),
@@ -824,7 +823,7 @@ useEffect(() => {
       clickPopHideRef.current = setTimeout(() => {
         setClickPopScore(null);
         clickPopHideRef.current = null;
-      }, 1400);
+      }, 3000);
     } else {
       setMyPendingScore(null);
       setMyPendingRoundIndex(null);
@@ -1002,7 +1001,9 @@ useEffect(() => {
       >
         {/* Score + rundrader */}
         <div className="hud hud-left">
-          <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
+          {!hideHudNames && (
+            <div className="hud-name">{isPractice ? `${myName} (${t("common.modes.practice")})` : myName}</div>
+          )}
           <div className="hud-score-line">
             <div className="hud-score-label">{t("game.currentTotalScore")}</div>
             <div className="hud-score">{Math.round(myScoreLive)}</div>
@@ -1013,7 +1014,6 @@ useEffect(() => {
               {myHudRounds.map((r) => (
                 <div key={`me-${r.idx}`} className="hud-round">
                   <span className="hud-round-idx">{r.idx}</span>
-                  <span className="hud-round-city">{r.city}</span>
                   <span className="hud-round-dist">{r.distance}</span>
                   <span className="hud-round-time">{r.time}</span>
                   <span className="hud-round-score">{r.score}</span>
@@ -1037,7 +1037,6 @@ useEffect(() => {
                 {oppHudRounds.map((r) => (
                   <div key={`opp-${r.idx}`} className="hud-round">
                     <span className="hud-round-idx">{r.idx}</span>
-                    <span className="hud-round-city">{r.city}</span>
                     <span className="hud-round-dist">{r.distance}</span>
                     <span className="hud-round-time">{r.time}</span>
                     <span className="hud-round-score">{r.score}</span>
@@ -1094,14 +1093,16 @@ useEffect(() => {
             {countdown !== null && countdown > 0 && (
               <div className="city-countdown">{t("game.nextRoundIn")} {countdown}s</div>
             )}
-<div className={`round-timebar-wrap ${showRoundTimeBar ? "" : "is-hidden"}`}>
-  <div className="round-timebar">
-    <div
-      className="round-timebar-fill"
-      style={{ width: showRoundTimeBar ? `${Math.round(roundTimePct * 100)}%` : "0%" }}
-    />
-  </div>
-</div>
+            {showRoundTimeBar && (
+              <div className="round-timebar-wrap">
+                <div className="round-timebar">
+                  <div
+                    className="round-timebar-fill"
+                    style={{ width: `${Math.round(roundTimePct * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
