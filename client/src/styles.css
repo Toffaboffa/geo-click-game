@@ -882,7 +882,7 @@ button:disabled {
 
 .hud-rounds {
   margin-top: 8px;
-  padding: 6px 8px;
+  padding: 4px 5px;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -892,8 +892,13 @@ button:disabled {
 
 .hud-round {
   display: grid;
-  grid-template-columns: 14px 92px 46px 46px 38px;
-  column-gap: 6px;
+
+  /* ✅ Smalare: ta bort stadkolumnen helt */
+  grid-template-columns: 14px 0px 46px 46px 38px;
+
+  /* ✅ Lite tightare spacing */
+  column-gap: 4px;
+
   align-items: center;
   font-size: 10px;
   line-height: 1.35;
@@ -913,10 +918,7 @@ button:disabled {
 }
 
 .hud-round-city {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  opacity: 0.9;
+  display: none; /* ✅ döljer staden helt */
 }
 
 /* ---------- Actions ---------- */
