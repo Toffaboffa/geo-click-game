@@ -1139,7 +1139,7 @@ button:disabled {
 .finish-xp {
   display: flex;
   justify-content: center; /* centrerar hela blocket i modalen */
-  margin-top: 10px;
+  margin-top: 1px;
 }
 
 .finish-xp-grid {
@@ -1150,7 +1150,7 @@ button:disabled {
 
   /* gör att griden krymper till innehållet -> lätt att centrera */
   width: fit-content;
-  padding: 6px 8px;
+  padding: 3px 4px;
 }
 
 .finish-xp-label {
@@ -1344,7 +1344,7 @@ button:disabled {
 }
 
 .rounds-table-wrap {
-  margin-top: 12px;
+  margin-top: 0px;
   max-height: 520px;          /* scroll om den blir hög */
   overflow: auto;
   overscroll-behavior: contain; /* ✅ minskar “scroll-bounce” */
@@ -1357,7 +1357,7 @@ button:disabled {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .rounds-table thead th {
