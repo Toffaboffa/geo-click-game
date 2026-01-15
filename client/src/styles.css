@@ -359,6 +359,8 @@ button:disabled {
   color: #e5e7eb;
   display: grid;
   place-items: center;
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -890,7 +892,7 @@ button:disabled {
 
 .hud-round {
   display: grid;
-  grid-template-columns: 14px 46px 46px 38px;
+  grid-template-columns: 14px 92px 46px 46px 38px;
   column-gap: 6px;
   align-items: center;
   font-size: 10px;
@@ -908,6 +910,13 @@ button:disabled {
 
 .hud-round-idx {
   opacity: 0.65;
+}
+
+.hud-round-city {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.9;
 }
 
 /* ---------- Actions ---------- */

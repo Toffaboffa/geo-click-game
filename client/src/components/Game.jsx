@@ -612,9 +612,13 @@ useEffect(() => {
         const res = rr?.results?.[username] || null;
 
         // Om vi inte ska avslöja (t.ex. motståndare innan matchslut): visa bara radrubriken
+        const cityName = rr?.city?.name || rr?.cityName || rr?.city_name || "";
+        const cityLabel = cityName ? shortCityName(cityName) : "";
+
         if (!revealValues) {
           out.push({
             idx: i + 1,
+            city: cityLabel || "—",
             distance: "—",
             time: "—",
             score: "—",
@@ -630,6 +634,7 @@ useEffect(() => {
 
         out.push({
           idx: i + 1,
+          city: cityLabel || "—",
           distance: fmtKmCompact(distanceKm),
           time: fmtSecFromMs(timeMs),
           score: fmtScore(score),
@@ -1008,6 +1013,7 @@ useEffect(() => {
               {myHudRounds.map((r) => (
                 <div key={`me-${r.idx}`} className="hud-round">
                   <span className="hud-round-idx">{r.idx}</span>
+                  <span className="hud-round-city">{r.city}</span>
                   <span className="hud-round-dist">{r.distance}</span>
                   <span className="hud-round-time">{r.time}</span>
                   <span className="hud-round-score">{r.score}</span>
@@ -1031,6 +1037,7 @@ useEffect(() => {
                 {oppHudRounds.map((r) => (
                   <div key={`opp-${r.idx}`} className="hud-round">
                     <span className="hud-round-idx">{r.idx}</span>
+                    <span className="hud-round-city">{r.city}</span>
                     <span className="hud-round-dist">{r.distance}</span>
                     <span className="hud-round-time">{r.time}</span>
                     <span className="hud-round-score">{r.score}</span>
