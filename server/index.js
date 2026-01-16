@@ -3486,7 +3486,7 @@ io.on("connection", (socket) => {
 
       // Daily stats (admin panel)
       tickDailyStats();
-      _dailyStats.loggedInUsersUsers.add(username);
+      _dailyStats.loggedInUsers.add(username);
 
       clearDisconnectGrace(username);
 
