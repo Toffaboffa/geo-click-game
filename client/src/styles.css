@@ -1980,13 +1980,14 @@ button:disabled {
 }
 
 .about-content h3 {
-  margin: 14px 0 6px;
+  margin: 34px 0 6px;
   font-size: 18px;
   font-weight: bolder;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   opacity: 1;
   padding-right: 3px;
+  color: rgba(255, 255, 255, 1);
 }
 
 .logout-btn { margin-top: 0; }
