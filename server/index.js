@@ -164,7 +164,15 @@ async function getUsernameFromSession(sessionId) {
     sessionId,
     now,
   ]);
-  return rows[0]?.username ?? null;
+  const username = rows[0]?.username ?? null;
+
+  // ✅ Uppdatera "senast sedd" för att cron-jobbet ska kunna plocka bort inaktiva sessions.
+  if (username) {
+    // best effort – ska inte blockera request om något strular
+    pool.query("update sessions set last_seen = now() where id=$1", [sessionId]).catch(() => {});
+  }
+
+  return username;
 }
 
 async function deleteSession(sessionId) {
@@ -606,7 +614,12 @@ app.post("/api/guest", authLimiter, async (req, res) => {
 
 app.post("/api/logout", authMiddleware, async (req, res) => {
   try {
-    await pool.query("delete from sessions where id=$1", [req.sessionId]);
+    // ✅ Ta bort både aktuell session och ev. kvarlämnade duplicerade sessions för samma användare.
+    // Detta hjälper även att "städa" gamla tab-sessions som skapats innan 1-session-regeln var införd.
+    await pool.query("delete from sessions where id=$1 or username=$2", [
+      req.sessionId,
+      req.username,
+    ]);
 
     // If this is a guest session, remove the temporary guest user row.
     // (Only if no other sessions still exist for that guest username.)
