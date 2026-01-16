@@ -1458,38 +1458,31 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   <div className="about-content">
     <p>{t("lobby.aboutLeaderboard.p1")}</p>
 
-    <h3>{t("lobby.aboutLeaderboard.hColumns")}</h3>
-    <div>
-      <div><code>LVL</code> — {t("lobby.aboutLeaderboard.colLvl")}</div>
-      <div><code>SM</code> — {t("lobby.aboutLeaderboard.colSm")}</div>
-      <div><code>VM</code> — {t("lobby.aboutLeaderboard.colVm")}</div>
-      <div><code>FM</code> — {t("lobby.aboutLeaderboard.colFm")}</div>
-      <div><code>PCT</code> — {t("lobby.aboutLeaderboard.colPct")}</div>
-      <div><code>PPM</code> — {t("lobby.aboutLeaderboard.colPpm")}</div>
-      <div><code>SCORE</code> — {t("lobby.aboutLeaderboard.colScore")}</div>
-    </div>
+<h3>{t("lobby.aboutLeaderboard.hColumns")}</h3>
+<div>
+  <div><code>LVL</code> — {t("lobby.aboutLeaderboard.colLvl")}</div>
+  <div><code>SM</code> — {t("lobby.aboutLeaderboard.colSm")}</div>
+  <div><code>VM</code> — {t("lobby.aboutLeaderboard.colVm")}</div>
+  <div><code>FM</code> — {t("lobby.aboutLeaderboard.colFm")}</div>
+  <div><code>PCT</code> — {t("lobby.aboutLeaderboard.colPct")}</div>
+  <div><code>PPM</code> — {t("lobby.aboutLeaderboard.colPpm")}</div>
+  <div><code>SCORE</code> — {t("lobby.aboutLeaderboard.colScore")}</div>
+  <div><code>ELO</code> — {t("lobby.aboutLeaderboard.colElo")}</div>
+</div>
 
-    <h3>{t("lobby.aboutLeaderboard.hScore")}</h3>
-    <p>{t("lobby.aboutLeaderboard.p2")}</p>
-    <p>{t("lobby.aboutLeaderboard.p3")}</p>
-    <p>{t("lobby.aboutLeaderboard.p4")}</p>
+<h3>{t("lobby.aboutLeaderboard.hScore")}</h3>
+<p>{t("lobby.aboutLeaderboard.p2")}</p>
+<p>{t("lobby.aboutLeaderboard.p3")}</p>
+<p>{t("lobby.aboutLeaderboard.p4")}</p>
 
-    <h3>{t("lobby.aboutLeaderboard.hFormula")}</h3>
-    <div>
-      {String(t("lobby.aboutLeaderboard.formula") || "")
-        .split("\n")
-        .map((line, i) => (
-          <div key={i}>
-            <code>{line}</code>
-          </div>
-        ))}
-    </div>
+<h3>{t("lobby.aboutLeaderboard.hElo")}</h3>
+<p>{t("lobby.aboutLeaderboard.pElo1")}</p>
+<p>{t("lobby.aboutLeaderboard.pElo2")}</p>
+<p>{t("lobby.aboutLeaderboard.pElo3")}</p>
 
-    <h3>{t("lobby.aboutLeaderboard.hNotes")}</h3>
-    <p>{t("lobby.aboutLeaderboard.p5")}</p>
-  </div>
+<h3>{t("lobby.aboutLeaderboard.hNotes")}</h3>
+<p>{t("lobby.aboutLeaderboard.p5")}</p>
 )}
-
 
             <div className="finish-actions">
               <button className="hud-btn" onClick={closeAbout}>
