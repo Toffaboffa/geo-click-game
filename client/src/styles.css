@@ -1971,7 +1971,7 @@ button:disabled {
   padding-right: 6px;
 
   font-size: 16px;
-  line-height: 1.2;
+  line-height: 0.9;
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -1981,7 +1981,7 @@ button:disabled {
 
 .about-content h3 {
   margin: 14px 0 6px;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: bolder;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -2728,12 +2728,12 @@ select:focus-visible {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: rgba(255, 255, 255, 0.88);
-  padding: 6px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 18px;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  font-weight: bolder;
 }
 
 .feedback-tab:hover{
