@@ -1,77 +1,300 @@
 # GeoSense
 
-GeoSense är ett snabbt 1v1-geografispel: du får ett stadsnamn, klickar på världskartan, och spelet räknar både precision (km fel) och tempo (sekunder). Lägre totalpoäng är bättre.
+GeoSense är ett snabbt **1v1-geografispel**: du får ett stadsnamn, klickar på världskartan, och spelet räknar både **precision (km fel)** och **tempo (sekunder)**. Lägre totalpoäng är bättre.
+
+Utöver SCORE har spelet även:
+- **ELO-rating** (separat ranking-spår, påverkar inte SCORE)
+- **Badges + XP + levels** (progression)
+- **Solo/Öva** och **Prova (gäst-session)**
+- **Topplista** per svårighetsgrad (easy/medium/hard/total)
+- **Bug/feature-feedback** direkt från klienten
+
+---
 
 ## Tech stack
-- Client: React (Vite)
-- Server: Node.js + Express + Socket.io
-- DB: Supabase Postgres
-- Hosting: Render (server) + valfri statisk hosting för client (Render/Netlify/Vercel)
+- **Client:** React (Vite) + Socket.io-client
+- **Server:** Node.js + Express + Socket.io
+- **Databas:** Supabase Postgres
+- **Hosting:** Render (server) + valfri statisk hosting för client (Render/Netlify/Vercel/GitHub Pages)
+
+---
 
 ## Projektstruktur
 
-> Exakt fil-lista kan variera, men strukturen följer detta.
+> Fil-listan kan variera, men strukturen är stabil.
 
-### /client
+### `/client`
 - `client/src/App.jsx`  
   Root app. Navigerar mellan Login/Lobby/Game.
 - `client/src/api.js`  
-  REST-wrapper: login, me, leaderboards, badges, progression.
+  REST-wrapper (auth, me/progression, leaderboards, badges, feedback).
 - `client/src/components/Lobby.jsx`  
-  Lobby UI: online/queueCounts, köval med svårighet, challenge (utmana spelare), leaderboard-toggle.
+  Lobby UI: online/queueCounts, matchmaking, challenges, leaderboard, admin-ui.
 - `client/src/components/Game.jsx`  
-  Match UI: karta, click/timer/HUD, round_result, match_finished, ready-gates.
+  Match UI: karta, click/timer/HUD, ready-gates, resultat, matchavslut.
+- `client/src/components/Login.jsx`  
+  Login + *Prova* (trial/guest).
 - `client/src/styles.css`  
-  UI/CSS inklusive kartbakgrund, paneler, HUD, modals.
+  UI/CSS: paneler, karta, HUD, modals.
 - `client/public/world.png`  
   Kartbild.
-- `client/public/world_debug.png` (om finns)  
-  Debugkarta.
-- `client/src/assets/*` (om finns)  
-  Bakgrunder/ikoner.
 
-### /server
-- `server/index.js`  
-  Huvudserver:
-  - Express routes (auth/me/badges/progression/leaderboards)
-  - Socket.io matchning, rounds, clicks, timeouts, walkover
-  - City pools per difficulty (easy/medium/hard)
+### `/server`
+- `server/index.js`
+  - Express routes (auth/me/badges/progression/leaderboards/feedback)
+  - Socket.io matchmaking, rounds, clicks, timeouts, walkover
+  - Score-modell + anti-farm SCORE-sort
+  - ELO (separat spår)
 - `server/db.js`  
-  DB-connector/pool (Postgres/Supabase).
+  Postgres pool mot Supabase.
 - `server/gameLogic.js`  
   Haversine + scorer (dist + tid → score).
 - `server/cities.js`  
   Stadsdata (name, lat, lon, population, countryCode, etc).
 - `server/capitals.json`  
-  Lista över huvudstäder (används för easy/medium pool).
+  Lista över huvudstäder (för easy/medium pool).
 - `server/badgesEngine.js`  
-  Badge-katalog + criteria evaluation + mapping.
+  Badge-katalog + criteria-evaluering.
 
-## Databas (Supabase)
+---
 
-### Tabeller
+## Miljövariabler
+
+### Server (`/server`)
+Servern använder en vanlig Postgres-URL till Supabase:
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres"
+PORT=3000
+SESSION_TTL_DAYS=30
+```
+
+### Client (`/client`)
+
+```bash
+VITE_API_BASE_URL="http://localhost:3000"  # eller Render-URL
+```
+
+---
+
+## Databas (Supabase / Postgres)
+
+Det här är **den faktiska strukturen** som spelet använder (hämtat via `information_schema`).
+
+### Översikt
+
+**Bas-tabeller**
 - `users`
-  - Bas: `username`, `password_hash`, `played`, `wins`, `losses`, `total_score`, `avg_score`, `pct`, `hidden`
-  - Progression: `level`, `badges_count`, `win_streak`, `best_win_streak`, `best_win_margin`, m.fl.
-  - Per difficulty:
-    - `easy_played`, `easy_wins`, `easy_losses`, `easy_total_score`
-    - `medium_played`, `medium_wins`, `medium_losses`, `medium_total_score`
-    - `hard_played`, `hard_wins`, `hard_losses`, `hard_total_score`
 - `sessions`
-  - `id`, `username`, `expires_at`, `created_at`
 - `badges`
-  - `code`, `name`, `description`, `emoji`, `criteria` (jsonb), group-fields
 - `user_badges`
-  - `username`, `badge_code`, `earned_at`, `match_id`, `meta` (jsonb)
+- `xp_events`
+- `elo_log`
+- `feedback_reports`
 
-### Views
+**Views / sammanställningar**
 - `leaderboard_wide`
-  Sammanställer easy/medium/hard/total i en “wide”-form.
 - `user_badges_expanded`
-  Join mellan `user_badges` och `badges`.
+- `user_progression`
 
-### RLS / Policies
-Spelet förutsätter att Supabase-policies tillåter läsning av åtminstone badges och leaderboard-data (beroende på hur du valt att exponera endpoints).
+> Obs: `leaderboard_wide`, `user_badges_expanded` och `user_progression` är i praktiken views i de flesta upplägg.
+
+---
+
+## Tabeller
+
+### `users`
+Huvudtabell för konton + all statistik.
+
+**Kolumner (viktiga fält):**
+- `id bigint` (PK)
+- `username text` *(unik identifierare)*
+- `password_hash text` *(argon2id, migrerar legacy sha256 vid login)*
+- `played/wins/losses int`
+- `total_score/avg_score float`
+- `pct numeric` *(vinstprocent)*
+- `hidden boolean` *(om användaren syns i topplista)*
+
+**Progression:**
+- `level int`
+- `xp_total bigint`
+- `xp_updated_at timestamptz`
+- `badges_count int`
+
+**Streaks & record-fält:**
+- `win_streak int`
+- `best_win_streak int`
+- `best_win_margin numeric`
+- `best_match_score numeric`
+
+**Per svårighetsgrad:**
+- `easy_played/easy_wins/easy_losses int`
+- `easy_total_score double`
+- `medium_played/medium_wins/medium_losses int`
+- `medium_total_score double`
+- `hard_played/hard_wins/hard_losses int`
+- `hard_total_score double`
+
+**ELO (separat spår):**
+- `elo_rating int`
+- `elo_played int`
+- `elo_peak int`
+- `elo_updated_at timestamptz`
+
+---
+
+### `sessions`
+Sessions-tabell för inloggning.
+
+- `id text` *(sessionId, skickas i header `x-session-id`)*
+- `username text` *(FK → `users.username`)*
+- `created_at timestamptz`
+- `expires_at timestamptz`
+
+**Viktigt:**
+- Gästläget (*Prova*) kan skapa ett temporärt `users`-row eftersom `sessions.username` har FK mot `users.username`.
+
+---
+
+### `badges`
+Badge-katalogen som servern laddar och tolkar.
+
+- `id bigint` (PK)
+- `code text` *(unik badge-id i logik)*
+- `group_key text`, `group_name text` *(UI-grupper)*
+- `sort_in_group int`
+- `name text`
+- `description text`
+- `emoji text`
+- `icon_url text` *(optional)*
+- `criteria jsonb` *(t.ex. `{ "type": "wins_total", "min": 10 }`)*
+- `xp_bonus int`
+- `created_at timestamptz`
+
+---
+
+### `user_badges`
+Logg över intjänade badges.
+
+- `id bigint` (PK)
+- `username text` *(FK → `users.username`)*
+- `badge_code text` *(FK → `badges.code`)*
+- `earned_at timestamptz`
+- `match_id text` *(optional)*
+- `meta jsonb` *(extra info kopplat till badge)*
+
+---
+
+### `xp_events`
+Händelselogg för XP (bra för debugging + statistik).
+
+- `id bigint` (PK)
+- `username text` *(FK → `users.username`)*
+- `match_id text`
+- `mode text` *(t.ex. `match`, `solo`, etc.)*
+- `difficulty text` *(easy/medium/hard)*
+- `reason text` *(t.ex. `match`, `win_bonus`, `badge`, ...)*
+- `xp_amount int`
+- `created_at timestamptz`
+- `meta jsonb`
+
+---
+
+### `elo_log`
+Event-logg för ELO-uppdateringar.
+
+- `id bigint` (PK)
+- `match_id text`
+- `created_at timestamptz`
+- `p1 text`, `p2 text`
+- `p1_before int`, `p1_after int`, `p1_delta int`
+- `p2_before int`, `p2_after int`, `p2_delta int`
+- `expected_p1 numeric` *(optional)*
+- `k_used int` *(optional)*
+- `outcome numeric` *(optional, typ 0/1/0.5)*
+
+**Princip:**
+- ELO uppdateras endast för riktiga 1v1-matcher (inte Öva/Prova/bot/walkover).
+
+---
+
+### `feedback_reports`
+Rapporter som användare skickar via UI.
+
+- `id bigint` (PK)
+- `created_at timestamptz`
+- `username text`
+- `kind text` *("bug" eller "feature")*
+- `message text`
+- `page_url text` *(optional)*
+- `user_agent text` *(optional)*
+- `lang text` *(optional)*
+- `meta jsonb`
+
+---
+
+## Views
+
+### `leaderboard_wide`
+En “wide” sammanställning som klienten använder för topplistor.
+
+Kolumner:
+- `namn text`
+- `lvl int`
+- `hidden boolean`
+
+Per difficulty prefix:
+- `e_*` = easy
+- `m_*` = medium
+- `s_*` = hard
+- `t_*` = total
+
+Nyckelfält per prefix:
+- `*_sp` *(spelade matcher)*
+- `*_pct` *(win rate)*
+- `*_ppm` *(poäng per match — **lägre är bättre**)*
+- `*_vm`, `*_fm` *(extra leaderboard-mått som används i UI)*
+
+Exempel: `t_sp`, `t_ppm`, `e_pct`, `m_vm` …
+
+**Servern använder dessutom ett anti-fusk-filter:**
+- måste ha minst `t_sp >= 3`
+- `t_ppm` måste vara rimlig (`0 < t_ppm < 15000`)
+
+---
+
+### `user_badges_expanded`
+Join mellan `user_badges` och `badges` för enkel UI-hämtning.
+
+Kolumner:
+- `username, code, group_key, group_name, sort_in_group`
+- `name, description, emoji, icon_url`
+- `earned_at, match_id, meta`
+
+---
+
+### `user_progression`
+Sammanställning för progression.
+
+Kolumner:
+- `username`
+- `level`
+- `xp_total`
+- `xp_updated_at`
+
+---
+
+## Relationsdiagram (FK)
+
+```text
+users.username
+  ├─< sessions.username
+  ├─< user_badges.username
+  │      └─ user_badges.badge_code >─ badges.code
+  └─< xp_events.username
+```
+
+---
 
 ## Kritiska kopplingspunkter (får inte gå sönder)
 
@@ -101,116 +324,90 @@ Server → Client:
 - `challenge_declined({ to, challengeId })`
 - `match_started({ matchId, players, totalRounds, isSolo, isPractice, difficulty })`
 - `start_ready_prompt`
-- `round_start({ roundIndex, cityName, cityMeta:{ name, countryCode, population, isCapital } })`
+- `round_start({ roundIndex, cityName, cityMeta })`
 - `round_result({ results })`
-  - `results[player]` innehåller `{ lon, lat, timeMs, distanceKm, score }`
 - `ready_prompt({ roundIndex })`
 - `next_round_countdown({ seconds })`
 - `match_finished({ totalScores, winner, progressionDelta, finishReason })`
 
-Vanligaste orsaken till “de pratar inte med varandra” är att event-namn eller payload-fält ändrats på ena sidan men inte den andra.
+---
 
 ### REST endpoints
 
 - `POST /api/register`
 - `POST /api/login`
-- `POST /api/logout` (auth)
-- `GET /api/me` (auth)
-- `PATCH /api/me/leaderboard-visibility` (auth)
-- `GET /api/badges` (auth)
-- `GET /api/me/progression` (auth)
-- `GET /api/users/:username/progression` (auth)
+- `POST /api/guest` *(Prova / gäst-session)*
+- `POST /api/logout` *(auth)*
+- `GET /api/me` *(auth)*
+- `PATCH /api/me/leaderboard-visibility` *(auth)*
+- `GET /api/badges` *(auth)*
+- `GET /api/me/progression` *(auth)*
+- `GET /api/users/:username/progression` *(auth)*
 - `GET /api/leaderboard-wide?mode=easy|medium|hard|total&sort=...&dir=...&limit=...`
-- (Legacy/kompat) `GET /api/leaderboard` kan finnas för äldre klienter
+- (Legacy/kompat) `GET /api/leaderboard`
 
-## Spelregler
+---
 
-- Match: 10 rundor.
-- Varje runda:
-  1) Server väljer stad ur pool baserat på svårighetsgrad.
-  2) Server skickar `round_start`.
-  3) Spelarna klickar på kartan.
-  4) Server räknar `distanceKm` via Haversine och `score` via scorer.
-  5) Server skickar `round_result`.
-- Timeout per runda: 20s.
-  - Om ingen klickar: server sätter straffresultat (max tid + max dist).
-- Mellan rundor: intermission med “ready”-gate och countdown.
-- Solo/practice: ska inte påverka leaderboard eller badges.
+## Spelregler (kort)
 
-## Svårighetsgrader
+- Match: **10 rundor**
+- Timeout per runda: **20s**
+- Mellan rundor: intermission + redo-gate + countdown
+- Solo/Öva/Prova ska **inte** påverka topplista/badges/ELO
 
-- Easy: huvudstäder + städer med population ≥ 1 000 000.
-- Medium: Easy + städer med population ≥ 200 000.
-- Hard: alla städer i spelet.
-
-Servern bygger pools (easy/medium/hard) från `cities.js` + `capitals.json`.
-
-## Leaderboards
-
-Spelet stödjer en “wide leaderboard” med separat statistik för:
-- easy
-- medium
-- hard
-- total
-
-Client växlar läge med toggle och hämtar data via `/api/leaderboard-wide`.
-
-## Badges & progression
-
-- Badge-defs finns i `badges`-tabellen (criteria som jsonb).
-- Earned badges loggas i `user_badges`.
-- Server kan skicka `progressionDelta` i `match_finished` efter en riktig match (inte practice).
+---
 
 ## Lokalt: körning
 
-### 1) Server
-- Installera dependencies i `/server`
-- Sätt miljövariabler för DB (Supabase Postgres)
-- Starta servern (port 3000 som default)
+### 1) Installera allt
 
-### 2) Client
-- Installera dependencies i `/client`
-- Sätt API/Socket URL mot server (lokalt eller Render)
-- Starta Vite dev server
+```bash
+npm run install-all
+```
 
-## Testchecklista innan deploy
+### 2) Starta server
 
-- Register/login fungerar (session skapas, `auth` via socket fungerar).
-- Lobby visar `onlineCount` + `queueCounts` korrekt.
-- Queue:
-  - Ställ dig i kö på easy/medium/hard.
-  - Match startar när två spelare är i samma difficulty.
-- Challenge:
-  - Utmana användare med vald difficulty.
-  - Mottagaren får popup och kan acceptera/avböja.
-- Matchflöde:
-  - `match_started` → `start_ready_prompt` → `round_start`
-  - Klick ger `round_result` med `distanceKm` och `score`
-  - Timeout ger straffresultat
-  - `match_finished` ger totals + winner
-- Leaderboard-wide:
-  - Toggle mellan easy/medium/hard/total och rimlig sortering.
-- Badges/progression:
-  - Efter riktig match uppdateras earned badges och progressionDelta (om aktiverat).
+```bash
+npm run dev-server
+```
+
+### 3) Starta client
+
+```bash
+npm run dev-client
+```
+
+---
 
 ## SQL: snabb schema-audit (Supabase)
 
-Kör i Supabase SQL Editor för att få en sammanfattning av tabeller/kolumner/views.
+Tabeller + views:
+```sql
+select table_name, table_type
+from information_schema.tables
+where table_schema = 'public'
+order by table_type, table_name;
+```
 
+Kolumner:
+```sql
+select table_name, column_name, data_type, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public'
+order by table_name, ordinal_position;
+```
+
+Foreign keys:
 ```sql
 select
-  (select jsonb_agg(table_name order by table_name)
-   from information_schema.tables
-   where table_schema='public' and table_type='BASE TABLE') as tables,
-  (select jsonb_agg(
-      jsonb_build_object('table', table_name, 'column', column_name, 'type', data_type)
-      order by table_name, column_name
-   )
-   from information_schema.columns
-   where table_schema='public') as columns,
-  (select jsonb_agg(
-      jsonb_build_object('view', table_name, 'definition', view_definition)
-      order by table_name
-   )
-   from information_schema.views
-   where table_schema='public') as views;
+  tc.table_name,
+  kcu.column_name,
+  ccu.table_name as foreign_table,
+  ccu.column_name as foreign_column
+from information_schema.table_constraints as tc
+join information_schema.key_column_usage as kcu
+  on tc.constraint_name = kcu.constraint_name
+join information_schema.constraint_column_usage as ccu
+  on ccu.constraint_name = tc.constraint_name
+where tc.constraint_type = 'FOREIGN KEY';
+```
