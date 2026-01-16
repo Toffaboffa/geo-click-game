@@ -1482,6 +1482,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
 <h3>{t("lobby.aboutLeaderboard.hNotes")}</h3>
 <p>{t("lobby.aboutLeaderboard.p5")}</p>
+</div>
 )}
 
             <div className="finish-actions">
