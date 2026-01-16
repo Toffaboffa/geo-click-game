@@ -20,6 +20,7 @@ import {
 } from "./badgesEngine.js";
 
 const app = express();
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, pingInterval: 10000, pingTimeout: 20000 });app.use(cors());
 app.use(express.json());
