@@ -63,6 +63,7 @@ export default {
   lobby: {
     aboutTitle: "Vad är GeoSense?",
     leaderboard: "Topplista",
+    leaderboardMinMatchesHint: "Spela minst 3 matcher för att synas på topplistan.",
     myProgress: "Min progression",
     loggedInAs: "Inloggad som: {user}",
     onlineNowCount: "Online just nu: {n}st.",
