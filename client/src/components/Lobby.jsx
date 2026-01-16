@@ -1034,7 +1034,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         <div className="finish-overlay" onClick={closeLeaderboard}>
           <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
             <div className="lb-modal-head">
-              <div className="finish-title">{t("lobby.leaderboard")}</div>
+            <div className="finish-title">{t("lobby.leaderboard")}</div>
+            <div className="muted" style={{ textAlign: "center", marginTop: 6 }}>
+              {t("lobby.leaderboardMinMatchesHint")}
+            </div>
 
               <div className="lb-modal-actions">
                 <label className="lb-visibility">
