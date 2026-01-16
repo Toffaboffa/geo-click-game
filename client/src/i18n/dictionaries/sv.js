@@ -207,7 +207,8 @@ aboutLeaderboard: {
   hScore: "Så räknas SCORE",
   p2: "För varje svårighet räknas två normaliserade delvärden: winrate = VM/SM (0–1) och ppmNorm = 1 − clamp(PPM/2000, 0, 1) (0–1).",
   p3: "Delvärdet per svårighet blir skill = 0.5·winrate + 0.5·ppmNorm. Sedan vägs svårigheterna ihop med vikter: Enkel 1, Medel 4, Svår 8. Varje svårighet får även en match-faktor m = clamp(SM/20, 0, 1).",
-
+  p4: "",
+	
   hFormula: "Formel",
   formula:
     "ppmNorm_d = 1 - clamp(PPM_d / 2000, 0, 1)\n" +
@@ -224,9 +225,8 @@ aboutLeaderboard: {
   pElo2: "När du vinner en 1v1-match går ditt ELO upp, och när du förlorar går det ner.",
   pElo3: "Förändringen beror på motståndaren: att slå någon med högre ELO ger mer än att slå någon med lägre ELO.",
 
-
   hNotes: "Bra att veta",
-  p5: "Total-vyn använder samma beräkning men väger samman alla svårigheter med vikterna ovan.",
+  p5: "Alla-vyn visar alla svårighetsgrader, sorterad efter SCORE. Du kan om du vill sortera efter ELO.",
 },
 
 aboutXp: {
