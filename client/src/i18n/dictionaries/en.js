@@ -62,6 +62,7 @@ export default {
   lobby: {
     aboutTitle: "What is GeoSense?",
     leaderboard: "Leaderboard",
+    leaderboardMinMatchesHint: "Play at least 3 matches to appear on the leaderboard.",
     myProgress: "My progression",
     loggedInAs: "Logged in as: {user}",
     onlineNowCount: "Online now: {n}.",
