@@ -62,6 +62,7 @@ export default {
   lobby: {
     aboutTitle: "¿Qué es GeoSense?",
     leaderboard: "Clasificación",
+    leaderboardMinMatchesHint: "Juega al menos 3 partidas para aparecer en la clasificación.",
     myProgress: "Mi progreso",
     loggedInAs: "Conectado como: {user}",
     onlineNowCount: "En línea: {n}.",
