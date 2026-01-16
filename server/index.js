@@ -915,16 +915,41 @@ app.get("/api/leaderboard-wide", async (req, res) => {
     // Vid score/elo vill vi alltid använda total-träffsäkerhet som tie-breaker
     const pctRef = isScoreSort || isEloSort ? "lb.t_pct" : `lb.${prefix}pct`;
 
+      // Server-side filter to keep the leaderboard clean:
+      // - Must have played at least 3 matches (overall)
+      // - Must have ELO participation (elo_played > 0) and not be behind played
+      // - Must have reasonable PPM (0 < t_ppm < 15000)
+      const eloIntegrityFilter = hasEloPlayed
+        ? `
+          and coalesce(u.elo_played, 0) > 0
+          and coalesce(u.elo_played, 0) >= lb.t_sp
+        `
+        : hasElo
+          ? `
+            and u.elo_rating is not null
+          `
+          : "";
+
+      const antiFakeFilter = `
+        and lb.t_sp >= 3
+        and lb.t_ppm is not null
+        and lb.t_ppm <> 0
+        and lb.t_ppm < 15000
+        ${eloIntegrityFilter}
+      `;
+
     const { rows: rawRows } = await client.query(
       isScoreSort
         ? `${selectSql}
            where coalesce(lb.hidden,false) = false
              and ${playedRef} > 0
+             ${antiFakeFilter}
            order by lb.namn asc
            limit $1`
         : `${selectSql}
            where coalesce(lb.hidden,false) = false
              and ${playedRef} > 0
+             ${antiFakeFilter}
            order by
              ${colRef} ${dir} nulls last,
              ${pctRef} desc nulls last,
