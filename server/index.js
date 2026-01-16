@@ -930,13 +930,12 @@ app.get("/api/leaderboard-wide", async (req, res) => {
           `
           : "";
 
-      const antiFakeFilter = `
-        and lb.t_sp >= 3
-        and lb.t_ppm is not null
-        and lb.t_ppm <> 0
-        and lb.t_ppm < 15000
-        ${eloIntegrityFilter}
-      `;
+		const antiFakeFilter = `
+		  and lb.t_sp >= 3
+		  and lb.t_ppm is not null
+		  and lb.t_ppm <> 0
+		  and lb.t_ppm < 15000
+		`;
 
     const { rows: rawRows } = await client.query(
       isScoreSort
