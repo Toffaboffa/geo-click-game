@@ -167,6 +167,36 @@ async function getUsernameFromSession(sessionId) {
   return rows[0]?.username ?? null;
 }
 
+async function deleteSession(sessionId) {
+  await pool.query("delete from sessions where id=$1", [sessionId]);
+}
+
+function trackSessionSocket(sessionId, socketId) {
+  sessionBySocket.set(socketId, sessionId);
+  let set = socketsBySession.get(sessionId);
+  if (!set) {
+    set = new Set();
+    socketsBySession.set(sessionId, set);
+  }
+  set.add(socketId);
+}
+
+function untrackSessionSocket(socketId) {
+  const sessionId = sessionBySocket.get(socketId);
+  sessionBySocket.delete(socketId);
+  if (!sessionId) return;
+
+  const set = socketsBySession.get(sessionId);
+  if (!set) return;
+  set.delete(socketId);
+  if (set.size === 0) {
+    socketsBySession.delete(sessionId);
+    // IMPORTANT: Don't delete the DB session on disconnect.
+    // Refresh/reconnect and multi-tab would otherwise cause accidental logouts.
+    // Session rows are cleaned up by expires_at in the periodic DB job above.
+  }
+}
+
 setInterval(() => {
   pool.query("delete from sessions where expires_at <= now()").catch(() => {});
 }, 60_000).unref?.();
@@ -1024,7 +1054,8 @@ app.get("/api/leaderboard-wide", async (req, res) => {
 // =====================
 // Feedback (Bug report / Feature request) -> public.feedback_reports
 // =====================
-const FEEDBACK_ADMIN_USERNAME = "Toffaboffa";
+const ADMIN_USERNAME = "Toffaboffa";
+const FEEDBACK_ADMIN_USERNAME = ADMIN_USERNAME;
 
 function normalizeFeedbackKind(v) {
   const s = String(v || "").toLowerCase().trim();
@@ -1115,9 +1146,41 @@ const lobby = {
   },
 };
 
+// --- Simple in-memory daily stats for admin sidebar (Stockholm local date) ---
+function stockholmDateKey(d = new Date()) {
+  // YYYY-MM-DD in Europe/Stockholm
+  const s = d.toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  return s; // already YYYY-MM-DD
+}
+
+let _dailyStats = {
+  dateKey: stockholmDateKey(),
+  loggedInUsers: new Set(),
+  soloGames: 0,
+  pvpGames: 0,
+  trialGames: 0,
+};
+
+function ensureDailyStats() {
+  const key = stockholmDateKey();
+  if (key !== _dailyStats.dateKey) {
+    _dailyStats = { dateKey: key, loggedInUsers: new Set(), soloGames: 0, pvpGames: 0, trialGames: 0 };
+  }
+  return _dailyStats;
+}
+
+// Alias used throughout the codebase
+function tickDailyStats() {
+  ensureDailyStats();
+}
+
 const socketsByUser = new Map(); // username -> Set(socket.id)
 const userBySocket = new Map(); // socket.id -> username
 const matches = new Map(); // matchId -> match
+
+// --- Session cleanup tracking (supports multiple tabs sharing the same sessionId) ---
+const socketsBySession = new Map(); // sessionId -> Set(socket.id)
+const sessionBySocket = new Map(); // socket.id -> sessionId
 
 const activeMatchByUser = new Map(); // username -> matchId
 // username -> { timeoutId, untilMs, matchId }
@@ -1181,11 +1244,32 @@ function removeSocketForUser(username, socketId) {
 function removeSocket(socketId) {
   const u = userBySocket.get(socketId);
   if (!u) return;
+  untrackSessionSocket(socketId);
   removeSocketForUser(u, socketId);
 }
 
 function broadcastLobby() {
-  io.emit("lobby_state", { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() });
+  const base = { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() };
+
+  // Admin-only extras
+  const onlineUsersSorted = Array.from(lobby.onlineUsers).sort((a, b) => a.localeCompare(b));
+  tickDailyStats();
+  const admin = {
+    onlineUsers: onlineUsersSorted,
+    stats: {
+      loggedInToday: _dailyStats.loggedInUsers.size,
+      soloToday: _dailyStats.soloGames,
+      pvpToday: _dailyStats.pvpGames,
+      trialToday: _dailyStats.trialGames,
+    },
+  };
+
+  // Send per-socket so only admin receives the full online list
+  for (const socketId of userBySocket.keys()) {
+    const user = userBySocket.get(socketId);
+    const payload = user === ADMIN_USERNAME ? { ...base, admin } : base;
+    io.to(socketId).emit("lobby_state", payload);
+  }
 }
 
 
@@ -1458,6 +1542,12 @@ function clearAllMatchTimers(match) {
 
 function startMatch(match) {
   const [pA, pB] = match.players;
+
+  // Daily stats (admin panel) – count only real PvP games
+  if (pA !== BOT_NAME && pB !== BOT_NAME) {
+    tickDailyStats();
+    _dailyStats.pvpGames += 1;
+  }
 
   removeUserFromAllQueues(pA);
   removeUserFromAllQueues(pB);
@@ -3392,6 +3482,11 @@ io.on("connection", (socket) => {
 
       currentUser = username;
       addSocketForUser(username, socket.id);
+      trackSessionSocket(sessionId, socket.id);
+
+      // Daily stats (admin panel)
+      tickDailyStats();
+      _dailyStats.loggedInUsersUsers.add(username);
 
       clearDisconnectGrace(username);
 
@@ -3543,6 +3638,14 @@ io.on("connection", (socket) => {
 
     removeUserFromAllQueues(currentUser);
     broadcastLobby();
+
+    // Daily stats (admin panel)
+    tickDailyStats();
+    if (String(currentUser).startsWith("__guest__")) {
+      _dailyStats.trialGames += 1;
+    } else {
+      _dailyStats.soloGames += 1;
+    }
 
     const match = createMatch(currentUser, BOT_NAME, {
       isSolo: true,

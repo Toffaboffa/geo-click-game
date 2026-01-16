@@ -156,6 +156,17 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
+  // Admin-only online panel
+  // NOTE: Only admin receives lobbyState.admin from the server.
+  const isAdmin = session?.username === "Toffaboffa";
+  const admin = lobbyState?.admin || null;
+  const adminOnlineUsers = Array.isArray(admin?.onlineUsers) ? admin.onlineUsers : [];
+  const adminStats = admin?.stats || {};
+  const statLoggedInToday = Number(adminStats.loggedInToday) || 0;
+  const statSoloToday = Number(adminStats.soloToday) || 0;
+  const statPvpToday = Number(adminStats.pvpToday) || 0;
+  const statTrialToday = Number(adminStats.trialToday) || 0;
+
   
 
   const handleLogout = () => {
@@ -823,6 +834,43 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {/* ✅ Viktigt: wrappar panel + footer i en egen kolumn-stack så den hamnar UNDER, inte bredvid */}
       <div className="lobby-layout">
         <div className="lobby-main">
+          {isAdmin && (
+            <div className="adminPanel">
+              <div className="chatHeader">Admin: Online</div>
+              <div className="adminStats">
+                <div className="adminStatsRow">
+                  <span className="adminStatsLabel">Inloggade idag</span>
+                  <span className="adminStatsValue">{statLoggedInToday}</span>
+                </div>
+                <div className="adminStatsRow">
+                  <span className="adminStatsLabel">Spelat solo</span>
+                  <span className="adminStatsValue">{statSoloToday}</span>
+                </div>
+                <div className="adminStatsRow">
+                  <span className="adminStatsLabel">Spelat match</span>
+                  <span className="adminStatsValue">{statPvpToday}</span>
+                </div>
+                <div className="adminStatsRow">
+                  <span className="adminStatsLabel">Spelat via Prova</span>
+                  <span className="adminStatsValue">{statTrialToday}</span>
+                </div>
+              </div>
+
+              <div className="adminList">
+                {adminOnlineUsers.length === 0 ? (
+                  <div className="adminEmpty">—</div>
+                ) : (
+                  adminOnlineUsers.map((u) => (
+                    <div key={u} className="adminUserRow">
+                      <span className="onlineDot" aria-hidden="true" />
+                      <span className="adminUserName">{u}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="panel">
           <div className="panel-header">
             <h2>{t("lobby.loggedInAs", { user: session.username })}{meLevel != null && Number.isFinite(Number(meLevel)) ? ` · L${Math.round(Number(meLevel))}` : ""}</h2>
