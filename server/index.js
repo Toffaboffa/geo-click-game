@@ -1371,15 +1371,20 @@ function removeSocket(socketId) {
 }
 
 function broadcastLobby() {
-  // Public online list should not show guests or users who opted to hide.
-  const visibleOnlineUsersSorted = Array.from(lobby.onlineUsers)
+  // Online count should reflect ALL connected real users (guests excluded),
+  // even if someone opted to hide from the list.
+  const realOnlineUsers = Array.from(lobby.onlineUsers)
     .filter((u) => !isGuestUsername(u))
-    .filter((u) => !hiddenOnlineUsers.has(u))
     .sort((a, b) => a.localeCompare(b));
+
+  // Public online list should not show users who opted to hide.
+  const visibleOnlineUsersSorted = realOnlineUsers
+    .filter((u) => !hiddenOnlineUsers.has(u));
 
   // Base lobby payload (sent to everyone)
   const base = {
-    onlineCount: visibleOnlineUsersSorted.length,
+    // Count = all real users online (incl. hidden), List = visible users only
+    onlineCount: realOnlineUsers.length,
     onlineUsers: visibleOnlineUsersSorted,
     queueCounts: getQueueCounts(),
   };

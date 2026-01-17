@@ -79,7 +79,7 @@ body,
 
 
 .panel {
-  background: #020617;
+  background: #020617b3;
   padding: 24px;
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
@@ -448,12 +448,13 @@ button:disabled {
   left: calc(50% + (var(--panel-w) / 2) + var(--lobby-gap));
   width: var(--chat-w);
   max-width: calc(100vw - 32px);
+  z-index:20;
 }
 
 .lobby-chat {
   width: 320px;
   max-width: calc(100vw - 32px);
-  background: #02061791;
+  background: #020617b8;
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
@@ -579,12 +580,13 @@ button:disabled {
   left: calc(50% - (var(--panel-w) / 2) - var(--lobby-gap) - var(--chat-w));
   width: var(--chat-w);
   max-width: calc(100vw - 32px);
-  background: #02061791;
+  background: #020617b8;
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-sizing: border-box;
+  z-index: 20;
 }
 
 .adminStats {
