@@ -612,9 +612,11 @@ button:disabled {
 }
 
 .onlineNowLine {
-  font-size: 12px;
-  opacity: 0.88;
-  margin: 6px 0 10px;
+font-size: 14px;
+    opacity: .98;
+    font-weight: 900;
+    margin: 6px 0 10px;
+    color: #66eda4;
 }
 
 .adminList {
