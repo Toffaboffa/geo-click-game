@@ -67,6 +67,12 @@ export default {
     myProgress: "Min progression",
     loggedInAs: "Inloggad som: {user}",
     onlineNowCount: "Online just nu: {n}st.",
+    onlinePlayersTitle: "Online",
+    onlineClickToView: "Klicka för att se progression",
+    onlineChallenge: "Utmana spelaren",
+    onlineHideMe: "Dölj mig i listan",
+    onlineShowMe: "Visa mig i listan",
+    onlineHideMeTitle: "Styr om du syns i online-listan för andra spelare",
 
 
     bugReport: "Rapportera bugg",

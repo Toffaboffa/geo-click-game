@@ -66,6 +66,12 @@ export default {
     myProgress: "My progression",
     loggedInAs: "Logged in as: {user}",
     onlineNowCount: "Online now: {n}.",
+    onlinePlayersTitle: "Online",
+    onlineClickToView: "Click to view progression",
+    onlineChallenge: "Challenge player",
+    onlineHideMe: "Hide me in the list",
+    onlineShowMe: "Show me in the list",
+    onlineHideMeTitle: "Control whether you appear in the online list",
 
 
     bugReport: "Report a bug",

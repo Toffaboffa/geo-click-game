@@ -66,6 +66,12 @@ export default {
     myProgress: "Mi progreso",
     loggedInAs: "Conectado como: {user}",
     onlineNowCount: "En línea: {n}.",
+    onlinePlayersTitle: "En línea",
+    onlineClickToView: "Haz clic para ver la progresión",
+    onlineChallenge: "Desafiar jugador",
+    onlineHideMe: "Ocultarme en la lista",
+    onlineShowMe: "Mostrarme en la lista",
+    onlineHideMeTitle: "Controla si apareces en la lista de jugadores en línea",
 
 
     bugReport: "Reportar un bug",

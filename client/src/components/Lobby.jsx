@@ -156,11 +156,49 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
-  // Admin-only online panel
-  // NOTE: Only admin receives lobbyState.admin from the server.
+  // Online panel (visible for everyone)
+  // NOTE: The server may attach extra admin-only stats under lobbyState.admin
   const isAdmin = session?.username === "Toffaboffa";
   const admin = lobbyState?.admin || null;
-  const adminOnlineUsers = Array.isArray(admin?.onlineUsers) ? admin.onlineUsers : [];
+  const onlineUsers = Array.isArray(lobbyState?.onlineUsers)
+    ? lobbyState.onlineUsers
+    : Array.isArray(admin?.onlineUsers)
+    ? admin.onlineUsers
+    : [];
+
+  // Hide guests defensively on the client too (server should already filter them).
+  const visibleOnlineUsers = useMemo(() => {
+    return (Array.isArray(onlineUsers) ? onlineUsers : []).filter(
+      (u) => typeof u === "string" && !u.startsWith("__guest__")
+    );
+  }, [onlineUsers]);
+
+  // --- Online privacy: "Hide me in the list" (persisted locally, applied server-side) ---
+  const [hideMeOnline, setHideMeOnline] = useState(() => {
+    try {
+      return localStorage.getItem("geosense:hideOnline") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("geosense:hideOnline", hideMeOnline ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [hideMeOnline]);
+
+  // Apply current preference to server whenever socket/session is ready.
+  useEffect(() => {
+    if (!socket || !session?.username) return;
+    try {
+      socket.emit("set_hide_online", { hide: !!hideMeOnline });
+    } catch {
+      // ignore
+    }
+  }, [socket, session?.username, hideMeOnline]);
   const adminStats = admin?.stats || {};
   const statLoggedInToday = Number(adminStats.loggedInToday) || 0;
   const statSoloToday = Number(adminStats.soloToday) || 0;
@@ -834,9 +872,10 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {/* ✅ Viktigt: wrappar panel + footer i en egen kolumn-stack så den hamnar UNDER, inte bredvid */}
       <div className="lobby-layout">
         <div className="lobby-main">
-          {isAdmin && (
-            <div className="adminPanel">
-              <div className="chatHeader">Admin: Online</div>
+          <div className="adminPanel">
+            <div className="chatHeader">{isAdmin ? "Admin: Online" : t("lobby.onlinePlayersTitle")}</div>
+
+            {isAdmin && (
               <div className="adminStats">
                 <div className="adminStatsRow">
                   <span className="adminStatsLabel">Inloggade idag</span>
@@ -855,21 +894,66 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                   <span className="adminStatsValue">{statTrialToday}</span>
                 </div>
               </div>
+            )}
 
-              <div className="adminList">
-                {adminOnlineUsers.length === 0 ? (
-                  <div className="adminEmpty">—</div>
-                ) : (
-                  adminOnlineUsers.map((u) => (
-                    <div key={u} className="adminUserRow">
+            <div className="onlineNowLine">{t("lobby.onlineNowCount", { n: onlineCount })}</div>
+
+            <div className="adminList">
+              {visibleOnlineUsers.length === 0 ? (
+                <div className="adminEmpty">—</div>
+              ) : (
+                visibleOnlineUsers.map((u) => {
+                  const isMe = u === session?.username;
+                  return (
+                    <div
+                      key={u}
+                      className={`adminUserRow ${isMe ? "is-me" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openProgressFor(u)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") openProgressFor(u);
+                      }}
+                      title={t("lobby.onlineClickToView")}
+                    >
                       <span className="onlineDot" aria-hidden="true" />
                       <span className="adminUserName">{u}</span>
+
+                      <span className="adminUserRowSpacer" aria-hidden="true" />
+
+                      {/* Challenge icon (not for yourself) */}
+                      {!isMe && (
+                        <button
+                          type="button"
+                          className="onlineBattleBtn"
+                          title={t("lobby.onlineChallenge")}
+                          aria-label={t("lobby.onlineChallenge")}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            challengeFromChat(u);
+                          }}
+                        >
+                          ⚔️
+                        </button>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
+                  );
+                })
+              )}
             </div>
-          )}
+
+            <div className="onlinePrivacyRow">
+              <button
+                type="button"
+                className={`onlinePrivacyBtn ${hideMeOnline ? "is-on" : ""}`}
+                onClick={() => setHideMeOnline((v) => !v)}
+                title={t("lobby.onlineHideMeTitle")}
+              >
+                {hideMeOnline ? t("lobby.onlineShowMe") : t("lobby.onlineHideMe")}
+              </button>
+            </div>
+          </div>
 
           <div className="panel">
           <div className="panel-header">
@@ -914,7 +998,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
             </button>
           </div>
 
-          <p>{t("lobby.onlineNowCount", { n: onlineCount })}</p>
+          {/* Online count is shown in the left online panel (same for all users). */}
 
           {/* Queue status cards */}
           <div className="queue-cards">

@@ -1159,6 +1159,11 @@ const lobby = {
   },
 };
 
+// Users who have chosen to hide from the public online list.
+// NOTE: This is intentionally kept in-memory (no DB migration needed).
+// It will reset on server restart.
+const hiddenOnlineUsers = new Set();
+
 // --- Simple in-memory daily stats for admin sidebar (Stockholm local date) ---
 function stockholmDateKey(d = new Date()) {
   // YYYY-MM-DD in Europe/Stockholm
@@ -1173,6 +1178,110 @@ let _dailyStats = {
   pvpGames: 0,
   trialGames: 0,
 };
+
+// --- DB-backed daily stats cache (survives server restarts / multi-instance) ---
+// We refresh this periodically and use it in the admin sidebar.
+let _adminStatsCache = {
+  updatedAtMs: 0,
+  stats: {
+    loggedInToday: 0,
+    soloToday: 0,
+    pvpToday: 0,
+    trialToday: 0,
+  },
+};
+
+async function refreshAdminStatsCache() {
+  const client = await pool.connect();
+  try {
+    // Check which columns exist (compat-safe)
+    const hasXpCreatedAt = await hasColumn(client, "xp_events", "created_at");
+    const hasSessionsLastSeen = await hasColumn(client, "sessions", "last_seen");
+    const hasSessionsCreatedAt = await hasColumn(client, "sessions", "created_at");
+
+    // Fallback: in-memory stats (works but resets on restart)
+    if (!hasXpCreatedAt) {
+      tickDailyStats();
+      _adminStatsCache = {
+        updatedAtMs: Date.now(),
+        stats: {
+          loggedInToday: _dailyStats.loggedInUsers.size,
+          soloToday: _dailyStats.soloGames,
+          pvpToday: _dailyStats.pvpGames,
+          trialToday: _dailyStats.trialGames,
+        },
+      };
+      return;
+    }
+
+    // Midnight in Europe/Stockholm (as timestamptz)
+    const dayStartSql =
+      "(date_trunc('day', now() AT TIME ZONE 'Europe/Stockholm') AT TIME ZONE 'Europe/Stockholm')";
+
+    // "Logged in today" = distinct users with activity today (prefer last_seen)
+    let loggedInToday = 0;
+    if (hasSessionsLastSeen) {
+      const { rows } = await client.query(
+        `select count(distinct username)::int as n from sessions where last_seen >= ${dayStartSql}`
+      );
+      loggedInToday = Number(rows?.[0]?.n ?? 0);
+    } else if (hasSessionsCreatedAt) {
+      const { rows } = await client.query(
+        `select count(distinct username)::int as n from sessions where created_at >= ${dayStartSql}`
+      );
+      loggedInToday = Number(rows?.[0]?.n ?? 0);
+    } else {
+      // last resort
+      tickDailyStats();
+      loggedInToday = _dailyStats.loggedInUsers.size;
+    }
+
+    // PvP matches today: two match_xp rows per match -> count distinct match_id
+    const { rows: pvpRows } = await client.query(
+      `select count(distinct match_id)::int as n
+       from xp_events
+       where reason = 'match_xp'
+         and created_at >= ${dayStartSql}`
+    );
+    const pvpToday = Number(pvpRows?.[0]?.n ?? 0);
+
+    // Solo practice today (excluding guests): one practice_xp per match -> count distinct match_id
+    const { rows: soloRows } = await client.query(
+      `select count(distinct match_id)::int as n
+       from xp_events
+       where reason = 'practice_xp'
+         and username not like '__guest__%'
+         and created_at >= ${dayStartSql}`
+    );
+    const soloToday = Number(soloRows?.[0]?.n ?? 0);
+
+    // Trial practice today (guests)
+    const { rows: trialRows } = await client.query(
+      `select count(distinct match_id)::int as n
+       from xp_events
+       where reason = 'practice_xp'
+         and username like '__guest__%'
+         and created_at >= ${dayStartSql}`
+    );
+    const trialToday = Number(trialRows?.[0]?.n ?? 0);
+
+    _adminStatsCache = {
+      updatedAtMs: Date.now(),
+      stats: { loggedInToday, soloToday, pvpToday, trialToday },
+    };
+  } catch (e) {
+    // Don't break the server if stats fail
+    console.error("refreshAdminStatsCache failed", e);
+  } finally {
+    client.release();
+  }
+}
+
+// Refresh every 30s (best effort)
+setInterval(() => {
+  refreshAdminStatsCache().catch(() => {});
+}, 30_000).unref?.();
+refreshAdminStatsCache().catch(() => {});
 
 function ensureDailyStats() {
   const key = stockholmDateKey();
@@ -1262,14 +1371,24 @@ function removeSocket(socketId) {
 }
 
 function broadcastLobby() {
-  const base = { onlineCount: lobby.onlineUsers.size, queueCounts: getQueueCounts() };
+  // Public online list should not show guests or users who opted to hide.
+  const visibleOnlineUsersSorted = Array.from(lobby.onlineUsers)
+    .filter((u) => !isGuestUsername(u))
+    .filter((u) => !hiddenOnlineUsers.has(u))
+    .sort((a, b) => a.localeCompare(b));
 
-  // Admin-only extras
-  const onlineUsersSorted = Array.from(lobby.onlineUsers).sort((a, b) => a.localeCompare(b));
+  // Base lobby payload (sent to everyone)
+  const base = {
+    onlineCount: visibleOnlineUsersSorted.length,
+    onlineUsers: visibleOnlineUsersSorted,
+    queueCounts: getQueueCounts(),
+  };
+
+  // Admin-only extras (stats)
   tickDailyStats();
   const admin = {
-    onlineUsers: onlineUsersSorted,
-    stats: {
+    onlineUsers: visibleOnlineUsersSorted,
+    stats: _adminStatsCache?.stats || {
       loggedInToday: _dailyStats.loggedInUsers.size,
       soloToday: _dailyStats.soloGames,
       pvpToday: _dailyStats.pvpGames,
@@ -1277,7 +1396,7 @@ function broadcastLobby() {
     },
   };
 
-  // Send per-socket so only admin receives the full online list
+  // Send per-socket so only admin receives the admin block
   for (const socketId of userBySocket.keys()) {
     const user = userBySocket.get(socketId);
     const payload = user === ADMIN_USERNAME ? { ...base, admin } : base;
@@ -3628,6 +3747,17 @@ io.on("connection", (socket) => {
     socket.emit("queue_state", { queued: true, difficulty });
     broadcastLobby();
     tryMatchQueue(difficulty);
+  });
+
+  // =====================
+  // Online list privacy toggle
+  // =====================
+  socket.on("set_hide_online", (payload) => {
+    if (!currentUser) return;
+    const hide = !!payload?.hide;
+    if (hide) hiddenOnlineUsers.add(currentUser);
+    else hiddenOnlineUsers.delete(currentUser);
+    broadcastLobby();
   });
 
   socket.on("leave_queue", () => {

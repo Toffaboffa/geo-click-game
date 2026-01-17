@@ -281,9 +281,9 @@ export default function Game({
   // ✅ Auto-submit när tiden går ut (förhindra dubbel-emits)
   const autoSubmittedRef = useRef(false);
 
-  // ✅ Audio: unlock on user gesture + ping when first city appears
+  // ✅ Audio: unlock on user gesture + ping when a new city appears
   const audioCtxRef = useRef(null);
-  const firstCityPingPlayedRef = useRef(false);
+  const lastCityPingRef = useRef({ matchId: null, round: null });
 
   const ensureAudioUnlocked = useCallback(() => {
     try {
@@ -329,20 +329,19 @@ export default function Game({
     } catch (_) {}
   }, []);
 
-  // Reset per match
+  // Ping once per round when a city appears (covers round 0 as well).
   useEffect(() => {
-    firstCityPingPlayedRef.current = false;
-  }, [match?.matchId]);
-
-  // Ping exactly once when the FIRST city of the match appears
-  useEffect(() => {
-    if (firstCityPingPlayedRef.current) return;
-    if (gameState.currentRound !== 0) return;
+    const matchId = match?.matchId || null;
+    const round = typeof gameState.currentRound === "number" ? gameState.currentRound : null;
+    if (!matchId || round == null || round < 0) return;
     if (!gameState.city && !gameState.cityName) return;
 
+    const prev = lastCityPingRef.current;
+    if (prev.matchId === matchId && prev.round === round) return;
+
     playPing();
-    firstCityPingPlayedRef.current = true;
-  }, [gameState.currentRound, gameState.city, gameState.cityName, playPing]);
+    lastCityPingRef.current = { matchId, round };
+  }, [match?.matchId, gameState.currentRound, gameState.city, gameState.cityName, playPing]);
 
 
   // ✅ Lens gate (Punkt 3)

@@ -147,6 +147,71 @@ function translateServerMessage(message, t) {
 export default function App() {
   const { t } = useI18n();
 
+  // =====================
+  // Tiny UI sounds (WebAudio)
+  // =====================
+  const audioCtxRef = useRef(null);
+
+  const ensureAudio = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtxRef.current) audioCtxRef.current = new AC();
+      const ctx = audioCtxRef.current;
+      if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+      return ctx;
+    } catch {
+      return null;
+    }
+  };
+
+  // Best-effort unlock as soon as the user interacts anywhere.
+  useEffect(() => {
+    const onGesture = () => ensureAudio();
+    window.addEventListener("pointerdown", onGesture, { passive: true });
+    window.addEventListener("keydown", onGesture, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const playTone = (freq = 880, duration = 0.12, volume = 0.08, type = "sine") => {
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(volume, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + Math.max(0.03, duration));
+
+      osc.start(now);
+      osc.stop(now + Math.max(0.05, duration + 0.02));
+    } catch {
+      // silent fail
+    }
+  };
+
+  const playMatchStartSound = () => {
+    playTone(660, 0.09, 0.07, "triangle");
+    setTimeout(() => playTone(990, 0.11, 0.07, "triangle"), 70);
+  };
+
+  const playChallengeSound = () => {
+    playTone(523.25, 0.10, 0.07, "sine");
+    setTimeout(() => playTone(783.99, 0.12, 0.07, "sine"), 90);
+  };
+
   const initialGameStateRef = useRef({
     city: null,
     currentRound: -1,
@@ -277,6 +342,10 @@ const DIFFS = useMemo(
 
         s.on("match_started", (data) => {
           // server: { matchId, players, totalRounds, isSolo, isPractice, difficulty }
+          // 🔔 small sound when the match transitions from lobby -> game
+          try {
+            playMatchStartSound();
+          } catch (_) {}
           setMatch(data || null);
           setGameState(initialGameStateRef.current);
           setView("game");
@@ -338,10 +407,19 @@ const DIFFS = useMemo(
         s.on("challenge_error", showError);
 
         s.on("challenge_received", (payload) => {
+          // 🔔 small sound when someone challenges you
+          try {
+            playChallengeSound();
+          } catch (_) {}
           const from = payload?.from;
           const challengeId = payload?.challengeId;
           const difficulty = payload?.difficulty;
           if (!from) return;
+
+          // 🔔 sound on incoming challenge
+          try {
+            playChallengeSound();
+          } catch (_) {}
 
           let text = t("dialogs.acceptChallenge", { from });
           if (difficulty) text += ` (${diffLabel(difficulty)})`;

@@ -609,6 +609,12 @@ button:disabled {
   font-weight: 800;
 }
 
+.onlineNowLine {
+  font-size: 12px;
+  opacity: 0.88;
+  margin: 6px 0 10px;
+}
+
 .adminList {
   max-height: 330px;
   overflow: auto;
@@ -625,6 +631,64 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.adminUserRow:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.adminUserRow:active {
+  transform: translateY(1px);
+}
+
+.adminUserRow.is-me {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.adminUserRowSpacer {
+  flex: 1 1 auto;
+}
+
+.onlineBattleBtn {
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  border-radius: 10px;
+  padding: 4px 8px;
+  line-height: 1;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.onlineBattleBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.onlinePrivacyRow {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.onlinePrivacyBtn {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.onlinePrivacyBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.onlinePrivacyBtn.is-on {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .onlineDot {
