@@ -11,6 +11,7 @@ import {
   getUserProgress,
   getMyProgress,
   getLeaderboardWide,
+  getAdminStats,
   createFeedback,
   getFeedbackList,
 } from "../api";
@@ -199,14 +200,6 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       // ignore
     }
   }, [socket, session?.username, hideMeOnline]);
-  const adminStats = admin?.stats || {};
-  const statLoggedInToday = Number(adminStats.loggedInToday) || 0;
-  const statSoloToday = Number(adminStats.soloToday) || 0;
-  const statPvpToday = Number(adminStats.pvpToday) || 0;
-  const statTrialToday = Number(adminStats.trialToday) || 0;
-
-  
-
   const handleLogout = () => {
     try {
       socket?.emit("logout");
@@ -297,6 +290,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
   // Leaderboard modal
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+
+  // Admin stats modal (Toffaboffa only)
+  const [adminStatsOpen, setAdminStatsOpen] = useState(false);
+  const [adminStatsLoading, setAdminStatsLoading] = useState(false);
+  const [adminStatsError, setAdminStatsError] = useState("");
+  const [adminStatsData, setAdminStatsData] = useState(null);
 
   // --- Hämta sparat leaderboard-visibility från servern ---
   useEffect(() => {
@@ -496,9 +495,25 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const openLeaderboard = () => setLeaderboardOpen(true);
   const closeLeaderboard = () => setLeaderboardOpen(false);
 
+  const openAdminStats = async () => {
+    if (!isAdmin || !session?.sessionId) return;
+    setAdminStatsOpen(true);
+    setAdminStatsError("");
+    setAdminStatsLoading(true);
+    try {
+      const j = await getAdminStats(session.sessionId, { days: 30 });
+      setAdminStatsData(j || null);
+    } catch (e) {
+      setAdminStatsError(e?.message || String(e));
+    } finally {
+      setAdminStatsLoading(false);
+    }
+  };
+  const closeAdminStats = () => setAdminStatsOpen(false);
+
   // ESC stänger modaler
   useEffect(() => {
-    if (!progressOpen && !aboutOpen && !leaderboardOpen && !bugOpen) return;
+    if (!progressOpen && !aboutOpen && !leaderboardOpen && !bugOpen && !adminStatsOpen) return;
 
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
@@ -506,13 +521,14 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         if (aboutOpen) closeAbout();
         if (leaderboardOpen) closeLeaderboard();
         if (bugOpen) closeBug();
+        if (adminStatsOpen) closeAdminStats();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progressOpen, aboutOpen, leaderboardOpen, bugOpen]);
+  }, [progressOpen, aboutOpen, leaderboardOpen, bugOpen, adminStatsOpen]);
 
   const setShowMe = async (next) => {
     const val = !!next;
@@ -853,28 +869,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       <div className="lobby-layout">
         <div className="lobby-main">
           <div className="adminPanel">
-            <div className="chatHeader">{isAdmin ? "Admin: Online" : t("lobby.onlinePlayersTitle")}</div>
-
-            {isAdmin && (
-              <div className="adminStats">
-                <div className="adminStatsRow">
-                  <span className="adminStatsLabel">Inloggade idag</span>
-                  <span className="adminStatsValue">{statLoggedInToday}</span>
-                </div>
-                <div className="adminStatsRow">
-                  <span className="adminStatsLabel">Spelat solo</span>
-                  <span className="adminStatsValue">{statSoloToday}</span>
-                </div>
-                <div className="adminStatsRow">
-                  <span className="adminStatsLabel">Spelat match</span>
-                  <span className="adminStatsValue">{statPvpToday}</span>
-                </div>
-                <div className="adminStatsRow">
-                  <span className="adminStatsLabel">Spelat via Prova</span>
-                  <span className="adminStatsValue">{statTrialToday}</span>
-                </div>
-              </div>
-            )}
+            <div className="chatHeader">{t("lobby.onlinePlayersTitle")}</div>
 
             <div className="onlineNowLine">{t("lobby.onlineNowCount", { n: onlineCount })}</div>
 
@@ -956,6 +951,12 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </div>
 
           <div className="panel-sub-actions">
+            {isAdmin && (
+              <button type="button" className="sub-action-btn" onClick={openAdminStats}>
+                📊 Statistik
+              </button>
+            )}
+
             <button type="button" className="sub-action-btn" onClick={openLeaderboard}>
               🏆 {t("lobby.leaderboard")}
             </button>
@@ -1140,6 +1141,88 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </button>
         </div>
       </div>
+
+
+
+      {/* Admin stats modal (Toffaboffa) */}
+      {adminStatsOpen && (
+        <div className="finish-overlay" onClick={closeAdminStats}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="lb-modal-head">
+              <div className="finish-title">Adminstatistik</div>
+              <div className="lb-modal-actions">
+                <button className="hud-btn" onClick={closeAdminStats} type="button">
+                  {t("common.close")}
+                </button>
+              </div>
+            </div>
+
+            {adminStatsLoading ? (
+              <div className="lb-loading">Hämtar statistik…</div>
+            ) : adminStatsError ? (
+              <div className="lb-error">{adminStatsError}</div>
+            ) : !adminStatsData ? (
+              <div className="lb-empty">Ingen data.</div>
+            ) : (
+              <div className="admin-stats-modal">
+                <div className="adminStats" style={{ marginBottom: 14 }}>
+                  <div className="adminStatsRow">
+                    <span className="adminStatsLabel">Solomatcher totalt</span>
+                    <span className="adminStatsValue">{adminStatsData?.totals?.soloTotal ?? 0}</span>
+                  </div>
+                  <div className="adminStatsRow">
+                    <span className="adminStatsLabel">1v1 totalt</span>
+                    <span className="adminStatsValue">{adminStatsData?.totals?.pvpTotal ?? 0}</span>
+                  </div>
+                  <div className="adminStatsRow">
+                    <span className="adminStatsLabel">Prova totalt</span>
+                    <span className="adminStatsValue">{adminStatsData?.totals?.provaTotal ?? 0}</span>
+                  </div>
+                  <div className="adminStatsRow">
+                    <span className="adminStatsLabel">Inloggningar totalt</span>
+                    <span className="adminStatsValue">{adminStatsData?.totals?.loginsTotal ?? 0}</span>
+                  </div>
+                  <div className="adminStatsRow">
+                    <span className="adminStatsLabel">Unika inloggade användare</span>
+                    <span className="adminStatsValue">{adminStatsData?.totals?.uniqueUsersTotal ?? 0}</span>
+                  </div>
+                </div>
+
+                <div className="muted" style={{ textAlign: "center", marginBottom: 10 }}>
+                  Senaste {adminStatsData?.rangeDays ?? 30} dagar (Stockholm-tid)
+                </div>
+
+                <div className="admin-stats-table-wrap">
+                  <table className="leaderboard leaderboard-wide admin-stats-table">
+                    <thead>
+                      <tr>
+                        <th>Datum</th>
+                        <th>Solo</th>
+                        <th>1v1</th>
+                        <th>Prova</th>
+                        <th>Logins</th>
+                        <th>Unika</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(adminStatsData?.daily || []).map((r) => (
+                        <tr key={r.day}>
+                          <td>{r.day}</td>
+                          <td>{r.solo}</td>
+                          <td>{r.pvp}</td>
+                          <td>{r.prova}</td>
+                          <td>{r.logins}</td>
+                          <td>{r.unique}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Topplista modal */}
       {leaderboardOpen && (

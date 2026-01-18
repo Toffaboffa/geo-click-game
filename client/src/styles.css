@@ -3044,3 +3044,21 @@ select:focus-visible {
   opacity: 0.95;
   box-shadow: 0 18px 38px rgba(0, 0, 0, 0.55);
 }
+
+
+/* ---------- Admin stats modal table ---------- */
+.admin-stats-table-wrap {
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.admin-stats-table th,
+.admin-stats-table td {
+  text-align: center;
+}
+
+.admin-stats-table td:first-child,
+.admin-stats-table th:first-child {
+  text-align: left;
+}

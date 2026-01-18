@@ -549,6 +549,7 @@ app.post("/api/register", authLimiter, async (req, res) => {
     ]);
 
     const sessionId = await createSession(username);
+    recordGameEvent({ eventType: 'login', username }).catch(() => {});
     res.json({ sessionId, username });
   } catch (e) {
     if (String(e?.message || "").includes("duplicate key")) {
@@ -579,6 +580,7 @@ app.post("/api/login", authLimiter, async (req, res) => {
     }
 
     const sessionId = await createSession(username);
+    recordGameEvent({ eventType: 'login', username }).catch(() => {});
     res.json({ sessionId, username });
   } catch (e) {
     console.error(e);
@@ -1085,6 +1087,49 @@ app.get("/api/leaderboard-wide", async (req, res) => {
 // Feedback (Bug report / Feature request) -> public.feedback_reports
 // =====================
 const ADMIN_USERNAME = "Toffaboffa";
+
+function isAdminUser(u) {
+  return String(u || "").trim() === ADMIN_USERNAME;
+}
+
+// Best-effort event logger for long-term game statistics (Supabase)
+// Requires the SQL table public.game_events (see provided SQL).
+async function recordGameEvent({ eventType, username = null, matchId = null, meta = null } = {}) {
+  const type = String(eventType || "").trim();
+  if (!type) return;
+  const u = username != null ? String(username).trim() : null;
+  const mId = matchId != null ? String(matchId).trim() : null;
+  const payloadMeta = meta && typeof meta === "object" ? meta : {};
+
+  try {
+    await pool.query(
+      `insert into public.game_events (event_type, username, match_id, meta)
+       values ($1, $2, $3, $4::jsonb)
+       on conflict do nothing`,
+      [type, u, mId, JSON.stringify(payloadMeta)]
+    );
+  } catch (e) {
+    // Never crash server because stats failed.
+  }
+}
+
+function classifyMatchForStats(match) {
+  if (!match) return null;
+  const players = Array.isArray(match.players) ? match.players : [];
+  const [pA, pB] = players;
+  const bothReal = pA && pB && pA !== BOT_NAME && pB !== BOT_NAME;
+
+  if (match.isPractice) {
+    const anyGuest = players.some((u) => isGuestUsername(u));
+    if (anyGuest) return "match_prova";
+    return "match_solo";
+  }
+
+  if (bothReal && !match.isSolo) return "match_pvp";
+
+  return null;
+}
+
 const FEEDBACK_ADMIN_USERNAME = ADMIN_USERNAME;
 
 function normalizeFeedbackKind(v) {
@@ -1161,6 +1206,71 @@ app.get("/api/feedback", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Serverfel" });
   } finally {
     client.release();
+  }
+});
+
+
+
+
+// =====================
+// Admin statistics (Toffaboffa only)
+// =====================
+app.get("/api/admin/stats", authMiddleware, async (req, res) => {
+  try {
+    if (!isAdminUser(req.username)) return res.status(403).json({ error: "Forbidden" });
+
+    const days = Math.max(1, Math.min(3650, Number(req.query.days || 30)));
+    const dayStart = `(current_date - ($1::int - 1))::date`;
+
+    const dailyQ = `
+      select
+        (created_at at time zone 'Europe/Stockholm')::date as day,
+        count(*) filter (where event_type = 'match_solo')::int as solo,
+        count(*) filter (where event_type = 'match_pvp')::int as pvp,
+        count(*) filter (where event_type = 'match_prova')::int as prova,
+        count(*) filter (where event_type = 'login')::int as logins,
+        count(distinct username) filter (where event_type = 'login')::int as unique
+      from public.game_events
+      where (created_at at time zone 'Europe/Stockholm')::date >= ${dayStart}
+      group by 1
+      order by 1 desc;
+    `;
+
+    const { rows: dailyRows } = await pool.query(dailyQ, [days]);
+
+    const totalsQ = `
+      select
+        count(*) filter (where event_type = 'match_solo')::bigint as solo_total,
+        count(*) filter (where event_type = 'match_pvp')::bigint as pvp_total,
+        count(*) filter (where event_type = 'match_prova')::bigint as prova_total,
+        count(*) filter (where event_type = 'login')::bigint as logins_total,
+        count(distinct username) filter (where event_type = 'login')::bigint as unique_users_total
+      from public.game_events;
+    `;
+    const { rows: tRows } = await pool.query(totalsQ);
+    const t = tRows?.[0] || {};
+
+    res.json({
+      rangeDays: days,
+      totals: {
+        soloTotal: Number(t.solo_total || 0),
+        pvpTotal: Number(t.pvp_total || 0),
+        provaTotal: Number(t.prova_total || 0),
+        loginsTotal: Number(t.logins_total || 0),
+        uniqueUsersTotal: Number(t.unique_users_total || 0),
+      },
+      daily: (dailyRows || []).map((r) => ({
+        day: r.day,
+        solo: Number(r.solo || 0),
+        pvp: Number(r.pvp || 0),
+        prova: Number(r.prova || 0),
+        logins: Number(r.logins || 0),
+        unique: Number(r.unique || 0),
+      })),
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
   }
 });
 
@@ -1443,7 +1553,7 @@ function broadcastLobby() {
   // Send per-socket so only admin receives the admin block
   for (const socketId of userBySocket.keys()) {
     const user = userBySocket.get(socketId);
-    const payload = user === ADMIN_USERNAME ? { ...base, admin } : base;
+    const payload = base;
     io.to(socketId).emit("lobby_state", payload);
   }
 }
@@ -3490,6 +3600,26 @@ if (bothReal) {
   }
 
 
+
+
+  // Long-term game statistics (Supabase)
+  try {
+    const statType = classifyMatchForStats(match);
+    if (statType) {
+      recordGameEvent({
+        eventType: statType,
+        matchId: match.id,
+        meta: {
+          difficulty: match.difficulty || null,
+          source: match.source || null,
+          reason: match.finishReason || null,
+        },
+      }).catch(() => {});
+    }
+  } catch (e) {
+    // ignore
+  }
+
   io.to(getRoomName(match.id)).emit("match_finished", {
     totalScores: total,
     winner,
@@ -3872,14 +4002,6 @@ io.on("connection", (socket) => {
 
     removeUserFromAllQueues(currentUser);
     broadcastLobby();
-
-    // Daily stats (admin panel)
-    tickDailyStats();
-    if (String(currentUser).startsWith("__guest__")) {
-      _dailyStats.trialGames += 1;
-    } else {
-      _dailyStats.soloGames += 1;
-    }
 
     const match = createMatch(currentUser, BOT_NAME, {
       isSolo: true,

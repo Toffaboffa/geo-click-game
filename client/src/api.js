@@ -281,3 +281,13 @@ export async function getFeedbackList(sessionId, { kind = null, limit = 200 } = 
     headers: authHeaders(sessionId),
   });
 }
+
+
+// ---------- Admin stats (Toffaboffa only) ----------
+export async function getAdminStats(sessionId, { days = 30 } = {}) {
+  const params = new URLSearchParams();
+  params.set('days', String(days));
+  return apiFetch(`/api/admin/stats?${params.toString()}`, {
+    headers: authHeaders(sessionId),
+  });
+}
