@@ -594,6 +594,9 @@ button:disabled {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+  width: 180px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .adminStatsRow {

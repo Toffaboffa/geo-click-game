@@ -15,7 +15,7 @@ jobs:
         run: |
           if [ -z "${{ secrets.RENDER_HEALTH_URL }}" ]; then
             echo "Missing GitHub Secret: RENDER_HEALTH_URL"
-            echo "Set it to: https://<your-render-service>.onrender.com/healthz"
+            echo "Set it to: https://geo-click-game.onrender.com/healthz"
             exit 1
           fi
           curl -fsS --max-time 20 "${{ secrets.RENDER_HEALTH_URL }}" > /dev/null
