@@ -312,6 +312,11 @@ aboutXp: {
     leaveMatch: "Leave the match? This counts as a loss.",
     logoutConfirm: "Log out?",
     acceptChallenge: "Accept challenge from {from}?",
+    challengeSent: "Challenge sent to {to}",
+    challengeDeclined: "{to} declined the challenge.",
+    challengeNoResponse: "{to} did not respond to the challenge.",
+    challengeExpired: "The challenge from {from} expired.",
+    challengeCancelled: "The challenge from {from} was cancelled.",
   },
 
     errors: {

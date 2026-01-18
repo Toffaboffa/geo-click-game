@@ -449,6 +449,45 @@ const DIFFS = useMemo(
         s.on("match_error", showError);
         s.on("challenge_error", showError);
 
+        // Challenge lifecycle feedback (sent / declined / timeout)
+        s.on("challenge_sent", (payload) => {
+          const to = payload?.to;
+          const difficulty = payload?.difficulty;
+          if (!to) return;
+          const diffText = difficulty ? ` (${diffLabel(difficulty)})` : "";
+          showAlert(t("dialogs.challengeSent", { to }) + diffText);
+        });
+
+        s.on("challenge_declined", (payload) => {
+          const to = payload?.to;
+          const reason = payload?.reason;
+          if (!to) return;
+          if (reason === "timeout") {
+            showAlert(t("dialogs.challengeNoResponse", { to }));
+          } else {
+            showAlert(t("dialogs.challengeDeclined", { to }));
+          }
+        });
+
+        s.on("challenge_timeout", (payload) => {
+          const to = payload?.to;
+          if (!to) return;
+          showAlert(t("dialogs.challengeNoResponse", { to }));
+        });
+
+        s.on("challenge_cancelled", (payload) => {
+          // This is mainly for the challenged user (e.g. challenger went offline / timeout).
+          // We keep it low-key so it doesn't get annoying.
+          const from = payload?.from;
+          const reason = payload?.reason;
+          if (!from) return;
+          if (reason === "timeout") {
+            showAlert(t("dialogs.challengeExpired", { from }));
+          } else if (reason === "offline") {
+            showAlert(t("dialogs.challengeCancelled", { from }));
+          }
+        });
+
         s.on("challenge_received", (payload) => {
           // 🔔 small sound when someone challenges you
           try {

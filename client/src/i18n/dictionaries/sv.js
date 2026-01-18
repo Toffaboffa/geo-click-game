@@ -317,6 +317,11 @@ aboutXp: {
     leaveMatch: "Vill du lämna matchen? Detta räknas som förlust.",
     logoutConfirm: "Vill du logga ut?",
     acceptChallenge: "Acceptera utmaning från {from}?",
+    challengeSent: "Utmaning skickad till {to}",
+    challengeDeclined: "{to} tackade nej till utmaningen.",
+    challengeNoResponse: "{to} svarade inte på utmaningen.",
+    challengeExpired: "Utmaningen från {from} gick ut.",
+    challengeCancelled: "Utmaningen från {from} avbröts.",
   },
 
     errors: {

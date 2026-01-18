@@ -107,6 +107,8 @@ const MATCH_SWEEP_INTERVAL_MS = 60_000;
 const MATCH_FINISHED_TTL_MS = 2 * 60_000; // behåll färdiga matcher 2 min
 const MATCH_MAX_AGE_MS = 30 * 60_000; // failsafe: 30 min
 const CHALLENGE_TTL_MS = 45_000;
+// Anti-spam: avoid hammering the same user with repeated challenges
+const CHALLENGE_MIN_RESEND_MS = 5_000;
 
 // =====================
 // Guest / "Try" mode helpers
@@ -1324,6 +1326,7 @@ const activeMatchByUser = new Map(); // username -> matchId
 const disconnectGrace = new Map();
 const pendingChallengesById = new Map(); // challengeId -> { id, from, to, difficulty, expiresAt }
 const pendingChallengeByPair = new Map(); // `${from}->${to}` -> challengeId
+const lastChallengeSentByPair = new Map(); // `${from}->${to}` -> lastSentMs
 
 function getRoomName(matchId) {
   return `match_${matchId}`;
@@ -1343,6 +1346,27 @@ function getQueueCounts() {
 
 function removeUserFromAllQueues(username) {
   for (const d of DIFFICULTIES) lobby.queues[d].delete(username);
+}
+
+function isUserQueued(username) {
+  const u = String(username || '').trim();
+  if (!u) return false;
+  for (const d of DIFFICULTIES) {
+    if (lobby.queues[d].has(u)) return true;
+  }
+  return false;
+}
+
+function userHasAnyPendingChallenge(username) {
+  const u = String(username || '').trim();
+  if (!u) return false;
+  const now = nowMs();
+  for (const entry of pendingChallengesById.values()) {
+    if (!entry) continue;
+    if (entry.expiresAt && entry.expiresAt <= now) continue;
+    if (entry.from === u || entry.to === u) return true;
+  }
+  return false;
 }
 
 function getAnySocketId(username) {
@@ -3495,8 +3519,39 @@ function makeChallengeKey(from, to) {
 function clearChallengeById(challengeId) {
   const entry = pendingChallengesById.get(challengeId);
   if (!entry) return;
+  try {
+    if (entry.timeoutId) clearTimeout(entry.timeoutId);
+  } catch (_) {}
   pendingChallengesById.delete(challengeId);
   pendingChallengeByPair.delete(makeChallengeKey(entry.from, entry.to));
+}
+
+function expireChallengeById(challengeId, reason = "timeout") {
+  const entry = pendingChallengesById.get(challengeId);
+  if (!entry) return;
+
+  const fromSocketId = getAnySocketId(entry.from);
+  const toSocketId = getAnySocketId(entry.to);
+
+  // Inform challenger that the other player never responded.
+  if (fromSocketId) {
+    io.to(fromSocketId).emit("challenge_timeout", {
+      to: entry.to,
+      challengeId: entry.id,
+      reason,
+    });
+  }
+
+  // Inform challenged player so client can drop any stale UI.
+  if (toSocketId) {
+    io.to(toSocketId).emit("challenge_cancelled", {
+      from: entry.from,
+      challengeId: entry.id,
+      reason,
+    });
+  }
+
+  clearChallengeById(challengeId);
 }
 
 function createPendingChallenge(from, to, difficulty) {
@@ -3511,9 +3566,18 @@ function createPendingChallenge(from, to, difficulty) {
     to,
     difficulty: normalizeDifficulty(difficulty),
     expiresAt: nowMs() + CHALLENGE_TTL_MS,
+    timeoutId: null,
   };
   pendingChallengesById.set(id, entry);
   pendingChallengeByPair.set(pairKey, id);
+
+  // Timer: if the challenged player never responds, notify challenger.
+  entry.timeoutId = setTimeout(() => {
+    if (pendingChallengesById.has(id)) {
+      expireChallengeById(id, "timeout");
+    }
+  }, CHALLENGE_TTL_MS).unref?.();
+
   return entry;
 }
 
@@ -3577,7 +3641,14 @@ setInterval(() => {
   const now = nowMs();
 
   for (const [id, entry] of pendingChallengesById.entries()) {
-    if (!entry || entry.expiresAt <= now) clearChallengeById(id);
+    if (!entry) {
+      clearChallengeById(id);
+      continue;
+    }
+    if (entry.expiresAt <= now) {
+      // Failsafe: if a timeout-timer somehow didn't fire, expire here.
+      expireChallengeById(id, "timeout");
+    }
   }
 
   for (const [id, match] of matches.entries()) {
@@ -3838,6 +3909,39 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // --- Anti-spam / duplicate challenge protection ---
+    const pairKey = makeChallengeKey(currentUser, target);
+    const existing = getValidChallengeByPair(currentUser, target);
+    if (existing) {
+      const retryAfterMs = Math.max(0, (existing.expiresAt || 0) - nowMs());
+      socket.emit("challenge_error", {
+        message: "Du har redan skickat en utmaning till den spelaren.",
+        retryAfterMs,
+      });
+      return;
+    }
+
+    const lastSent = lastChallengeSentByPair.get(pairKey) || 0;
+    const since = nowMs() - lastSent;
+    if (since < CHALLENGE_MIN_RESEND_MS) {
+      socket.emit("challenge_error", {
+        message: "Vänta lite innan du utmanar samma spelare igen.",
+        retryAfterMs: Math.max(0, CHALLENGE_MIN_RESEND_MS - since),
+      });
+      return;
+    }
+
+    // If the target is queued or otherwise busy, they cannot be challenged.
+    if (isUserQueued(target)) {
+      socket.emit("challenge_error", "Spelaren sitter i kö och kan inte utmanas just nu");
+      return;
+    }
+
+    if (userHasAnyPendingChallenge(target)) {
+      socket.emit("challenge_error", "Spelaren har redan en aktiv utmaning");
+      return;
+    }
+
     if (isUserInActiveMatch(target)) {
       socket.emit("challenge_error", "Spelaren är upptagen i en match");
       return;
@@ -3852,7 +3956,13 @@ io.on("connection", (socket) => {
     removeUserFromAllQueues(currentUser);
     broadcastLobby();
 
+    // Mark the last time this specific pair was challenged (anti-spam)
+    lastChallengeSentByPair.set(pairKey, nowMs());
+
     const entry = createPendingChallenge(currentUser, target, difficulty);
+
+    // Remember successful send time to prevent spam.
+    lastChallengeSentByPair.set(pairKey, nowMs());
 
     io.to(targetSocketId).emit("challenge_received", {
       from: currentUser,

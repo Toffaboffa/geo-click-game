@@ -314,6 +314,11 @@ aboutXp: {
     leaveMatch: "¿Salir de la partida? Esto cuenta como derrota.",
     logoutConfirm: "¿Cerrar sesión?",
     acceptChallenge: "¿Aceptar el reto de {from}?",
+    challengeSent: "Reto enviado a {to}",
+    challengeDeclined: "{to} rechazó el reto.",
+    challengeNoResponse: "{to} no respondió al reto.",
+    challengeExpired: "El reto de {from} expiró.",
+    challengeCancelled: "El reto de {from} se canceló.",
   },
 
     errors: {
