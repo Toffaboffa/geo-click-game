@@ -22,8 +22,23 @@ import {
 const app = express();
 app.set("trust proxy", 1);
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, pingInterval: 10000, pingTimeout: 20000 });app.use(cors());
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+  pingInterval: 10000,
+  pingTimeout: 20000,
+});
+
+app.use(cors());
 app.use(express.json());
+
+// =====================
+// Health / warmup endpoint
+// =====================
+// Used by the client (and optional external pingers) to wake the server quickly
+// without doing any heavy DB work.
+app.get("/healthz", (_req, res) => {
+  res.status(200).json({ ok: true, ts: Date.now() });
+});
 
 // =====================
 // Config
