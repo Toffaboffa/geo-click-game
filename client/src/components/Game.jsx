@@ -212,6 +212,7 @@ export default function Game({
   gameState,
   onLogout,
   onLeaveMatch,
+  showAlert,
   // Trial practice (Login -> Prova)
   showReturnToLogin = false,
   onReturnToLogin,
@@ -786,7 +787,9 @@ useEffect(() => {
     if (gameState.currentRound < 0) return;
 
     if (!mapInvert) {
-      alert(t("game.mapNotCalibrated"));
+      // Prefer app-styled dialogs when provided by App.jsx
+      if (typeof showAlert === "function") showAlert(t("game.mapNotCalibrated"));
+      else window.alert(t("game.mapNotCalibrated"));
       return;
     }
 

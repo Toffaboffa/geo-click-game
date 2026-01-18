@@ -129,7 +129,8 @@ async function apiFetch(path, opts = {}) {
   const url = `${API_BASE}${path}`;
 
   const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? 45000;
+  // Default timeout increased to avoid false timeouts on slow networks.
+  const timeoutMs = opts.timeoutMs ?? 120000;
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {

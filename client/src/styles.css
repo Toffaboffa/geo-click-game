@@ -2949,3 +2949,98 @@ select:focus-visible {
 .hud-right .hud-rounds {
   margin-left: auto;
 }
+
+/* ========== App dialogs (replaces window.alert/confirm) ========== */
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 80;
+}
+
+.ui-dialog {
+  width: min(560px, 96vw);
+  max-height: min(520px, 92vh);
+  overflow: auto;
+  background: rgba(17, 24, 39, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+}
+
+.ui-dialog-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  margin: 2px 0 10px 0;
+}
+
+.ui-dialog-body {
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0.96;
+}
+
+.ui-dialog-body p {
+  margin: 0 0 10px 0;
+}
+
+.ui-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ui-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ui-btn-primary {
+  background: rgba(239, 68, 68, 0.95);
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.45);
+}
+
+.ui-btn-primary:hover {
+  background: rgba(239, 68, 68, 1);
+}
+
+.ui-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+}
+
+.ui-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+/* ========== App toast (non-blocking) ========== */
+.ui-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 90;
+  pointer-events: none;
+}
+
+.ui-toast-inner {
+  background: rgba(17, 24, 39, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.95;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.55);
+}

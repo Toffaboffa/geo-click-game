@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Login from "./components/Login";
 import Lobby from "./components/Lobby";
 import Game from "./components/Game";
+import UiDialog from "./components/UiDialog";
+import UiToast from "./components/UiToast";
 import { register, login, logout, guestLogin, API_BASE } from "./api";
 import { useI18n } from "./i18n/LanguageProvider.jsx";
 import { geoRobinson } from "d3-geo-projection";
@@ -110,6 +112,9 @@ function tFromError(err, t) {
   const status = err?.status;
 
   if (msg.startsWith("errors.")) {
+    // Don't show blocking popups for request timeouts.
+    // (They can happen on slow networks and are not actionable.)
+    if (msg === "errors.timeout") return "";
     return t(msg, status ? { status } : undefined);
   }
   return msg || t("errors.unknown");
@@ -237,6 +242,43 @@ export default function App() {
   const pendingSoloStartRef = useRef(null); // { difficulty: "easy" }
   const [showTrialPromo, setShowTrialPromo] = useState(false);
 
+  // =====================
+  // App dialogs/toasts (replaces window.alert/confirm)
+  // =====================
+  const [uiDialog, setUiDialog] = useState(null); // { variant, title, message, resolve }
+  const [uiToastMsg, setUiToastMsg] = useState("");
+
+  const showToast = (msg) => {
+    const m = String(msg || "").trim();
+    if (!m) return;
+    setUiToastMsg(m);
+  };
+
+  const showAlert = (msg, title = "") => {
+    const m = String(msg || "").trim();
+    if (!m) return Promise.resolve();
+    return new Promise((resolve) => {
+      setUiDialog({ variant: "alert", title, message: m, resolve });
+    });
+  };
+
+  const showConfirm = (msg, title = "") => {
+    const m = String(msg || "").trim();
+    if (!m) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      setUiDialog({ variant: "confirm", title, message: m, resolve });
+    });
+  };
+
+  const closeDialog = (result) => {
+    setUiDialog((prev) => {
+      try {
+        prev?.resolve?.(result);
+      } catch (_) {}
+      return null;
+    });
+  };
+
   const [mapSize, setMapSize] = useState({ width: 0, height: 0 });
   
     const scaledRefs = useMemo(() => {
@@ -280,7 +322,7 @@ const DIFFS = useMemo(
   };
 
   const hardLogout = (message, sock = socket) => {
-    if (message) window.alert(message);
+    if (message) showAlert(message);
     try {
       sock?.disconnect();
     } catch (_) {}
@@ -333,7 +375,8 @@ const DIFFS = useMemo(
         });
 
         s.on("connect_error", (err) => {
-          alert(tFromError(err, t));
+          const msg = tFromError(err, t);
+          if (msg) showAlert(msg);
         });
 
         s.on("lobby_state", (state) => {
@@ -400,7 +443,7 @@ const DIFFS = useMemo(
             const seconds = Math.ceil(retryAfterMs / 1000);
             text += `\n${t("game.waiting")} (${seconds}s)`;
           }
-          alert(text);
+          if (text) showAlert(text);
         };
 
         s.on("match_error", showError);
@@ -424,17 +467,20 @@ const DIFFS = useMemo(
           let text = t("dialogs.acceptChallenge", { from });
           if (difficulty) text += ` (${diffLabel(difficulty)})`;
 
-          const ok = window.confirm(text);
-          if (ok) {
-            if (challengeId) s.emit("accept_challenge", { challengeId });
-            else s.emit("accept_challenge", from);
-          } else {
-            if (challengeId) s.emit("decline_challenge", { challengeId });
-            else s.emit("decline_challenge", { fromUsername: from });
-          }
+          (async () => {
+            const ok = await showConfirm(text);
+            if (ok) {
+              if (challengeId) s.emit("accept_challenge", { challengeId });
+              else s.emit("accept_challenge", from);
+            } else {
+              if (challengeId) s.emit("decline_challenge", { challengeId });
+              else s.emit("decline_challenge", { fromUsername: from });
+            }
+          })();
         });
       } catch (e) {
-        alert(tFromError(e, t));
+        const msg = tFromError(e, t);
+        if (msg) showAlert(msg);
       }
     })();
 
@@ -459,7 +505,8 @@ const DIFFS = useMemo(
       setView("lobby");
       setAuthHint("");
     } catch (e) {
-      alert(tFromError(e, t));
+      const msg = tFromError(e, t);
+      if (msg) showAlert(msg);
       setAuthHint("");
     } finally {
       setAuthLoading(false);
@@ -484,14 +531,15 @@ const DIFFS = useMemo(
       // Keep the Login UI visible until the match actually starts.
       setView("login");
     } catch (e) {
-      alert(tFromError(e, t));
+      const msg = tFromError(e, t);
+      if (msg) showAlert(msg);
     } finally {
       setTryLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    const ok = window.confirm(t("dialogs.logoutConfirm"));
+    const ok = await showConfirm(t("dialogs.logoutConfirm"));
     if (!ok) return;
 
     try {
@@ -559,18 +607,37 @@ const DIFFS = useMemo(
       return;
     }
 
-    const ok = window.confirm(t("dialogs.leaveMatch"));
-    if (!ok) return;
+    (async () => {
+      const ok = await showConfirm(t("dialogs.leaveMatch"));
+      if (!ok) return;
 
-    try {
-      socket?.emit("leave_match", { matchId: match.matchId });
-    } catch (_) {}
+      try {
+        socket?.emit("leave_match", { matchId: match.matchId });
+      } catch (_) {}
 
-    resetToLobbyState();
+      resetToLobbyState();
+    })();
   };
 
   return (
     <>
+      <UiToast
+        open={!!uiToastMsg}
+        message={uiToastMsg}
+        onClose={() => setUiToastMsg("")}
+      />
+
+      <UiDialog
+        open={!!uiDialog}
+        title={uiDialog?.title}
+        message={uiDialog?.message}
+        variant={uiDialog?.variant}
+        okText={t("common.ok")}
+        cancelText={t("common.cancel")}
+        onOk={() => closeDialog(true)}
+        onCancel={() => closeDialog(false)}
+      />
+
       <div className="mobile-block" role="status" aria-live="polite">
         {t("mobile.blocked")}
       </div>
@@ -607,6 +674,7 @@ const DIFFS = useMemo(
             gameState={gameState}
             onLeaveMatch={handleLeaveMatch}
             onLogout={handleLogout}
+            showAlert={showAlert}
             onReturnToLogin={isTrial ? () => endTrialAndReturnToLogin(true) : null}
             showReturnToLogin={isTrial}
             mapProject={mapProject}

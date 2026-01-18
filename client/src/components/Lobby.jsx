@@ -342,27 +342,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   }, [socket]);
 
   // --- Socket safety: forced logout / auth error ---
-  useEffect(() => {
-    if (!socket) return;
-
-    const onForcedLogout = (msg) => {
-      window.alert(msg || t("errors.forcedLogout"));
-      onLogout?.();
-    };
-
-    const onAuthError = (msg) => {
-      window.alert(msg || t("errors.sessionInvalid"));
-      onLogout?.();
-    };
-
-    socket.on("forced_logout", onForcedLogout);
-    socket.on("auth_error", onAuthError);
-
-    return () => {
-      socket.off("forced_logout", onForcedLogout);
-      socket.off("auth_error", onAuthError);
-    };
-  }, [socket, onLogout]);
+  // Handled centrally in App.jsx (styled modal + cleanup)
 
   // --- Lobbychat: historik + live ---
   useEffect(() => {
