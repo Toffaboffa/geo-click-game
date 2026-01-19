@@ -2,8 +2,6 @@ name: Keep Render awake
 
 on:
   schedule:
-    # Render Free spins down after ~15 min of no inbound traffic.
-    # Ping every 10 minutes to avoid cold starts.
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
@@ -18,4 +16,12 @@ jobs:
             echo "Set it to: https://geo-click-game.onrender.com/healthz"
             exit 1
           fi
-          curl -fsS --max-time 20 "${{ secrets.RENDER_HEALTH_URL }}" > /dev/null
+
+          curl -fsS -L \
+            --connect-timeout 10 \
+            --max-time 120 \
+            --retry 4 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "${{ secrets.RENDER_HEALTH_URL }}" > /dev/null \
+          || echo "Ping failed (Render may be sleeping or temporarily unavailable)"
