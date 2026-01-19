@@ -464,6 +464,8 @@ const DIFFS = useMemo(
           if (!to) return;
           if (reason === "timeout") {
             showAlert(t("dialogs.challengeNoResponse", { to }));
+          } else if (reason === "offline") {
+            showAlert(t("dialogs.challengeWentOffline", { to }));
           } else {
             showAlert(t("dialogs.challengeDeclined", { to }));
           }
