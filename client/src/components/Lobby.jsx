@@ -241,7 +241,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
   // leaderboard wide
   const [lbView, setLbView] = useState("all"); // easy|medium|hard|total|all
-  const [lbSort, setLbSort] = useState("score"); // score|ppm|pct|sp|vm|fm
+  const [lbSort, setLbSort] = useState("elo"); // score|ppm|pct|sp|vm|fm
   const [lbDir, setLbDir] = useState(""); // "" => server default
   const [lbAllSortMode, setLbAllSortMode] = useState("total"); // när view=all: vilken grupp sorterar vi på
   const [lbRows, setLbRows] = useState([]);
