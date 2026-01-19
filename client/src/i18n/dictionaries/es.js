@@ -316,6 +316,7 @@ aboutXp: {
     acceptChallenge: "¿Aceptar el reto de {from}?",
     challengeSent: "Reto enviado a {to}",
     challengeDeclined: "{to} rechazó el reto.",
+    challengeWentOffline: "{to} se desconectó / perdió la conexión.",
     challengeNoResponse: "{to} no respondió al reto.",
     challengeExpired: "El reto de {from} expiró.",
     challengeCancelled: "El reto de {from} se canceló.",
