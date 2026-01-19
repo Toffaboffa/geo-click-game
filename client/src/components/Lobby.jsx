@@ -1193,7 +1193,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 </div>
 
                 <div className="admin-stats-table-wrap">
-                  <table className="leaderboard leaderboard-wide admin-stats-table">
+                  <table className="leaderboard admin-stats-table">
                     <thead>
                       <tr>
                         <th>Datum</th>
