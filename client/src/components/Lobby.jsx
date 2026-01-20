@@ -855,6 +855,17 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   }, [showAllGroups, viewMode]);
 
   const wideRows = useMemo(() => lbRows, [lbRows]);
+  const formatAdminDay = (dayStr) => {
+  if (!dayStr) return "";
+  const d = new Date(dayStr);
+
+  if (Number.isNaN(d.getTime())) {
+    // fallback om det redan är en sträng
+    return String(dayStr).split("T")[0];
+  }
+
+  return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+};
 
   // ---------- UI ----------
   return (
@@ -1207,7 +1218,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                     <tbody>
                       {(adminStatsData?.daily || []).map((r) => (
                         <tr key={r.day}>
-                          <td>{r.day}</td>
+                          <td>{formatAdminDay(r.day)}</td>
                           <td>{r.solo}</td>
                           <td>{r.pvp}</td>
                           <td>{r.prova}</td>
