@@ -1365,10 +1365,13 @@ font-size: 14px;
 /* ---------- Ready overlay ---------- */
 .ready-overlay {
   position: absolute;
-  inset: 0;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 18;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   pointer-events: none;
 }
 
@@ -2970,6 +2973,7 @@ select:focus-visible {
   max-height: min(520px, 92vh);
   overflow: auto;
   background: rgba(17, 24, 39, 0.98);
+  color: #e5e7eb;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
   padding: 16px;
