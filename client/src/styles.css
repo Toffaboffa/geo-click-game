@@ -2747,7 +2747,8 @@ select:focus-visible {
 }
 
 .bug-report-text {
-  width: 100%;
+  width: 500px;
+  margin-left: auto;
   min-height: 140px;
   resize: vertical;
   margin-top: 8px;
