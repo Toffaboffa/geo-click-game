@@ -1215,7 +1215,7 @@ font-size: 14px;
   /* ✅ Flytta upp den till mitten (samma plats som ready-knappen) */
   position: fixed;
   left: 50%;
-  bottom: 145px;
+  bottom: 150px;
   transform: translate(-50%, -50%);
 
   /* ✅ Större text men samma stilkänsla */
@@ -1365,7 +1365,7 @@ font-size: 14px;
 /* ---------- Ready overlay ---------- */
 .ready-overlay {
   position: absolute;
-  bottom: 145px;
+  bottom: 150px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 18;
