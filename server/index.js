@@ -1213,6 +1213,69 @@ app.get("/api/feedback", authMiddleware, async (req, res) => {
 
 
 // =====================
+// Updates / "Vad är nytt" -> public.update_logs
+// =====================
+
+function normalizeUpdateDate(v) {
+  const raw = String(v || "").trim();
+  if (!raw) return null;
+  // accept YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return null;
+}
+
+app.get("/api/updates", authMiddleware, async (req, res) => {
+  const limit = Math.max(1, Math.min(10, Number(req.query?.limit || 2) || 2));
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `select id, created_at, effective_date, title, body, created_by
+       from public.update_logs
+       order by effective_date desc nulls last, created_at desc
+       limit $1`,
+      [limit]
+    );
+    res.json({ ok: true, rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/updates", authMiddleware, async (req, res) => {
+  if (!isAdminUser(req.username)) return res.status(403).json({ error: "Forbidden" });
+
+  const title = String(req.body?.title || "").trim();
+  const body = String(req.body?.body || "").trim();
+  const effectiveDate = normalizeUpdateDate(req.body?.effectiveDate) || null;
+
+  if (!title) return res.status(400).json({ error: "Titel saknas" });
+  if (!body) return res.status(400).json({ error: "Text saknas" });
+  if (title.length > 140) return res.status(400).json({ error: "Titeln är för lång" });
+  if (body.length > 8000) return res.status(400).json({ error: "Texten är för lång" });
+
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(
+      `insert into public.update_logs (created_by, effective_date, title, body)
+       values ($1, $2, $3, $4)
+       returning id, created_at, effective_date, title, body, created_by`,
+      [req.username, effectiveDate, title, body]
+    );
+    res.json({ ok: true, item: rows?.[0] ?? null });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
+
+
+// =====================
 // Admin statistics (Toffaboffa only)
 // =====================
 app.get("/api/admin/stats", authMiddleware, async (req, res) => {
@@ -1857,17 +1920,16 @@ function startMatch(match) {
     difficulty: match.difficulty,
   });
 
-  match.awaitingStartReady = true;
+  // Starta matchen utan extra 'Ready'-klick: visa en kort countdown och kör igång.
+  match.awaitingStartReady = false;
   match.startReady.clear();
+  clearTimeout(match.startReadyPromptTimeout);
+  clearTimeout(match.startReadyTimeout);
+  match.startReadyPromptTimeout = null;
+  match.startReadyTimeout = null;
 
-  match.startReadyPromptTimeout = setTimeout(() => {
-    io.to(room).emit("start_ready_prompt");
-  }, START_READY_PROMPT_DELAY_MS);
-
-  match.startReadyTimeout = setTimeout(() => {
-    clearStartReady(match);
-    startRound(match);
-  }, START_READY_AUTO_START_MS);
+  const initialSeconds = 3;
+  startInitialRoundCountdown(match, initialSeconds);
 }
 
 function startSoloMatch(match, socket) {
@@ -1888,17 +1950,16 @@ function startSoloMatch(match, socket) {
     difficulty: match.difficulty,
   });
 
-  match.awaitingStartReady = true;
+  // Solo/Öva: ingen extra 'Ready'-klick. Kör en kort countdown och starta.
+  match.awaitingStartReady = false;
   match.startReady.clear();
+  clearTimeout(match.startReadyPromptTimeout);
+  clearTimeout(match.startReadyTimeout);
+  match.startReadyPromptTimeout = null;
+  match.startReadyTimeout = null;
 
-  match.startReadyPromptTimeout = setTimeout(() => {
-    io.to(room).emit("start_ready_prompt");
-  }, START_READY_PROMPT_DELAY_MS);
-
-  match.startReadyTimeout = setTimeout(() => {
-    clearStartReady(match);
-    startRound(match);
-  }, 10_000);
+  const initialSeconds = match.isPractice ? 2 : 3;
+  startInitialRoundCountdown(match, initialSeconds);
 }
 
 function wrapLon180(lon) {
@@ -1979,8 +2040,18 @@ function emitRoundResultAndIntermission(match, round) {
 
 	io.to(room).emit("round_result", { results });
 
-	// ✅ SISTA RUNDAN? Då ska vi INTE visa "ready_prompt" eller "Nästa runda om..."
-	if (match.currentRound >= match.totalRounds - 1) {
+  // ✅ Practice/solo/bot: snabba på flödet mellan rundor.
+  // Vi visar round_result en kort stund och startar sedan countdown automatiskt.
+  const hasBot = (match.players || []).includes(BOT_NAME);
+  if (hasBot || match.isPractice || match.isSolo) {
+    setTimeout(() => {
+      startNextRoundCountdown(match);
+    }, 800);
+    return;
+  }
+
+  // ✅ SISTA RUNDAN? Då ska vi INTE visa "ready_prompt" eller "Nästa runda om..."
+  if (match.currentRound >= match.totalRounds - 1) {
 	  setTimeout(() => {
 		finishMatch(match).catch(() => {});
 	  }, 1200); // liten delay så round_result hinner visas
@@ -2017,7 +2088,8 @@ function startNextRoundCountdown(match) {
   match.awaitingReady = false;
   match.ready.clear();
 
-  const seconds = 6;
+  const hasBot = (match.players || []).includes(BOT_NAME);
+  const seconds = (match.isPractice || match.isSolo || hasBot) ? 2 : 6;
   io.to(room).emit("next_round_countdown", { seconds });
 
   clearTimeout(match.countdownTimeout);
@@ -2049,7 +2121,7 @@ function startNextRoundCountdown(match) {
 // =====================
 // Start-ready: countdown before FIRST round
 // =====================
-function startInitialRoundCountdown(match) {
+function startInitialRoundCountdown(match, seconds = 3) {
   if (!match || match.finished) return;
 
   // ✅ Same countdown overlay/event as between rounds
@@ -2058,8 +2130,8 @@ function startInitialRoundCountdown(match) {
 
   const room = getRoomName(match.id);
 
-  const seconds = 5;
-  io.to(room).emit("next_round_countdown", { seconds });
+  const secs = Number(seconds) || 3;
+  io.to(room).emit("next_round_countdown", { seconds: secs });
 
   clearTimeout(match.countdownTimeout);
   match.countdownTimeout = setTimeout(() => {
@@ -2067,7 +2139,7 @@ function startInitialRoundCountdown(match) {
 
     // First round: do NOT change currentRound here (it should already be 0)
     startRound(match);
-  }, seconds * 1000);
+  }, secs * 1000);
 }
 
 // =====================
