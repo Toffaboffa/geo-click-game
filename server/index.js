@@ -2070,7 +2070,7 @@ function emitRoundResultAndIntermission(match, round) {
   if (hasBot || match.isPractice || match.isSolo) {
     setTimeout(() => {
       startNextRoundCountdown(match);
-    }, 1800);
+    }, 1600);
     return;
   }
 
