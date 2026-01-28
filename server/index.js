@@ -1010,6 +1010,70 @@ app.get("/api/me/matchlog", authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ NEW: Matchlog (PvP) for any user (from public.elo_log)
+// Returns a minimal list from the *target user's* perspective.
+// Used when viewing someone else's progression.
+app.get("/api/users/:username/matchlog", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const username = String(req.params.username || "").trim();
+    const limit = clampInt(req.query.limit, 1, 1000, 500);
+
+    if (!username) return res.json([]);
+
+    const ok = await hasTable(client, "elo_log");
+    if (!ok) return res.json([]);
+
+    // Required columns
+    const need = [
+      "match_id",
+      "p1",
+      "p2",
+      "p1_delta",
+      "p2_delta",
+      "outcome",
+      "created_at",
+    ];
+    for (const c of need) {
+      const has = await hasColumn(client, "elo_log", c);
+      if (!has) return res.json([]);
+    }
+
+    const { rows } = await client.query(
+      `select match_id, p1, p2, p1_delta, p2_delta, outcome, created_at
+       from public.elo_log
+       where p1=$1 or p2=$1
+       order by created_at desc nulls last
+       limit $2`,
+      [username, limit]
+    );
+
+    const out = (Array.isArray(rows) ? rows : []).map((r) => {
+      const p1 = String(r.p1 || "");
+      const p2 = String(r.p2 || "");
+      const meIsP1 = p1 === username;
+      const opponent = meIsP1 ? p2 : p1;
+      const eloDelta = meIsP1 ? Number(r.p1_delta ?? 0) : Number(r.p2_delta ?? 0);
+      const result = resultFromOutcome({ me: username, p1, outcome: r.outcome });
+
+      return {
+        matchId: r.match_id,
+        createdAt: r.created_at,
+        opponent,
+        eloDelta: Number.isFinite(eloDelta) ? eloDelta : 0,
+        result: result || null,
+      };
+    });
+
+    res.json(out);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
 
 // Legacy leaderboard (behåll för bakåtkompat)
 app.get("/api/leaderboard", async (_req, res) => {

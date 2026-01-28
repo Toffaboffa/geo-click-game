@@ -12,6 +12,7 @@ import {
   getUserProgress,
   getMyProgress,
   getMyMatchLog,
+  getUserMatchLog,
   getLeaderboardWide,
   getAdminStats,
   createFeedback,
@@ -842,11 +843,18 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
     try {
       const limit = 500;
-      const rows = await getMyMatchLog(session.sessionId, { limit });
+      const targetUser = progressUser || session.username;
+      const rows =
+        targetUser === session.username
+          ? await getMyMatchLog(session.sessionId, { limit })
+          : await getUserMatchLog(session.sessionId, targetUser, { limit });
       const list = Array.isArray(rows) ? rows : [];
       setMatchlogRows(list);
 
-      const desired = progressUser && progressUser !== session.username ? progressUser : "__ALL__";
+      // When viewing someone else's progression, default filter = matches vs *me*.
+      // When viewing myself, default = all opponents.
+      const desired =
+        targetUser && targetUser !== session.username ? session.username : "__ALL__";
       const oppSet = new Set(list.map((r) => String(r?.opponent || "")));
       setMatchlogDefaultOpponent(desired !== "__ALL__" && !oppSet.has(desired) ? "__ALL__" : desired);
     } catch (e) {
@@ -2237,8 +2245,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                       <div className="ps-label">{t("lobby.progress.statsUniqueOpponents")}</div>
                       <div className="ps-value">
                         {Number.isFinite(Number(progStats.uniqueOpponents))
-                          ? `${fmtIntOrDash(progStats.uniqueOpponents)}${Number.isFinite(Number(progStats.pvpPlayed)) && Number(progStats.pvpPlayed) > 0
-                              ? ` (${((Number(progStats.uniqueOpponents) / Number(progStats.pvpPlayed)) * 100).toFixed(1)}%)`
+                          ? `${fmtIntOrDash(progStats.uniqueOpponents)}${Number.isFinite(Number(progStats.played)) && Number(progStats.played) > 0
+                              ? ` (${((Number(progStats.uniqueOpponents) / Number(progStats.played)) * 100).toFixed(1)}%)`
                               : ''}`
                           : '—'}
                       </div>
@@ -2307,7 +2315,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
         open={matchlogOpen}
         onClose={() => setMatchlogOpen(false)}
         t={t}
-        me={session?.username}
+        me={progressUser || session?.username}
         rows={matchlogRows}
         defaultOpponent={matchlogDefaultOpponent}
         title={progressUser === session?.username ? t("lobby.matchlog.title") : t("lobby.progress.matchlogBtnVs")}

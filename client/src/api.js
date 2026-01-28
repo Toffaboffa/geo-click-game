@@ -273,6 +273,16 @@ export async function getMyMatchLog(sessionId, { limit = 500 } = {}) {
     headers: authHeaders(sessionId),
   });
 }
+
+export async function getUserMatchLog(sessionId, username, { limit = 500 } = {}) {
+  const u = encodeURIComponent(String(username || "").trim());
+  const qs = new URLSearchParams();
+  if (limit != null) qs.set('limit', String(limit));
+  const q = qs.toString();
+  return apiFetch(`/api/users/${u}/matchlog${q ? `?${q}` : ''}`, {
+    headers: authHeaders(sessionId),
+  });
+}
 // ---------- Feedback (Bug report / Feature request) ----------
 export async function createFeedback(sessionId, { kind, message, pageUrl, userAgent, lang, meta } = {}) {
   return apiFetch("/api/feedback", {
