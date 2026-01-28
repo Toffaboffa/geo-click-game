@@ -283,6 +283,25 @@ export async function getFeedbackList(sessionId, { kind = null, limit = 200 } = 
 }
 
 
+// ---------- Updates / Vad är nytt ----------
+export async function getUpdateLogs(sessionId, { limit = 2 } = {}) {
+  const qs = new URLSearchParams();
+  if (limit != null) qs.set("limit", String(limit));
+  const q = qs.toString();
+  return apiFetch(`/api/updates${q ? `?${q}` : ""}`, {
+    headers: authHeaders(sessionId),
+  });
+}
+
+export async function createUpdateLog(sessionId, { title, body, effectiveDate } = {}) {
+  return apiFetch("/api/updates", {
+    method: "POST",
+    headers: authHeaders(sessionId, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ title, body, effectiveDate }),
+  });
+}
+
+
 // ---------- Admin stats (Toffaboffa only) ----------
 export async function getAdminStats(sessionId, { days = 30 } = {}) {
   const params = new URLSearchParams();
