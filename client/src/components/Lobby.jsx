@@ -14,6 +14,8 @@ import {
   getAdminStats,
   createFeedback,
   getFeedbackList,
+  getUpdateLogs,
+  createUpdateLog,
 } from "../api";
 
 function fmtIntOrDash(v) {
@@ -157,6 +159,28 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const { t } = useI18n();
   const [challengeName, setChallengeName] = useState("");
 
+
+  // Quick challenge (from online list)
+  const [quickChallengeOpen, setQuickChallengeOpen] = useState(false);
+  const [quickChallengeTarget, setQuickChallengeTarget] = useState("");
+  const [quickChallengeDifficulty, setQuickChallengeDifficulty] = useState("medium");
+
+  // "Vad är nytt" popup (shows max 2 latest updates)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [whatsNewRows, setWhatsNewRows] = useState([]);
+  const [whatsNewLoading, setWhatsNewLoading] = useState(false);
+  const [whatsNewError, setWhatsNewError] = useState("");
+
+  // Admin: publish update log
+  const [updateTitle, setUpdateTitle] = useState("");
+  const [updateBody, setUpdateBody] = useState("");
+  const [updateDate, setUpdateDate] = useState(() => {
+    try { return new Date().toISOString().slice(0, 10); } catch { return ""; }
+  });
+  const [updateSending, setUpdateSending] = useState(false);
+  const [updateSent, setUpdateSent] = useState(false);
+  const [updateError, setUpdateError] = useState("");
+
   // Online panel (visible for everyone)
   // NOTE: The server may attach extra admin-only stats under lobbyState.admin
   const isAdmin = session?.username === "Toffaboffa";
@@ -206,6 +230,108 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     } catch {}
     onLogout?.();
   };
+
+  const openQuickChallenge = (username) => {
+    const u = String(username || "").trim();
+    if (!u) return;
+    if (u === session?.username) return;
+    setQuickChallengeTarget(u);
+    setQuickChallengeDifficulty((d) => safeDiff(d || "medium"));
+    setQuickChallengeOpen(true);
+  };
+
+  const closeQuickChallenge = () => {
+    setQuickChallengeOpen(false);
+    setQuickChallengeTarget("");
+  };
+
+  const sendQuickChallenge = () => {
+    if (!socket) return;
+    const u = String(quickChallengeTarget || "").trim();
+    if (!u) return;
+    socket.emit("challenge_player", {
+      targetUsername: u,
+      difficulty: safeDiff(quickChallengeDifficulty),
+    });
+    closeQuickChallenge();
+  };
+
+  const closeWhatsNew = () => {
+    const latestId = Number(whatsNewRows?.[0]?.id || 0) || 0;
+    try {
+      if (latestId) localStorage.setItem("geosense:whatsNewSeenId", String(latestId));
+    } catch {
+      // ignore
+    }
+    setWhatsNewOpen(false);
+  };
+
+  const loadWhatsNew = async () => {
+    if (!session?.sessionId) return;
+    try {
+      setWhatsNewLoading(true);
+      setWhatsNewError("");
+      const res = await getUpdateLogs(session.sessionId, { limit: 2 });
+      const rows = res?.rows || res?.data?.rows || res?.data || [];
+      const list = Array.isArray(rows) ? rows : [];
+      setWhatsNewRows(list);
+
+      const latestId = Number(list?.[0]?.id || 0) || 0;
+      let seenId = 0;
+      try {
+        seenId = Number(localStorage.getItem("geosense:whatsNewSeenId") || 0) || 0;
+      } catch {
+        seenId = 0;
+      }
+
+      if (latestId && latestId > seenId) {
+        setWhatsNewOpen(true);
+      }
+    } catch (e) {
+      setWhatsNewError(e?.message || String(e));
+    } finally {
+      setWhatsNewLoading(false);
+    }
+  };
+
+  const submitUpdateLog = async () => {
+    if (!session?.sessionId) return;
+    if (!isAdmin) return;
+    if (updateSending) return;
+
+    const title = String(updateTitle || "").trim();
+    const body = String(updateBody || "").trim();
+    const effectiveDate = String(updateDate || "").trim();
+
+    if (!title || !body) {
+      setUpdateError(t("lobby.whatsNew.adminMissing"));
+      return;
+    }
+
+    try {
+      setUpdateSending(true);
+      setUpdateSent(false);
+      setUpdateError("");
+      await createUpdateLog(session.sessionId, { title, body, effectiveDate });
+      setUpdateSent(true);
+      setUpdateTitle("");
+      setUpdateBody("");
+      // reload list so popup reflects latest
+      loadWhatsNew();
+    } catch (e) {
+      setUpdateError(e?.message || String(e));
+    } finally {
+      setUpdateSending(false);
+    }
+  };
+
+  // Load "Vad är nytt" once per session
+  useEffect(() => {
+    if (!session?.sessionId) return;
+    loadWhatsNew();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.sessionId]);
+
 // Lobby chat toggle (persisted in localStorage)
   const [chatOpen, setChatOpen] = useState(() => {
     try {
@@ -917,7 +1043,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            challengeFromChat(u);
+                            openQuickChallenge(u);
                           }}
                         >
                           ⚔️
@@ -1798,6 +1924,46 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                   </button>
                 </div>
 
+                <div className="about-content" style={{ margin: "10px 0 18px" }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>{t("lobby.whatsNew.adminTitle")}</div>
+                  {updateError && <div className="progress-error">{updateError}</div>}
+                  {updateSent && <div className="progress-loading">{t("lobby.whatsNew.adminSent")}</div>}
+
+                  <input
+                    className="challenge-input"
+                    value={updateTitle}
+                    onChange={(e) => setUpdateTitle(e.target.value)}
+                    placeholder={t("lobby.whatsNew.adminTitlePlaceholder")}
+                    maxLength={140}
+                  />
+
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+                    <div className="muted" style={{ minWidth: 110 }}>{t("lobby.whatsNew.adminDate")}</div>
+                    <input
+                      className="challenge-input"
+                      type="date"
+                      value={updateDate}
+                      onChange={(e) => setUpdateDate(e.target.value)}
+                      style={{ maxWidth: 200 }}
+                    />
+                  </div>
+
+                  <textarea
+                    className="bug-report-text"
+                    value={updateBody}
+                    onChange={(e) => setUpdateBody(e.target.value)}
+                    placeholder={t("lobby.whatsNew.adminBodyPlaceholder")}
+                    maxLength={8000}
+                    style={{ marginTop: 10 }}
+                  />
+
+                  <div className="bug-report-actions">
+                    <button type="button" className="hud-btn" onClick={submitUpdateLog} disabled={updateSending}>
+                      {updateSending ? t("common.loading") : t("lobby.whatsNew.adminPublish")}
+                    </button>
+                  </div>
+                </div>
+
                 {feedbackLoading && <div className="progress-loading">{t("common.loading")}</div>}
                 {feedbackError && <div className="progress-error">{feedbackError}</div>}
 
@@ -1871,6 +2037,77 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Vad är nytt popup */}
+      {whatsNewOpen && (
+        <div className="finish-overlay" onClick={closeWhatsNew}>
+          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">{t("lobby.whatsNew.title")}</div>
+
+            <div className="about-content">
+              {whatsNewLoading && <div className="progress-loading">{t("common.loading")}</div>}
+              {whatsNewError && <div className="progress-error">{whatsNewError}</div>}
+
+              {!whatsNewLoading && !whatsNewError && (
+                <div>
+                  {(whatsNewRows || []).slice(0, 2).map((r) => {
+                    const date = r?.effective_date
+                      ? new Date(r.effective_date).toLocaleDateString("sv-SE")
+                      : r?.created_at
+                      ? new Date(r.created_at).toLocaleDateString("sv-SE")
+                      : "";
+                    return (
+                      <div key={r.id} style={{ marginBottom: 14 }}>
+                        <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                          {r.title} {date ? <span className="muted">({date})</span> : null}
+                        </div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{r.body}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="finish-actions">
+              <button className="hud-btn" onClick={closeWhatsNew}>
+                {t("common.ok")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick challenge modal */}
+      {quickChallengeOpen && (
+        <div className="finish-overlay" onClick={closeQuickChallenge}>
+          <div className="finish-card" onClick={(e) => e.stopPropagation()}>
+            <div className="finish-title">{t("lobby.quickChallenge.title", { user: quickChallengeTarget })}</div>
+
+            <div className="about-content">
+              <div style={{ marginBottom: 8 }}>{t("lobby.quickChallenge.pickDifficulty")}</div>
+              <select
+                className="challenge-select"
+                value={quickChallengeDifficulty}
+                onChange={(e) => setQuickChallengeDifficulty(safeDiff(e.target.value))}
+              >
+                <option value="easy">{t("common.difficulty.easy")}</option>
+                <option value="medium">{t("common.difficulty.medium")}</option>
+                <option value="hard">{t("common.difficulty.hard")}</option>
+              </select>
+            </div>
+
+            <div className="bug-report-actions">
+              <button type="button" className="hud-btn" onClick={sendQuickChallenge}>
+                {t("lobby.quickChallenge.send")}
+              </button>
+              <button type="button" className="hud-btn" onClick={closeQuickChallenge}>
+                {t("common.cancel")}
+              </button>
+            </div>
           </div>
         </div>
       )}
