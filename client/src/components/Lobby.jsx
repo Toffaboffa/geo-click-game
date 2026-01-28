@@ -1,6 +1,7 @@
 // client/src/components/Lobby.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import StartPings from "./StartPings";
+import MatchLogModal from "./MatchLogModal";
 import logo from "../assets/logo.png";
 import LanguageToggle from "../i18n/LanguageToggle.jsx";
 import { useI18n } from "../i18n/LanguageProvider.jsx";
@@ -10,6 +11,7 @@ import {
   getBadgesCatalog,
   getUserProgress,
   getMyProgress,
+  getMyMatchLog,
   getLeaderboardWide,
   getAdminStats,
   createFeedback,
@@ -382,6 +384,13 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
   const [progressLoading, setProgressLoading] = useState(false);
   const [progressError, setProgressError] = useState("");
 
+  // Matchlog modal (PvP history from my elo_log)
+  const [matchlogOpen, setMatchlogOpen] = useState(false);
+  const [matchlogRows, setMatchlogRows] = useState([]);
+  const [matchlogLoading, setMatchlogLoading] = useState(false);
+  const [matchlogError, setMatchlogError] = useState("");
+  const [matchlogDefaultOpponent, setMatchlogDefaultOpponent] = useState("__ALL__");
+
   // About/info modal ( ? )
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutTab, setAboutTab] = useState("basic");
@@ -527,6 +536,13 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     setProgressUser(null);
     setProgressData(null);
     setProgressError("");
+
+    // close any nested modal
+    setMatchlogOpen(false);
+    setMatchlogRows([]);
+    setMatchlogError("");
+    setMatchlogLoading(false);
+
   };
 
   const openAbout = () => {
@@ -819,6 +835,28 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
     }
   };
 
+  const openMatchLog = async () => {
+    setMatchlogError("");
+    setMatchlogLoading(true);
+    setMatchlogOpen(true);
+
+    try {
+      const limit = 500;
+      const rows = await getMyMatchLog(session.sessionId, { limit });
+      const list = Array.isArray(rows) ? rows : [];
+      setMatchlogRows(list);
+
+      const desired = progressUser && progressUser !== session.username ? progressUser : "__ALL__";
+      const oppSet = new Set(list.map((r) => String(r?.opponent || "")));
+      setMatchlogDefaultOpponent(desired !== "__ALL__" && !oppSet.has(desired) ? "__ALL__" : desired);
+    } catch (e) {
+      const msg = e?.message ? String(e.message) : t("errors.progressionLoadFailed");
+      setMatchlogError(msg.startsWith("errors.") ? t(msg) : msg);
+    } finally {
+      setMatchlogLoading(false);
+    }
+  };
+
   const groupedBadges = useMemo(() => {
     const catalog = Array.isArray(badgesCatalog) ? badgesCatalog : [];
     const map = new Map();
@@ -956,6 +994,8 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
 
       bestMatchScore: s.bestMatchScore ?? progressData?.bestMatchScore ?? progressData?.best_match_score ?? null,
       bestWinMargin: s.bestWinMargin ?? progressData?.bestWinMargin ?? progressData?.best_win_margin ?? null,
+            pvpPlayed: s.pvpPlayed ?? progressData?.pvpPlayed ?? null,
+      uniqueOpponents: s.uniqueOpponents ?? progressData?.uniqueOpponents ?? null,
     };
   }, [progressData]);
 
@@ -1284,7 +1324,7 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {/* Admin stats modal (Toffaboffa) */}
       {adminStatsOpen && (
         <div className="finish-overlay" onClick={closeAdminStats}>
-          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+          <div className="finish-card finish-card-wide progress-card" onClick={(e) => e.stopPropagation()}>
             <div className="lb-modal-head">
               <div className="finish-title">Adminstatistik</div>
               <div className="lb-modal-actions">
@@ -2115,10 +2155,22 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
       {/* Progression modal */}
       {progressOpen && (
         <div className="finish-overlay" onClick={closeProgress}>
-          <div className="finish-card finish-card-wide" onClick={(e) => e.stopPropagation()}>
+          <div className="finish-card finish-card-wide progress-card" onClick={(e) => e.stopPropagation()}>
             <div className="finish-title">
               {t("lobby.progress.title", { user: progressUser, levelLabel: t("common.level"), level: levelValue })}
             </div>
+            <button
+              type="button"
+              className="hud-btn progress-matchlog-btn"
+              onClick={openMatchLog}
+              disabled={matchlogLoading}
+              title={t("lobby.matchlog.title")}
+            >
+              {progressUser === session?.username
+                ? t("lobby.progress.matchlogBtnMy")
+                : t("lobby.progress.matchlogBtnVs")}
+            </button>
+
 
             {progressLoading && <div className="progress-loading">{t("common.loading")}</div>}
             {progressError && <div className="progress-error">{progressError}</div>}
@@ -2181,6 +2233,17 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
                         {Number.isFinite(Number(progStats.bestWinMargin)) ? fmtIntOrDash(progStats.bestWinMargin) : "—"}
                       </div>
                     </div>
+                    <div className="ps-item">
+                      <div className="ps-label">{t("lobby.progress.statsUniqueOpponents")}</div>
+                      <div className="ps-value">
+                        {Number.isFinite(Number(progStats.uniqueOpponents))
+                          ? `${fmtIntOrDash(progStats.uniqueOpponents)}${Number.isFinite(Number(progStats.pvpPlayed)) && Number(progStats.pvpPlayed) > 0
+                              ? ` (${((Number(progStats.uniqueOpponents) / Number(progStats.pvpPlayed)) * 100).toFixed(1)}%)`
+                              : ''}`
+                          : '—'}
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 
@@ -2238,6 +2301,17 @@ export default function Lobby({ session, socket, lobbyState, onLogout }) {
           </div>
         </div>
       )}
+
+
+      <MatchLogModal
+        open={matchlogOpen}
+        onClose={() => setMatchlogOpen(false)}
+        t={t}
+        me={session?.username}
+        rows={matchlogRows}
+        defaultOpponent={matchlogDefaultOpponent}
+        title={progressUser === session?.username ? t("lobby.matchlog.title") : t("lobby.progress.matchlogBtnVs")}
+      />
     </div>
   );
 }

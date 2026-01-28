@@ -273,8 +273,25 @@ aboutXp: {
       statsAvgScore: "Snittpoäng",
       statsBestMatch: "Bästa match",
       statsBestWin: "Största vinst",
+      statsUniqueOpponents: "UNIKA MOTSTÅNDARE",
+      matchlogBtnMy: "MATCHLOG",
+      matchlogBtnVs: "Matcher",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
+matchlog: {
+  title: "MATCHLOG",
+  filterLabel: "Filtrera motståndare",
+  allOpponents: "Alla motståndare",
+  empty: "Inga PvP-matcher ännu.",
+  win: "Vinst",
+  loss: "Förlust",
+  draw: "Oavgjort",
+  played: "Matcher: {n}",
+  wins: "Vinster: {n}",
+  losses: "Förluster: {n}",
+  winrate: "Win%: {n}",
+},
 
   },
 

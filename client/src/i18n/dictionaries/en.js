@@ -269,8 +269,25 @@ aboutXp: {
       statsAvgScore: "Avg score",
       statsBestMatch: "Best match",
       statsBestWin: "Biggest win",
+      statsUniqueOpponents: "UNIQUE OPPONENTS",
+      matchlogBtnMy: "MATCHLOG",
+      matchlogBtnVs: "Matches",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
+matchlog: {
+  title: "MATCHLOG",
+  filterLabel: "Filter opponent",
+  allOpponents: "All opponents",
+  empty: "No PvP matches yet.",
+  win: "Win",
+  loss: "Loss",
+  draw: "Draw",
+  played: "Matches: {n}",
+  wins: "Wins: {n}",
+  losses: "Losses: {n}",
+  winrate: "Win%: {n}",
+},
 
   },
 

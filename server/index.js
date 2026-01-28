@@ -481,6 +481,74 @@ async function hasTable(dbClient, tableName) {
   return ok;
 }
 
+
+/*
+  ------------------------------------------------------------
+  OPTIONAL DB INDEXES (recommended when matchlog grows)
+  Run in Supabase SQL editor (safe to run multiple times):
+
+  -- Elo log: fast lookups by player + sort by created_at
+  create index if not exists elo_log_p1_created_at_idx on public.elo_log (p1, created_at desc);
+  create index if not exists elo_log_p2_created_at_idx on public.elo_log (p2, created_at desc);
+
+  -- Game events: if you ever join/inspect by match_id
+  create index if not exists game_events_match_id_idx on public.game_events (match_id);
+  create index if not exists game_events_match_id_type_idx on public.game_events (match_id, event_type);
+  ------------------------------------------------------------
+*/
+
+// =====================
+// PvP stats helpers (elo_log)
+// =====================
+// We treat public.elo_log as the source of truth for PvP (1v1) history.
+// Fail-safe: if the table/columns don't exist yet, return nulls.
+async function getPvpStatsFromEloLog(dbClient, username) {
+  try {
+    const ok = await hasTable(dbClient, "elo_log");
+    if (!ok) return { pvpPlayed: null, uniqueOpponents: null };
+
+    // Minimum columns we rely on
+    const hasP1 = await hasColumn(dbClient, "elo_log", "p1");
+    const hasP2 = await hasColumn(dbClient, "elo_log", "p2");
+    if (!hasP1 || !hasP2) return { pvpPlayed: null, uniqueOpponents: null };
+
+    const { rows } = await dbClient.query(
+      `select
+         count(*)::int as played,
+         count(distinct case when p1=$1 then p2 else p1 end)::int as opps
+       from public.elo_log
+       where p1=$1 or p2=$1`,
+      [username]
+    );
+
+    const played = rows[0]?.played ?? 0;
+    const opps = rows[0]?.opps ?? 0;
+
+    return {
+      pvpPlayed: Number.isFinite(Number(played)) ? Number(played) : 0,
+      uniqueOpponents: Number.isFinite(Number(opps)) ? Number(opps) : 0,
+    };
+  } catch (_e) {
+    return { pvpPlayed: null, uniqueOpponents: null };
+  }
+}
+
+function clampInt(n, min, max, fallback) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(v)));
+}
+
+function resultFromOutcome({ me, p1, outcome }) {
+  // outcome in elo_log is stored as p1's score: 1=win, 0=loss, 0.5=draw
+  const o = Number(outcome);
+  if (!Number.isFinite(o)) return null;
+  if (o == 0.5) return "draw";
+  const p1Won = o == 1;
+  if (me === p1) return p1Won ? "win" : "loss";
+  return p1Won ? "loss" : "win";
+}
+
 // =====================
 // Basic routes
 // =====================
@@ -773,6 +841,8 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
       [username]
     );
 
+    const pvpStats = await getPvpStatsFromEloLog(client, username);
+
     res.json({
       username,
       level: typeof u.level === "number" ? u.level : null,
@@ -791,6 +861,8 @@ app.get("/api/me/progression", authMiddleware, async (req, res) => {
         pct: u.pct ?? null,
         bestMatchScore: Object.prototype.hasOwnProperty.call(u, "best_match_score") ? u.best_match_score : null,
         bestWinMargin: Object.prototype.hasOwnProperty.call(u, "best_win_margin") ? u.best_win_margin : null,
+        pvpPlayed: pvpStats?.pvpPlayed ?? null,
+        uniqueOpponents: pvpStats?.uniqueOpponents ?? null,
       },
     });
   } catch (e) {
@@ -845,6 +917,8 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
       [username]
     );
 
+    const pvpStats = await getPvpStatsFromEloLog(client, username);
+
     res.json({
       username,
       level: typeof u.level === "number" ? u.level : null,
@@ -863,6 +937,8 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
         pct: u.pct ?? null,
         bestMatchScore: Object.prototype.hasOwnProperty.call(u, "best_match_score") ? u.best_match_score : null,
         bestWinMargin: Object.prototype.hasOwnProperty.call(u, "best_win_margin") ? u.best_win_margin : null,
+        pvpPlayed: pvpStats?.pvpPlayed ?? null,
+        uniqueOpponents: pvpStats?.uniqueOpponents ?? null,
       },
     });
   } catch (e) {
@@ -872,6 +948,68 @@ app.get("/api/users/:username/progression", authMiddleware, async (req, res) => 
     client.release();
   }
 });
+
+// ✅ NEW: Matchlog (PvP) for "me" (from public.elo_log)
+// Returns a minimal list from the logged-in user's perspective.
+app.get("/api/me/matchlog", authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const username = req.username;
+    const limit = clampInt(req.query.limit, 1, 1000, 500);
+
+    const ok = await hasTable(client, "elo_log");
+    if (!ok) return res.json([]);
+
+    // Required columns
+    const need = [
+      "match_id",
+      "p1",
+      "p2",
+      "p1_delta",
+      "p2_delta",
+      "outcome",
+      "created_at",
+    ];
+    for (const c of need) {
+      const has = await hasColumn(client, "elo_log", c);
+      if (!has) return res.json([]);
+    }
+
+    const { rows } = await client.query(
+      `select match_id, p1, p2, p1_delta, p2_delta, outcome, created_at
+       from public.elo_log
+       where p1=$1 or p2=$1
+       order by created_at desc nulls last
+       limit $2`,
+      [username, limit]
+    );
+
+    const out = (Array.isArray(rows) ? rows : []).map((r) => {
+      const p1 = String(r.p1 || "");
+      const p2 = String(r.p2 || "");
+      const meIsP1 = p1 === username;
+      const opponent = meIsP1 ? p2 : p1;
+      const eloDelta = meIsP1 ? Number(r.p1_delta ?? 0) : Number(r.p2_delta ?? 0);
+      const result = resultFromOutcome({ me: username, p1, outcome: r.outcome });
+
+      return {
+        matchId: r.match_id,
+        createdAt: r.created_at,
+        opponent,
+        eloDelta: Number.isFinite(eloDelta) ? eloDelta : 0,
+        result: result || null,
+      };
+    });
+
+    res.json(out);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Serverfel" });
+  } finally {
+    client.release();
+  }
+});
+
 
 // Legacy leaderboard (behåll för bakåtkompat)
 app.get("/api/leaderboard", async (_req, res) => {

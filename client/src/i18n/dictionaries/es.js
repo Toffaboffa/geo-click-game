@@ -271,8 +271,25 @@ aboutXp: {
       statsAvgScore: "Media",
       statsBestMatch: "Mejor partida",
       statsBestWin: "Mejor victoria",
+      statsUniqueOpponents: "RIVALES ÚNICOS",
+      matchlogBtnMy: "HISTORIAL",
+      matchlogBtnVs: "Partidas",
       badgesLine: "{label}: {earned}/{total} • {hover}",
     },
+
+matchlog: {
+  title: "HISTORIAL",
+  filterLabel: "Filtrar rival",
+  allOpponents: "Todos los rivales",
+  empty: "Aún no hay partidas PvP.",
+  win: "Victoria",
+  loss: "Derrota",
+  draw: "Empate",
+  played: "Partidas: {n}",
+  wins: "Victorias: {n}",
+  losses: "Derrotas: {n}",
+  winrate: "Win%: {n}",
+},
 
   },
 

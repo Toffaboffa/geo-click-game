@@ -263,6 +263,16 @@ export async function getMyProgress(sessionId) {
   });
   return normalizeProgress(p);
 }
+
+// ---------- PvP matchlog ----------
+export async function getMyMatchLog(sessionId, { limit = 500 } = {}) {
+  const qs = new URLSearchParams();
+  if (limit != null) qs.set('limit', String(limit));
+  const q = qs.toString();
+  return apiFetch(`/api/me/matchlog${q ? `?${q}` : ''}`, {
+    headers: authHeaders(sessionId),
+  });
+}
 // ---------- Feedback (Bug report / Feature request) ----------
 export async function createFeedback(sessionId, { kind, message, pageUrl, userAgent, lang, meta } = {}) {
   return apiFetch("/api/feedback", {
