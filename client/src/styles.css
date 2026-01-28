@@ -1215,12 +1215,12 @@ font-size: 14px;
   /* ✅ Flytta upp den till mitten (samma plats som ready-knappen) */
   position: fixed;
   left: 50%;
-  top: 50%;
+  bottom: 130px;
   transform: translate(-50%, -50%);
 
   /* ✅ Större text men samma stilkänsla */
   margin-top: 0;
-  font-size: 26px;        /* <-- större */
+  font-size: 22px;        /* <-- större */
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1237,7 +1237,7 @@ font-size: 14px;
   backdrop-filter: blur(6px);
 
   /* Ska ligga ovanpå HUD men under overlays */
-  z-index: 99999;
+  z-index: 9999999;
   pointer-events: none;
   user-select: none;
 }
@@ -1365,7 +1365,7 @@ font-size: 14px;
 /* ---------- Ready overlay ---------- */
 .ready-overlay {
   position: absolute;
-  top: 16px;
+  bottom: 110px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 18;
