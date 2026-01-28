@@ -1881,6 +1881,7 @@ function clearAllMatchTimers(match) {
   clearTimeout(match.readyTimeout);
   clearTimeout(match.countdownTimeout);
   clearTimeout(match.roundTimeout);
+  match._countdownRunning = false;
   match.startReadyPromptTimeout = null;
   match.startReadyTimeout = null;
   match.readyPromptTimeout = null;
@@ -1950,16 +1951,19 @@ function startSoloMatch(match, socket) {
     difficulty: match.difficulty,
   });
 
-  // Solo/Öva: ingen extra 'Ready'-klick. Kör en kort countdown och starta.
-  match.awaitingStartReady = false;
-  match.startReady.clear();
-  clearTimeout(match.startReadyPromptTimeout);
-  clearTimeout(match.startReadyTimeout);
-  match.startReadyPromptTimeout = null;
-  match.startReadyTimeout = null;
-
-  const initialSeconds = match.isPractice ? 2 : 3;
-  startInitialRoundCountdown(match, initialSeconds);
+	// Solo/Öva: kräv att spelaren trycker Ready innan start
+	match.awaitingStartReady = true;
+	match.startReady.clear();
+	
+	clearTimeout(match.startReadyPromptTimeout);
+	clearTimeout(match.startReadyTimeout);
+	match.startReadyPromptTimeout = null;
+	match.startReadyTimeout = null;
+	
+	// Visa Ready-knappen (klienten lyssnar redan på detta)
+	match.startReadyPromptTimeout = setTimeout(() => {
+	  io.to(room).emit("start_ready_prompt");
+	}, START_READY_PROMPT_DELAY_MS);
 }
 
 function wrapLon180(lon) {
@@ -2046,7 +2050,7 @@ function emitRoundResultAndIntermission(match, round) {
   if (hasBot || match.isPractice || match.isSolo) {
     setTimeout(() => {
       startNextRoundCountdown(match);
-    }, 800);
+    }, 1800);
     return;
   }
 
@@ -2089,7 +2093,7 @@ function startNextRoundCountdown(match) {
   match.ready.clear();
 
   const hasBot = (match.players || []).includes(BOT_NAME);
-  const seconds = (match.isPractice || match.isSolo || hasBot) ? 2 : 6;
+  const seconds = (match.isPractice || match.isSolo || hasBot) ? 3 : 6;
   io.to(room).emit("next_round_countdown", { seconds });
 
   clearTimeout(match.countdownTimeout);
@@ -4279,13 +4283,13 @@ io.on("connection", (socket) => {
     const [pA, pB] = match.players;
     const bothReady = match.startReady.has(pA) && match.startReady.has(pB);
 
-    if (match.isSolo) {
-      if (match.startReady.has(pA) || match.startReady.has(pB)) {
-        clearStartReady(match);
-        startRound(match);
-      }
-      return;
-    }
+		if (match.isSolo) {
+		  if (match.startReady.has(currentUser)) {
+		    clearStartReady(match);
+		    startInitialRoundCountdown(match, 3);
+		  }
+		  return;
+		}
 
     if (bothReady) {
       clearStartReady(match);
