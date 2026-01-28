@@ -1215,7 +1215,7 @@ font-size: 14px;
   /* ✅ Flytta upp den till mitten (samma plats som ready-knappen) */
   position: fixed;
   left: 50%;
-  bottom: 130px;
+  bottom: 110px;
   transform: translate(-50%, -50%);
 
   /* ✅ Större text men samma stilkänsla */
