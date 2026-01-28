@@ -3077,13 +3077,14 @@ select:focus-visible {
 
 /* Floating button in the top-right corner of the Progression card */
 .progress-matchlog-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 6px 10px;
-  font-size: 12px;
-  line-height: 1;
-  border-radius: 999px;
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 6px 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    border-radius: 999px;
 }
 
 /* ---------- Matchlog modal ---------- */
@@ -3104,14 +3105,16 @@ select:focus-visible {
 }
 
 .matchlog-select {
-  width: 100%;
-  margin-top: 6px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.18);
-  color: inherit;
-  outline: none;
+	width: 100%;
+    font: inherit;
+    font-weight: 700;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    /* background: #0000002e; */
+    color: inherit;
+    outline: none;
 }
 
 .matchlog-vsstats {
@@ -3119,21 +3122,25 @@ select:focus-visible {
 }
 
 .matchlog-vsstats-line {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: 12px;
-  opacity: 0.9;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 18px;
+    opacity: .9;
+    font-weight: 700;
 }
 
 .matchlog-list {
-  margin-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  max-height: 420px;
-  overflow: auto;
-  padding-right: 4px;
+    margin-top: 12px;
+    margin-left: auto;
+    margin-right: auto;
+    width: 420px;
+    border-top: 1px solid rgba(255, 255, 255, .12);
+    height: 420px;
+    overflow: auto;
+    padding-right: 4px;
 }
 
 .matchlog-row {
