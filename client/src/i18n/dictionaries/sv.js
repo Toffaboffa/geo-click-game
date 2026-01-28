@@ -107,6 +107,23 @@ export default {
       colUrl: "URL",
       colLang: "Lang",
     },
+    whatsNew: {
+      title: "Vad är nytt",
+      adminTitle: "Publicera uppdatering",
+      adminMissing: "Fyll i titel och text.",
+      adminSent: "Publicerad!",
+      adminTitlePlaceholder: "Rubrik (kort)",
+      adminDate: "Datum",
+      adminBodyPlaceholder: "Skriv vad som är nytt… (bara de två senaste visas)",
+      adminPublish: "Publicera",
+    },
+
+    quickChallenge: {
+      title: "Utmana {user}",
+      pickDifficulty: "Välj svårighetsgrad:",
+      send: "Skicka utmaning",
+    },
+
     chat: {
       title: "Lobbychat",
       toggleShow: "Visa chat",
