@@ -257,6 +257,9 @@ export default function Game({
   // --- map load gate ---
   const [mapLoaded, setMapLoaded] = useState(false);
   const [startReadySent, setStartReadySent] = useState(false);
+  // Show the initial "Ready" overlay only when the server explicitly asks for it.
+  // (PvP used to auto-start even though the button was visible; this fixes that mismatch.)
+  const [startGatePrompted, setStartGatePrompted] = useState(false);
 
   // --- click state ---
   const [hasClickedThisRound, setHasClickedThisRound] = useState(false);
@@ -403,7 +406,8 @@ export default function Game({
   const pop = gameState.city?.population ? String(gameState.city.population) : null;
 
   const matchFinished = !!gameState.finalResult;
-  const showStartGate = !matchFinished && gameState.currentRound < 0 && countdown === null;
+  const showStartGate =
+    startGatePrompted && !matchFinished && gameState.currentRound < 0 && countdown === null;
 
   // ✅ Punkt 3: progress bar som visar rundans tid (20s)
   const showRoundTimeBar = !matchFinished && gameState.currentRound >= 0 && countdown === null && !showReadyButton;
@@ -415,6 +419,12 @@ export default function Game({
       setHoveringUi(false);
     }
   }, [showReadyButton, showStartGate, matchFinished, countdown]);
+
+  // Reset start gate per match (important when rejoining / starting a new match)
+  useEffect(() => {
+    setStartReadySent(false);
+    setStartGatePrompted(false);
+  }, [match?.matchId]);
 
   // -------- preload map image ----------
   useEffect(() => {
@@ -691,7 +701,10 @@ useEffect(() => {
   useEffect(() => {
     if (!socket) return;
 
-    const onStartReadyPrompt = () => setStartReadySent(false);
+    const onStartReadyPrompt = () => {
+      setStartGatePrompted(true);
+      setStartReadySent(false);
+    };
 
     const onRoundResult = ({ results }) => {
       setTimerRunning(false);
@@ -723,6 +736,8 @@ useEffect(() => {
     };
 
     const onNextRoundCountdown = ({ seconds }) => {
+      // Once a countdown begins, we're past the start gate.
+      setStartGatePrompted(false);
       setHoveringUi(false);
       setShowReadyButton(false);
       setIAmReady(false);
