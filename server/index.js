@@ -96,7 +96,11 @@ const SCORER_MAX_DISTANCE_KM = 17_000;
 
 // Start-ready gate timers
 const START_READY_PROMPT_DELAY_MS = 200;
-const START_READY_AUTO_START_MS = 12_000;
+// NOTE: We no longer auto-start PvP matches if players don't press Ready.
+// Instead, we can optionally award a walkover if exactly one player is ready
+// after some time (keeps the opponent from being held hostage by AFK).
+const START_READY_FORFEIT_MS = 40_000;
+const BETWEEN_ROUNDS_READY_FORFEIT_MS = 25_000;
 
 // Walkover policy (Variant X)
 const WALKOVER_LOSER_SCORE = 15_000; // totalpoäng för 10 rundor ~ max 20k
@@ -1921,16 +1925,32 @@ function startMatch(match) {
     difficulty: match.difficulty,
   });
 
-  // Starta matchen utan extra 'Ready'-klick: visa en kort countdown och kör igång.
-  match.awaitingStartReady = false;
+  // ✅ PvP: kräv att BÅDA trycker Ready innan första rundan startar.
+  // (Solo/Öva har redan detta beteende.)
+  match.awaitingStartReady = true;
   match.startReady.clear();
+
   clearTimeout(match.startReadyPromptTimeout);
   clearTimeout(match.startReadyTimeout);
   match.startReadyPromptTimeout = null;
   match.startReadyTimeout = null;
 
-  const initialSeconds = 3;
-  startInitialRoundCountdown(match, initialSeconds);
+  // Visa Ready-knappen efter en kort delay (klienten lyssnar på detta event)
+  match.startReadyPromptTimeout = setTimeout(() => {
+    io.to(room).emit("start_ready_prompt");
+  }, START_READY_PROMPT_DELAY_MS);
+
+  // Failsafe: om exakt en spelare är Ready länge nog -> walkover.
+  // (Om ingen trycker Ready gör vi inget; matchen stannar i vänteläge.)
+  match.startReadyTimeout = setTimeout(() => {
+    if (!match || match.finished) return;
+    if (!match.awaitingStartReady) return;
+    const [a, b] = match.players;
+    const aReady = match.startReady.has(a);
+    const bReady = match.startReady.has(b);
+    if (aReady && !bReady) finishMatchAsWalkover(match, a, b, "start_not_ready").catch(() => {});
+    else if (bReady && !aReady) finishMatchAsWalkover(match, b, a, "start_not_ready").catch(() => {});
+  }, START_READY_FORFEIT_MS);
 }
 
 function startSoloMatch(match, socket) {
@@ -2066,9 +2086,19 @@ function emitRoundResultAndIntermission(match, round) {
 	  io.to(room).emit("ready_prompt", { roundIndex: match.currentRound });
 	}, 2000);
 
+	// ✅ Mellan rundor: fortsätt INTE automatiskt om någon är AFK.
+	// Nästa runda startar bara när båda tryckt Ready.
+	// Failsafe: om exakt en spelare är Ready länge nog -> walkover.
 	match.readyTimeout = setTimeout(() => {
-	  startNextRoundCountdown(match);
-	}, 10_000);
+	  if (!match || match.finished) return;
+	  if (!match.awaitingReady) return;
+	  const [a, b] = match.players;
+	  const aReady = match.ready.has(a);
+	  const bReady = match.ready.has(b);
+	  if (aReady && !bReady) finishMatchAsWalkover(match, a, b, "between_rounds_not_ready").catch(() => {});
+	  else if (bReady && !aReady)
+	    finishMatchAsWalkover(match, b, a, "between_rounds_not_ready").catch(() => {});
+	}, BETWEEN_ROUNDS_READY_FORFEIT_MS);
 }
 
 function startNextRoundCountdown(match) {
