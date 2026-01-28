@@ -106,6 +106,23 @@ export default {
       colUrl: "URL",
       colLang: "Idioma",
     },
+    whatsNew: {
+      title: "Novedades",
+      adminTitle: "Publicar actualización",
+      adminMissing: "Escribe un título y un texto.",
+      adminSent: "¡Publicado!",
+      adminTitlePlaceholder: "Título (corto)",
+      adminDate: "Fecha",
+      adminBodyPlaceholder: "Escribe qué hay de nuevo… (solo se muestran las 2 últimas)",
+      adminPublish: "Publicar",
+    },
+
+    quickChallenge: {
+      title: "Desafiar a {user}",
+      pickDifficulty: "Elige dificultad:",
+      send: "Enviar desafío",
+    },
+
     chat: {
       title: "Chat de lobby",
       toggleShow: "Mostrar chat",
