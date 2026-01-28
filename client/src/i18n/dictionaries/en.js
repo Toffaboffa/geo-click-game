@@ -106,6 +106,23 @@ export default {
       colUrl: "URL",
       colLang: "Lang",
     },
+    whatsNew: {
+      title: "What’s new",
+      adminTitle: "Publish update",
+      adminMissing: "Please enter a title and text.",
+      adminSent: "Published!",
+      adminTitlePlaceholder: "Title (short)",
+      adminDate: "Date",
+      adminBodyPlaceholder: "Write what’s new… (only the two latest are shown)",
+      adminPublish: "Publish",
+    },
+
+    quickChallenge: {
+      title: "Challenge {user}",
+      pickDifficulty: "Choose difficulty:",
+      send: "Send challenge",
+    },
+
     chat: {
       title: "Lobby chat",
       toggleShow: "Show chat",
