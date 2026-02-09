@@ -892,7 +892,6 @@ export const cities = [
   { name: "Nadi", lat: -17.803090, lon: 177.416170, countryCode: "FJ", population: "42 000" },
   { name: "Sengkurong", lat: 4.883330, lon: 114.833330, countryCode: "BN", population: "41 000" },
   { name: "Le Lamentin", lat: 14.613410, lon: -60.999640, countryCode: "MQ", population: "41 000" },
-  { name: "Apia", lat: -13.833330, lon: -171.766660, countryCode: "WS", population: "40 000" },
   { name: "Tarawa", lat: 1.327800, lon: 172.976960, countryCode: "KI", population: "40 000" },
   { name: "Arawa", lat: -6.229770, lon: 155.565980, countryCode: "PG", population: "40 000" },
   { name: "Pärnu", lat: 58.385880, lon: 24.497110, countryCode: "EE", population: "40 000" },
